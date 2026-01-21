@@ -1,163 +1,245 @@
-# CLAUDE.md — Civic Pulse
+# Civic Pulse - Municipal Meeting Summarizer
 
-> Auto-read by Claude Code for project context.
+## What We're Building
 
-## Project Overview
-
-**Civic Pulse** — AI-powered municipal meeting summarizer that extracts key decisions, action items, and public sentiment from local government meetings.
-
-*"Stay informed about your community in minutes, not hours."*
+A platform that automatically:
+1. **Scrapes** meeting documents from municipal websites
+2. **Summarizes** them with AI into digestible formats
+3. **Alerts** users when meetings match their interests
+4. **Tracks usage** to manage costs and offer paid tiers
 
 ## Tech Stack
 
-| Layer | Tech |
-|-------|------|
-| Framework | TanStack Start |
-| Backend | Convex |
-| Auth | WorkOS AuthKit |
-| UI | shadcn/ui |
-| LLM | OpenRouter |
-| Validation | Zod |
-| Package Manager | PNPM |
+| Layer | Technology | Why |
+|-------|------------|-----|
+| Framework | TanStack Start | SSR + file routing + server functions |
+| Database | Convex | Real-time sync, scheduled jobs, file storage |
+| Auth | WorkOS AuthKit | Enterprise-ready, handles OAuth |
+| UI | shadcn/ui + Tailwind v4 | Customizable, accessible |
+| AI | Claude API (Anthropic) | Best at structured extraction |
+| Scraping | Convex Actions + Cheerio | Serverless, scalable |
+| Email | Resend | Simple transactional email |
+| Payments | Stripe | Subscriptions |
+| Deploy | Cloudflare Workers | Edge, fast globally |
 
-## Meeting Types
+## Project Structure
 
-| Type | Description |
-|------|-------------|
-| city_council | City/Town Council meetings |
-| school_board | School Board meetings |
-| planning_commission | Planning/Zoning Commission |
-| county_board | County Board of Supervisors |
-| special_district | Water, Fire, Transit districts |
-
-## Output Structure
-
-| Section | Content |
-|---------|---------|
-| Summary | High-level overview of meeting |
-| Key Decisions | Major votes and resolutions |
-| Action Items | Tasks assigned with deadlines |
-| Public Comments | Themes and sentiment analysis |
-| Voting Record | How members voted on each item |
-
-## Architecture
-
-### Key Folders
 ```
-convex/
-  functions/
-    summaries/actions.ts   # generateSummary
-    users/mutations.ts     # upsertOnLogin
-    rateLimit/             # Usage tracking
-  lib/
-    permissions/           # Role-based access
-    constants/             # Rate limits
-
-src/
-  routes/
-    index.tsx              # Home page
-    api/auth/              # Auth callbacks
-  components/
-    Header.tsx             # Navigation
-    ConvexClientProvider   # Convex setup
-  authkit/                 # WorkOS integration
-```
-
-### Summary Flow
-```
-User submits transcript
-    │
-    ├──► Validate input
-    ├──► Check rate limit
-    ├──► Call LLM for analysis
-    └──► Store & return summary
+civic-pulse/
+├── CLAUDE.md                    # This file
+├── ARCHITECTURE.md              # Database schema, flows
+├── PROMPTS.md                   # Development prompts
+├── convex/
+│   ├── schema.ts                # 8 tables
+│   ├── users.ts                 # User management
+│   ├── municipalities.ts        # Municipality CRUD
+│   ├── meetings.ts              # Meeting management
+│   ├── summaries.ts             # Summary operations
+│   ├── subscriptions.ts         # Alert subscriptions
+│   ├── alerts.ts                # Alert delivery
+│   ├── usage.ts                 # Rate limiting
+│   ├── ai.ts                    # AI summarization
+│   ├── scrapers/
+│   │   ├── index.ts             # Orchestration
+│   │   ├── registry.ts          # Platform registry
+│   │   ├── granicus.ts          # Granicus scraper
+│   │   ├── civicplus.ts         # CivicPlus scraper
+│   │   ├── generic.ts           # Generic HTML
+│   │   └── types.ts             # Interfaces
+│   ├── crons.ts                 # Scheduled jobs
+│   └── stripe.ts                # Payments
+├── src/
+│   ├── routes/
+│   │   ├── __root.tsx
+│   │   ├── index.tsx            # Landing
+│   │   ├── explore/             # Browse
+│   │   ├── meeting/             # Summary view
+│   │   ├── dashboard/           # User area
+│   │   ├── admin/               # Admin area
+│   │   ├── pricing.tsx
+│   │   └── api/auth/callback.ts
+│   ├── components/
+│   │   ├── ui/                  # shadcn
+│   │   ├── layout/
+│   │   ├── meetings/
+│   │   ├── subscriptions/
+│   │   └── admin/
+│   └── lib/
+├── prompts/
+│   └── summarize.md             # AI prompt
+└── .env.example
 ```
 
-## Commands
+## Database Tables (8)
 
-```bash
-pnpm dev              # Start dev server (port 3000)
-pnpm build            # Build for production
-npx convex dev        # Convex dev mode
-npx convex deploy     # Deploy Convex backend
+| Table | Purpose |
+|-------|---------|
+| users | WorkOS sync, tier, Stripe |
+| municipalities | Places, scrape config |
+| meetings | Raw documents, status |
+| summaries | AI output |
+| subscriptions | Alert preferences |
+| alerts | Delivery tracking |
+| scrapeJobs | Scraper history |
+| usageRecords | Rate limiting |
+
+## User Tiers
+
+| Feature | Anonymous | Free | Pro ($15/mo) |
+|---------|-----------|------|--------------|
+| View summaries | 10/day | 50/day | Unlimited |
+| Municipalities | 3 | 10 | Unlimited |
+| Subscriptions | 0 | 5 | Unlimited |
+| Email alerts | No | Daily | Immediate |
+| Upload meetings | No | 3/month | 20/month |
+| API access | No | No | Yes |
+
+## Scraper Architecture
+
+### Platform Types
+- **Granicus** (~40%): Structured pages
+- **CivicPlus** (~30%): Consistent HTML
+- **Generic** (~20%): Custom selectors
+- **Manual** (~10%): Upload only
+
+### Scraper Design
+- Modular: One module per platform
+- Configurable: Per-municipality selectors
+- Resilient: Retries, error tracking
+- Observable: Job history, logging
+
+### Scrape Flow
+```
+Cron → For each municipality:
+  → Create scrapeJob
+  → Get platform scraper
+  → Scrape meetings page
+  → For each new meeting:
+    → Extract content
+    → Create meeting record
+    → Schedule AI summarization
+  → Update job results
 ```
 
-## Environment Variables
+## Alert System
 
-### Required
+### Flow
 ```
-# Convex
-CONVEX_DEPLOYMENT=
-VITE_CONVEX_URL=
-
-# WorkOS AuthKit (Server)
-WORKOS_CLIENT_ID=
-WORKOS_API_KEY=
-WORKOS_REDIRECT_URI=
-WORKOS_COOKIE_PASSWORD=     # Must be 32+ characters
-
-# WorkOS AuthKit (Client - exposed to browser)
-VITE_WORKOS_CLIENT_ID=
-VITE_WORKOS_REDIRECT_URI=
-
-# AI (OpenRouter - multi-model gateway)
-OPENROUTER_API_KEY=
+New summary created
+  → Find matching subscriptions
+    → Topic match
+    → Meeting type match
+    → Keyword filters
+  → Create alert records
+  → Based on frequency:
+    → Immediate: Send now
+    → Daily/Weekly: Queue for batch
 ```
 
-### Optional
-```
-WORKOS_COOKIE_NAME=wos-session
-WORKOS_API_HOSTNAME=api.workos.com
-```
+### Frequencies
+- **Immediate**: Within 5 minutes
+- **Daily**: 8am digest
+- **Weekly**: Monday 8am
 
-## Current Phase
+## Development Phases
 
-Phase: DESIGN SYSTEM COMPLETE
-Completed: Project structure, auth flow, design system, base UI components
-Next: Implement summary generation feature
+### Phase 1: Foundation (Days 1-4)
+- Project scaffold
+- Database schema
+- Auth flow
+- Design system
+- Landing page
+- Seed data
 
-## Key Decisions
+### Phase 2: Browse & View (Days 5-8)
+- Municipality functions
+- Explore page
+- Municipality detail
+- Meeting summary page
+- Share functionality
 
-- Single summary mode initially (no panel of AI judges)
-- Focus on extracting structured data from transcripts
-- Public comments get sentiment analysis
-- Voting records extracted when available
-- Rate limiting: 3/day signed in, 2/day anonymous
+### Phase 3: Manual Upload (Days 9-11)
+- Meeting functions
+- Upload page
+- AI summarization
+- PDF extraction
+- Processing UI
+
+### Phase 4: Scrapers (Days 12-17)
+- Scraper architecture
+- Granicus scraper
+- CivicPlus scraper
+- Generic scraper
+- Orchestration
+- Admin UI
+- Cron jobs
+
+### Phase 5: Subscriptions (Days 18-22)
+- Subscription functions
+- Subscription UI
+- Alert generation
+- Email sending
+- Alert crons
+- Dashboard feed
+
+### Phase 6: Monetization (Days 23-26)
+- Usage tracking
+- Rate limiting
+- Usage display
+- Stripe integration
+- Pricing page
+
+### Phase 7: Polish (Days 27-30)
+- Error handling
+- Loading states
+- SEO
+- Admin dashboard
+- Testing
+- Deployment
 
 ## Design System
 
 ### Colors
-| Token | Value | Usage |
-|-------|-------|-------|
-| Primary | #FF6B4A | Brand coral/orange - CTAs, highlights |
-| Background | #0A0A0B | Page background |
-| Surface/Card | #141416 | Cards, elevated surfaces |
-| Muted | #1F1F23 | Secondary backgrounds |
-| Foreground | #FAFAFA | Primary text |
-| Muted-fg | #A0A0A0 | Secondary text |
+```css
+--accent: #FF6B4A;        /* Coral */
+--bg: #0A0A0B;            /* Near black */
+--surface: #141416;       /* Cards */
+--text: #FAFAFA;
+--text-muted: #A0A0A5;
+```
 
 ### Typography
-| Font | Usage |
-|------|-------|
-| Fraunces | Display headings (h1, h2, h3) |
-| DM Sans | Body text, UI elements |
-| JetBrains Mono | Code, monospace, badges |
+- Display: Fraunces (serif)
+- Body: DM Sans (sans)
+- Mono: JetBrains Mono
 
-### Components (shadcn/ui)
+### Style
+- Editorial magazine feel (Bloomberg/Politico)
+- Dark mode default
+- High contrast
+- Motion animations
+
+## Commands
+
+```bash
+pnpm dev          # Start dev
+pnpm build        # Production build
+pnpm lint         # Biome lint
+pnpm typecheck    # TS check
+npx convex dev    # Convex backend
 ```
-src/components/ui/
-  button.tsx    # Primary, secondary, ghost, outline variants
-  card.tsx      # Card, CardHeader, CardTitle, CardContent, CardFooter
-  badge.tsx     # Default, secondary, outline, success, warning, info
-  input.tsx     # Text input with focus states
-  textarea.tsx  # Multi-line text input
-  label.tsx     # Form labels
+
+## Environment Variables
+
+```env
+CONVEX_DEPLOYMENT=
+VITE_CONVEX_URL=
+WORKOS_CLIENT_ID=
+WORKOS_API_KEY=
+WORKOS_REDIRECT_URI=
+WORKOS_COOKIE_PASSWORD=
+ANTHROPIC_API_KEY=
+RESEND_API_KEY=
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
 ```
-
-## Design Principles
-
-- Clean, civic-focused aesthetic
-- Coral/orange primary with dark background
-- Mobile-first responsive design
-- Accessible and fast
-- Privacy-conscious (no transcript storage by default)

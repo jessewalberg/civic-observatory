@@ -8,7 +8,28 @@ export const getByWorkosUserId = query({
   handler: async (ctx, args) => {
     return await ctx.db
       .query("users")
-      .withIndex("by_workosUserId", (q) => q.eq("workosUserId", args.workosUserId))
+      .withIndex("by_workos_id", (q) => q.eq("workosUserId", args.workosUserId))
+      .first();
+  },
+});
+
+export const getById = query({
+  args: {
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.userId);
+  },
+});
+
+export const getByEmail = query({
+  args: {
+    email: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("users")
+      .withIndex("by_email", (q) => q.eq("email", args.email))
       .first();
   },
 });

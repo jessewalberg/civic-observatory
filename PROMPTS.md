@@ -1,707 +1,711 @@
 # Claude Code Development Prompts
 
-This file contains a sequence of prompts to use with Claude Code to build Civic Pulse from the reference AITA repository. Execute these in order, one at a time.
+Execute these prompts in order. Each builds on the previous. Test after each prompt.
 
 ---
 
-## Phase 0: Project Setup
+## Phase 1: Foundation (Days 1-4)
 
-### Prompt 0.1: Initialize Project from Template
+### Prompt 1.1: Project Scaffold
 ```
-Clone the structure from https://github.com/jessewalberg/aita but rename everything for our new project "Civic Pulse" - a municipal meeting summarizer.
+Initialize Civic Pulse from the reference repo https://github.com/jessewalberg/aita
 
-1. Read the CLAUDE.md and ARCHITECTURE.md files in this directory to understand the project
-2. Copy the project structure (convex/, src/, config files) from the reference
-3. Update package.json with new name "civic-pulse" and description
-4. Keep the same dependencies: TanStack Start, Convex, WorkOS, shadcn/ui, Tailwind v4, Biome
-5. Update any branding/naming throughout
+1. Read CLAUDE.md and ARCHITECTURE.md thoroughly first
+2. Set up project with same patterns:
+   - TanStack Start with file-based routing
+   - Convex for backend
+   - WorkOS AuthKit for auth
+   - shadcn/ui + Tailwind v4
+   - Biome for linting
+3. Rename from "aita" to "civic-pulse"
+4. Create directory structure from CLAUDE.md
+5. Set up .env.example
+6. Verify dev server starts
 
-Do NOT implement features yet - just set up the skeleton with the auth flow working.
-```
-
-### Prompt 0.2: Configure Environment
-```
-Set up the environment configuration:
-
-1. Create .env.example with all required variables:
-   - CONVEX_DEPLOYMENT
-   - VITE_CONVEX_URL
-   - WORKOS_CLIENT_ID, WORKOS_API_KEY, WORKOS_REDIRECT_URI, WORKOS_COOKIE_PASSWORD
-   - VITE_WORKOS_CLIENT_ID, VITE_WORKOS_REDIRECT_URI
-   - ANTHROPIC_API_KEY (for AI summarization)
-
-2. Update vite.config.ts if needed for our project
-3. Ensure Cloudflare Workers deployment config (wrangler.jsonc) is set up
-4. Verify biome.json has sensible defaults
-
-The structure should match what's in CLAUDE.md.
+Don't implement features - just get the skeleton working.
 ```
 
-### Prompt 0.3: Set Up Design System
+### Prompt 1.2: Database Schema
 ```
-Configure the design system following CLAUDE.md specifications:
+Implement the complete Convex schema from ARCHITECTURE.md.
 
-1. Install fonts (Fraunces, DM Sans, JetBrains Mono) via Google Fonts in the root layout
-2. Set up Tailwind v4 CSS-first config with our brand colors:
-   - Primary: #FF6B4A (coral/orange)
-   - Background dark: #0A0A0B
-   - Surface: #141416
-   - Text: #FAFAFA
-3. Configure shadcn/ui with our theme (dark mode default)
-4. Create src/styles/globals.css with CSS variables
-5. Add base components: Button, Card, Badge, Input from shadcn
+Create convex/schema.ts with all 8 tables:
+1. users - WorkOS sync, tier, Stripe
+2. municipalities - places, scrape config
+3. meetings - documents, status
+4. summaries - AI output
+5. subscriptions - alert preferences
+6. alerts - notification tracking
+7. scrapeJobs - scraper history
+8. usageRecords - rate limiting
 
-Focus on the foundation - we'll build custom components later.
-```
-
----
-
-## Phase 1: Database & Auth
-
-### Prompt 1.1: Implement Convex Schema
-```
-Implement the complete Convex schema from ARCHITECTURE.md:
-
-1. Create convex/schema.ts with all tables:
-   - users (synced from WorkOS)
-   - municipalities
-   - meetings
-   - summaries
-   - subscriptions
-   - alerts
-   - scrapeJobs
-   - usageRecords
-
-2. Include all indexes as specified
-3. Run `npx convex dev` to generate types
-
-Ensure the schema matches ARCHITECTURE.md exactly.
+Include ALL indexes. Run `npx convex dev` to verify.
 ```
 
-### Prompt 1.2: Implement Auth Functions
+### Prompt 1.3: User Management
 ```
-Create the authentication layer:
+Implement user management:
 
-1. convex/auth.ts with:
-   - `users.upsert` mutation - create/update user from WorkOS data
-   - `users.getByWorkosId` query - fetch user by WorkOS ID
-   - `users.getCurrentUser` query - get current authenticated user
+convex/users.ts:
+- upsertFromWorkOS: Create/update on login
+- getByWorkosId: Find by WorkOS ID
+- getCurrentUser: Get from auth context
+- updateTier: For Stripe webhook
 
-2. src/lib/auth.ts with:
-   - Helper functions for WorkOS integration
-   - `getAuth()` server function for loaders
-   - `useAuth()` hook for client components
+src/lib/auth.ts:
+- getAuth(): Get user from session
+- requireAuth(): Throw if not authenticated
+- useAuth(): Client hook
 
-3. src/routes/api/auth/callback.ts:
-   - Handle WorkOS OAuth callback
-   - Exchange code for tokens
-   - Upsert user in Convex
-   - Set session cookie
-   - Redirect to dashboard
+src/routes/api/auth/callback.ts:
+- Handle WorkOS callback
+- Upsert user
+- Redirect
 
-Follow the pattern from the AITA reference repo.
-```
-
-### Prompt 1.3: Implement Auth UI
-```
-Create the authentication UI components:
-
-1. src/components/auth/SignInButton.tsx - redirects to WorkOS
-2. src/components/auth/UserMenu.tsx - dropdown with user info and sign out
-3. src/components/auth/AuthGuard.tsx - wrapper for protected routes
-
-4. Update src/routes/__root.tsx to:
-   - Check auth state
-   - Provide auth context
-   - Show appropriate header state
-
-Test that sign in and sign out flows work correctly.
+Test sign in/out flow works.
 ```
 
----
-
-## Phase 2: Core Layout & Landing
-
-### Prompt 2.1: Create Root Layout
+### Prompt 1.4: Design System
 ```
-Build the root layout following our design system:
+Set up design system from CLAUDE.md:
 
-1. src/routes/__root.tsx:
-   - Dark mode by default
-   - Load fonts from Google Fonts
-   - Global styles
-   - Header component slot
-   - Main content area with Outlet
-   - Footer component slot
+1. Google Fonts in root layout:
+   - Fraunces, DM Sans, JetBrains Mono
 
-2. src/components/layout/Header.tsx:
-   - Logo (create a simple text logo for now)
-   - Navigation links: Explore, Pricing, (Dashboard if logged in)
-   - Search bar (UI only, functionality later)
-   - Auth buttons or user menu
+2. Tailwind v4 CSS variables:
+   - Brand colors (coral #FF6B4A)
+   - Dark theme defaults
+   - Topic colors
 
-3. src/components/layout/Footer.tsx:
-   - Simple footer with links
-   - Copyright
+3. shadcn/ui:
+   - Initialize with dark mode
+   - Add: Button, Card, Badge, Input, Select, Dialog, Toast
 
-Use the editorial/magazine aesthetic from CLAUDE.md. NOT generic civic tech blue.
+4. Custom components:
+   - TopicBadge (colored by category)
+   - VoteDisplay (visual bars)
+
+Verify dark mode with correct fonts.
 ```
 
-### Prompt 2.2: Build Landing Page
+### Prompt 1.5: Landing Page
 ```
-Create a stunning landing page at src/routes/index.tsx:
+Build stunning landing page at src/routes/index.tsx
 
-DESIGN DIRECTION: Editorial, bold, high-contrast. Think Bloomberg/Politico meets modern SaaS.
+Design: Editorial magazine feel (Bloomberg/Politico), NOT generic civic tech
 
 Sections:
-1. Hero:
-   - Bold headline: "Your Local Government, Decoded"
-   - Subhead explaining the value prop
-   - CTA buttons: "Explore Meetings" and "Sign Up Free"
-   - Background: subtle gradient mesh or animated particles
+1. Hero - Bold headline, animated background, CTAs
+2. Recent Meetings - 4 cards with mock data
+3. How It Works - 3 steps
+4. Value Props - 4 columns for different audiences
+5. CTA Section
 
-2. Feature Grid (3 columns):
-   - "AI Summaries" - instant meeting summaries
-   - "Topic Alerts" - get notified about issues you care about
-   - "Decision Tracking" - follow votes and outcomes
-
-3. Recent Meetings Preview:
-   - Show 3-4 sample meeting cards (use mock data for now)
-   - Each card shows: municipality, date, key topics, quick summary
-
-4. Social Proof/Stats:
-   - "1,000+ meetings summarized" (placeholder)
-   - "50+ municipalities tracked"
-
-5. CTA Section:
-   - "Stay Informed. Stay Engaged."
-   - Sign up form or button
-
-Use Motion library for scroll animations and micro-interactions.
-Make it visually MEMORABLE - not another boring civic tech site.
+Use Motion for animations. Make it MEMORABLE.
 ```
 
-### Prompt 2.3: Build Pricing Page
+### Prompt 1.6: Seed Data
 ```
-Create src/routes/pricing.tsx:
+Create seed data in convex/seed.ts:
 
-Design a clear, attractive pricing page with 3 tiers:
+- 10 municipalities (various states)
+- 25 meetings across them
+- Full summaries with:
+  - Realistic decisions
+  - Vote results
+  - Topic tags
+  - Public comments
 
-1. Free Tier:
-   - 5 summaries/day
-   - 3 municipalities
-   - Basic features
-   - "Get Started" button
-
-2. Pro Tier ($15/mo):
-   - Unlimited summaries
-   - Unlimited municipalities
-   - Email alerts
-   - API access
-   - "Start Pro Trial" button (most prominent)
-
-3. Enterprise:
-   - Custom pricing
-   - Bulk API access
-   - Custom integrations
-   - "Contact Us" button
-
-Include:
-- Feature comparison table
-- FAQ section (accordion)
-- Trust badges if any
-
-Keep the same bold design language.
+Make data feel real. Run seeders and verify.
 ```
 
 ---
 
-## Phase 3: Municipality & Meeting Views
+## Phase 2: Browse & View (Days 5-8)
 
-### Prompt 3.1: Municipality Functions
+### Prompt 2.1: Municipality Functions
 ```
-Implement municipality Convex functions:
+Implement convex/municipalities.ts:
 
-1. convex/municipalities.ts:
-   - `list` query: Get all active municipalities, with optional state filter
-   - `get` query: Get single municipality by ID
-   - `getBySlug` query: Get by URL-friendly slug
-   - `create` mutation: Add new municipality (admin only)
-   - `update` mutation: Update municipality details
-   - `search` query: Full-text search on name
+Queries:
+- list: All municipalities, optional state filter
+- get: Single by ID
+- getWithMeetings: With recent meetings
+- search: Full-text search
+- listByState: Grouped by state
+- listDueForScrape: For cron job
 
-2. Add some seed data:
-   - Create a convex/seed.ts script
-   - Add 5-10 sample municipalities (mix of states)
-   - Include realistic data: name, state, population, website
+Mutations:
+- create: Add municipality
+- update: Modify details
+- updateScrapeStatus: After scrape runs
 
-Run the seed script to populate dev database.
-```
-
-### Prompt 3.2: Explore Page
-```
-Create the municipality exploration page at src/routes/explore/index.tsx:
-
-1. Search/Filter Bar:
-   - Text search input
-   - State dropdown filter
-   - Meeting type filter
-
-2. Results Grid:
-   - MunicipalityCard components
-   - Card shows: name, state, population, recent meeting count
-   - Hover effect with subtle animation
-   - Click to go to /explore/[municipalityId]
-
-3. Optional Map View:
-   - Toggle between grid and map
-   - Use a simple US map (static SVG is fine)
-   - Dot markers for municipalities
-
-4. Empty State:
-   - Friendly message when no results
-   - Suggest broadening search
-
-Make it feel like exploring a curated directory, not a government database.
+Test each in Convex dashboard.
 ```
 
-### Prompt 3.3: Municipality Detail Page
+### Prompt 2.2: Explore Page
+```
+Build src/routes/explore/index.tsx:
+
+1. Search + state filter
+2. Municipality grid (responsive 1-4 columns)
+3. MunicipalityCard:
+   - Name, state, population
+   - Meeting count
+   - Hover animation
+4. Empty state
+5. Loading skeletons
+
+Use loader for SSR.
+```
+
+### Prompt 2.3: Municipality Detail
 ```
 Build src/routes/explore/$municipalityId.tsx:
 
-1. Header Section:
-   - Municipality name (large)
-   - State, county, population
-   - External link to official website
-   - Subscribe button (for alerts)
+1. Header: Name, state, website link, subscribe button
+2. Meeting filters: type, date range
+3. Meeting list with MeetingCard:
+   - Date, type, status
+   - Topic badges
+   - Summary preview
+4. Pagination
+5. Empty state
 
-2. Meetings List:
-   - Filter by meeting type
-   - Sort by date
-   - MeetingCard for each meeting
-   - Load more / pagination
-
-3. MeetingCard Component (src/components/meetings/MeetingCard.tsx):
-   - Meeting type badge
-   - Date
-   - Title
-   - Topic tags (if summarized)
-   - Quick summary preview (first 100 chars)
-   - Click to view full meeting
-
-4. Sidebar (on larger screens):
-   - Quick stats: total meetings, last updated
-   - Alert subscription form
-   - Related municipalities (same state)
-
-Use SSR with TanStack loader for initial data.
+SSR with loader.
 ```
 
-### Prompt 3.4: Meeting Detail Page
+### Prompt 2.4: Meeting Summary Page
 ```
-Create src/routes/meeting/$meetingId.tsx - this is a KEY page:
+Build src/routes/meeting/$meetingId.tsx - KEY PAGE:
 
-1. Meeting Header:
-   - Municipality name (link back)
-   - Meeting type + date
-   - Topic badges (TopicBadge component)
-   - Share button, subscribe button
+1. Processing state (if not summarized)
+2. Header: breadcrumb, title, date, topics, share
+3. Executive Summary (large text)
+4. Key Decisions:
+   - DecisionCard with VoteDisplay
+5. Discussion Topics (by category)
+6. Public Comments (if present)
+7. Upcoming Items
+8. Raw Content toggle
 
-2. Executive Summary Section:
-   - Large, readable text
-   - The main AI-generated summary
-   - Highlight key takeaways
+Real-time updates via useQuery.
+```
 
-3. Key Decisions Section:
-   - DecisionCard for each decision
-   - Show vote results (VoteDisplay component)
-   - Yes/No/Abstain with visual bar
-   - Topics for each decision
+### Prompt 2.5: Share & SEO
+```
+Add sharing:
 
-4. Discussion Topics:
-   - Grouped by category
-   - Expandable sections
-   - Each topic has summary text
-
-5. Public Comments Summary:
-   - If available
-   - Count, themes, general sentiment
-
-6. Upcoming Items:
-   - List of items to watch
-   - Expected dates if known
-
-7. Raw Content Toggle:
-   - Button to show/hide original document
-   - Scrollable container for raw text
-
-8. Related Meetings:
-   - Previous/next meeting in this municipality
-   - Similar meetings (same topics)
-
-This page should feel like reading a well-designed news article.
+1. Share button (copy link, native share)
+2. Open Graph meta tags (dynamic)
+3. Public access without auth
+4. Structured data (JSON-LD)
+5. Sitemap generation
 ```
 
 ---
 
-## Phase 4: AI Summarization
+## Phase 3: Manual Upload (Days 9-11)
 
-### Prompt 4.1: Summarization Action
+### Prompt 3.1: Meeting Functions
 ```
-Create the AI summarization pipeline:
+Implement convex/meetings.ts:
 
-1. convex/ai.ts:
-   - `summarizeMeeting` action:
-     - Takes meetingId
-     - Fetches raw content from meeting record
-     - Calls Claude API with structured prompt
-     - Parses response into our summary schema
-     - Saves summary to database
-     - Updates meeting status
+Queries:
+- get: By ID with municipality
+- getWithSummary: With latest summary
+- listByMunicipality: Paginated
+- listRecent: For landing page
+- findBySourceUrl: Duplicate check
+- findByContentHash: Content duplicate
 
-2. Create the prompt template:
-   - System prompt explaining the task
-   - Output format: JSON matching our schema
-   - Examples of good summaries
-   - Guidelines for topic extraction
+Mutations:
+- create: New meeting, triggers summarization
+- updateStatus: Processing status
+- createFromScrape: Internal, from scraper
 
-3. Error handling:
-   - Retry logic for API failures
-   - Fallback for malformed responses
-   - Log errors to database
-
-The prompt should be in a separate file for easy iteration: convex/prompts/summarize.ts
+Include auth checks.
 ```
 
-### Prompt 4.2: Meeting Upload Flow
+### Prompt 3.2: Upload Page
 ```
-Create a manual meeting upload flow for testing:
+Build src/routes/dashboard/upload.tsx (auth required):
 
-1. src/routes/dashboard/upload.tsx (Pro users only):
-   - File upload (PDF, DOCX, TXT)
-   - Or paste text directly
-   - Select municipality
-   - Select meeting type
-   - Enter meeting date
-   - Submit button
+1. Auth check in loader
+2. Usage limit check
+3. Form:
+   - Municipality select (or add new)
+   - Title, type, date
+   - File upload OR paste text
+4. Submit with loading
+5. Redirect to meeting page
+6. Record usage
 
-2. convex/meetings.ts:
-   - `create` mutation: Create meeting record
-   - `uploadDocument` action: Store file in Convex storage
-   - `triggerSummarization` mutation: Queue for summarization
-
-3. Processing Flow:
-   - Upload creates meeting with status "pending"
-   - Background job picks it up
-   - Extracts text (pdf-parse for PDFs)
-   - Calls summarization
-   - Updates status to "summarized"
-
-4. Show processing status:
-   - Real-time updates as meeting processes
-   - Success/error states
-
-This lets us test the full pipeline without scrapers.
+Handle PDF, DOCX, TXT.
 ```
 
-### Prompt 4.3: Seed Sample Summaries
+### Prompt 3.3: AI Summarization
 ```
-Create sample meeting data with summaries for demonstration:
+Implement convex/ai.ts:
 
-1. convex/seed.ts - add functions to create:
-   - 10-15 sample meetings across different municipalities
-   - Full summaries with realistic data
-   - Mix of meeting types
-   - Various topics
+summarize action:
+1. Update status to "processing"
+2. Get meeting + municipality
+3. Extract text from PDF if needed
+4. Build prompt
+5. Call Claude API
+6. Parse JSON response
+7. Validate schema
+8. Create summary
+9. Update status
+10. Trigger alert generation
 
-2. The sample data should showcase:
-   - Zoning approvals
-   - Budget votes
-   - Public safety discussions
-   - School board decisions
-   - Contentious items with split votes
-
-3. Make the data feel real:
-   - Realistic names and details
-   - Varied vote counts
-   - Interesting public comment summaries
-
-This seeds the demo environment so users see value immediately.
+Error handling with retries.
 ```
 
----
-
-## Phase 5: User Dashboard & Alerts
-
-### Prompt 5.1: User Dashboard
+### Prompt 3.4: PDF Extraction
 ```
-Build src/routes/dashboard.tsx:
+Add PDF text extraction in ai.ts:
 
-1. Sidebar:
-   - User's subscribed municipalities (quick links)
-   - Pending alerts count
-   - Account link
+1. If documentStorageId present:
+   - Download from Convex storage
+   - Use pdf-parse
+   - Store in rawContent
+2. Handle image-only PDFs (mark failed)
+3. Truncate very long content
 
-2. Main Feed:
-   - Recent meetings from subscribed municipalities
-   - Filter by: all, unread, topic
-   - Sort by: date, municipality
-   - MeetingCard list
-
-3. Empty State (no subscriptions):
-   - Friendly onboarding message
-   - "Explore municipalities" CTA
-   - Suggested popular municipalities
-
-4. Quick Actions:
-   - Search meetings
-   - Upload meeting (Pro)
-   - Manage alerts
-
-Make it feel like a personalized news feed, not a dashboard.
+Test various PDF types.
 ```
 
-### Prompt 5.2: Alert Subscription System
+### Prompt 3.5: Processing UI
 ```
-Implement the alert/subscription system:
+Enhance meeting page for processing:
 
-1. convex/subscriptions.ts:
-   - `create` mutation: Subscribe to municipality
-   - `update` mutation: Update filters/frequency
-   - `delete` mutation: Unsubscribe
-   - `listByUser` query: Get user's subscriptions
+Status displays:
+- "pending": Queued message
+- "processing": Analyzing animation
+- "failed": Error + retry button
 
-2. src/components/alerts/AlertForm.tsx:
-   - Municipality selector (if not pre-selected)
-   - Topic filter checkboxes
-   - Frequency: immediate, daily, weekly
-   - Submit/cancel buttons
-
-3. src/components/alerts/AlertList.tsx:
-   - List of current subscriptions
-   - Edit/delete actions
-   - Toggle enabled/disabled
-
-4. src/routes/alerts/index.tsx:
-   - Full page alert management
-   - Add new subscription
-   - List existing subscriptions
-   - Notification preferences
-
-5. Integration:
-   - Add subscribe button to municipality pages
-   - Add subscribe button to meeting pages (for that municipality)
-```
-
-### Prompt 5.3: Email Notification System
-```
-Set up email notifications (using Resend or similar):
-
-1. convex/email.ts:
-   - `sendAlert` action: Send single meeting alert
-   - `sendDailyDigest` action: Send daily summary
-   - `sendWeeklyDigest` action: Send weekly summary
-
-2. Email templates:
-   - Single meeting alert (new summary available)
-   - Daily digest (list of new meetings)
-   - Weekly digest (summary of week's activity)
-
-3. convex/crons.ts:
-   - Schedule daily digest (8am user timezone)
-   - Schedule weekly digest (Monday 8am)
-
-4. convex/alerts.ts:
-   - `checkNewMeetings` query: Find meetings needing alerts
-   - `markAsSent` mutation: Update alert status
-   - `processImmediateAlerts` action: Send immediate notifications
-
-For now, log emails to console in dev. We'll connect Resend later.
+Real-time updates as status changes.
 ```
 
 ---
 
-## Phase 6: Polish & Production
+## Phase 4: Scraper System (Days 12-17)
 
-### Prompt 6.1: Search Implementation
+### Prompt 4.1: Scraper Architecture
 ```
-Implement global search:
+Set up scraper foundation:
 
-1. convex/search.ts:
-   - `searchMeetings` query: Full-text search on meetings
-   - `searchMunicipalities` query: Search municipality names
-   - Combined search with result types
+convex/scrapers/types.ts:
+- ScraperResult, ScrapedMeeting, ScraperError interfaces
+- ScraperConfig interface
+- Scraper interface (canHandle, scrape, extractContent)
 
-2. src/components/search/SearchCommand.tsx:
-   - Command palette style (like Spotlight/Alfred)
-   - Keyboard shortcut: Cmd+K
-   - Shows recent searches
-   - Grouped results: Municipalities, Meetings, Topics
+convex/scrapers/registry.ts:
+- scrapers map
+- getScraper(platform)
+- detectPlatform(url)
 
-3. src/components/layout/Header.tsx:
-   - Update search bar to open command palette
-   - Show recent/suggested searches on focus
-
-4. Search result page (src/routes/search.tsx):
-   - For users who want full results
-   - Filter by type, date range, municipality
-   - Paginated results
+convex/scrapers/utils.ts:
+- parseDate, inferMeetingType, hashContent helpers
 ```
 
-### Prompt 6.2: Sharing & SEO
+### Prompt 4.2: Granicus Scraper
 ```
-Add sharing functionality and SEO:
+Implement convex/scrapers/granicus.ts:
 
-1. Meeting Share Page:
-   - src/routes/meeting/$meetingId/share.tsx
-   - Public, no auth required
-   - Clean summary view for sharing
-   - Open Graph meta tags
+canHandle:
+- granicus.com, /AgendaCenter, /Archive.aspx
 
-2. SEO:
-   - Dynamic meta tags on all pages
-   - Structured data (JSON-LD) for meetings
-   - Sitemap generation
-   - robots.txt
+scrape:
+- Fetch meetings page
+- Parse with cheerio
+- Extract meetings with dates, titles, doc links
+- Handle pagination
 
-3. Social Sharing:
-   - Share button with copy link
-   - Twitter share with pre-filled text
-   - LinkedIn share
-   - Email share
+extractContent:
+- HTML: fetch and clean
+- PDF: return URL
 
-4. Open Graph Images:
-   - Generate OG images for meetings
-   - Show municipality, date, key topics
-   - Use Satori or similar for generation
+Test against real Granicus sites.
 ```
 
-### Prompt 6.3: Rate Limiting & Usage Tracking
+### Prompt 4.3: CivicPlus Scraper
 ```
-Implement rate limiting:
+Implement convex/scrapers/civicplus.ts:
 
-1. convex/usage.ts:
-   - `trackUsage` mutation: Record usage event
-   - `checkLimit` query: Check if user is within limits
-   - `getUsageStats` query: Get user's usage stats
+Similar structure to Granicus but:
+- Different URL patterns
+- Different HTML structure
+- May need AJAX handling
 
-2. Rate limit middleware:
-   - Create helper function to check limits
-   - Apply to relevant queries/mutations
-   - Return appropriate errors when exceeded
-
-3. Usage display:
-   - Show usage stats in user menu
-   - Warning when approaching limits
-   - Upgrade prompt when exceeded
-
-4. Anonymous user handling:
-   - Track by IP hash (privacy-friendly)
-   - Lower limits for anonymous users
+Test against real CivicPlus sites.
 ```
 
-### Prompt 6.4: Error Handling & Loading States
+### Prompt 4.4: Generic Scraper
 ```
-Add comprehensive error handling:
+Implement convex/scrapers/generic.ts:
 
-1. Error Boundaries:
-   - Root error boundary
-   - Page-level error boundaries
-   - Component-level for data fetching
+- Fallback for custom sites
+- Relies on config selectors
+- More configurable, less automatic
 
-2. Error Pages:
-   - 404 Not Found
-   - 500 Server Error
-   - Rate Limited page
-   - Offline page
-
-3. Loading States:
-   - Skeleton loaders for cards
-   - Loading spinners for actions
-   - Optimistic updates where appropriate
-
-4. Toast Notifications:
-   - Success messages
-   - Error messages
-   - Action confirmations
-
-Use consistent patterns throughout the app.
+This handles municipalities not on standard platforms.
 ```
 
-### Prompt 6.5: Performance Optimization
+### Prompt 4.5: Scraper Orchestration
 ```
-Optimize for production:
+Implement convex/scrapers/index.ts:
 
-1. Code Splitting:
-   - Lazy load routes
-   - Dynamic imports for heavy components
-   - Prefetch on hover for links
+runScraper action:
+1. Create scrapeJob
+2. Get municipality config
+3. Select scraper
+4. Run scrape
+5. For each meeting:
+   - Check duplicates
+   - Extract content
+   - Create meeting
+   - Schedule summarization
+6. Update job results
+7. Update municipality status
 
-2. Image Optimization:
-   - Use next-gen formats (WebP)
-   - Lazy load images
-   - Placeholder blurs
+scrapeAllDue action:
+- Find due municipalities
+- Schedule with staggered timing
+```
 
-3. Caching:
-   - Set appropriate cache headers
-   - Use Convex query caching
-   - Client-side query deduplication
+### Prompt 4.6: Scrape Job Tracking
+```
+Implement convex/scrapeJobs.ts:
 
-4. Bundle Analysis:
-   - Analyze bundle size
-   - Remove unused dependencies
-   - Tree shake where possible
+Mutations:
+- create: New job
+- update: Status and results
 
-5. Monitoring:
-   - Add basic analytics events
-   - Error logging
-   - Performance metrics
+Queries:
+- getByMunicipality: History for one
+- getRecent: Last N jobs
+- getFailed: Failed jobs for review
+
+This enables monitoring scraper health.
+```
+
+### Prompt 4.7: Admin Scraper UI
+```
+Build src/routes/admin/scrapers.tsx:
+
+1. Overview stats: total, active, success/fail rates
+2. Municipality table with scrape status
+3. Per-municipality: history, errors, "Scrape Now"
+4. Job queue view
+5. Add municipality form with auto-detect
+
+Admin-only access.
+```
+
+### Prompt 4.8: Cron Jobs
+```
+Set up convex/crons.ts:
+
+- 6am UTC: scrapeAllDue
+- Every 5 min: sendImmediateAlerts
+- 8am UTC: sendDailyDigest
+- Monday 8am: sendWeeklyDigest
+- Monthly: cleanupOldRecords
+
+Verify crons registered correctly.
 ```
 
 ---
 
-## Phase 7: Deployment
+## Phase 5: Subscriptions & Alerts (Days 18-22)
 
-### Prompt 7.1: Production Deployment
+### Prompt 5.1: Subscription Functions
 ```
-Prepare for production deployment:
+Implement convex/subscriptions.ts:
 
-1. Environment Configuration:
-   - Set up production environment variables
-   - Configure Convex production deployment
-   - Set up WorkOS production credentials
+Mutations:
+- create: With limit check
+- update: Filters, frequency
+- delete: Cancel pending alerts
 
-2. Cloudflare Workers:
-   - Update wrangler.jsonc for production
-   - Configure custom domain
-   - Set up SSL
+Queries:
+- listByUser: All subscriptions
+- getForMunicipality: Check if subscribed
+- getMatchingForSummary: Find matches (internal)
+```
 
-3. Database:
-   - Run final schema migrations
-   - Seed production data (municipalities only)
-   - Set up backups
+### Prompt 5.2: Subscription UI
+```
+Build subscription UI:
 
-4. Testing:
-   - Run full test suite
-   - Manual QA of critical flows
-   - Load testing
+1. SubscribeButton component:
+   - On municipality/meeting pages
+   - Shows subscribed state
+   - Opens modal
 
-5. Launch Checklist:
-   - Verify auth flows
-   - Test payment flows (if implemented)
-   - Check email delivery
-   - Verify rate limiting
-   - Test sharing/OG images
+2. SubscriptionModal:
+   - Topic checkboxes
+   - Meeting type checkboxes
+   - Frequency select
+   - Save/cancel
+
+3. /dashboard/subscriptions page:
+   - List all subscriptions
+   - Edit/delete each
+   - Add new
+```
+
+### Prompt 5.3: Alert Generation
+```
+Implement convex/alerts.ts:
+
+generateAlerts mutation (called after summary):
+1. Get summary details
+2. Find matching subscriptions:
+   - Municipality match
+   - Topic overlap
+   - Meeting type match
+   - Keyword filters
+3. Create alert per match
+4. Set scheduledFor based on frequency
+
+Update ai.ts to call this.
+```
+
+### Prompt 5.4: Email Sending
+```
+Set up email with Resend:
+
+convex/email.ts:
+- sendEmail action (Resend API)
+- sendImmediateAlert: Single meeting email
+- sendDailyDigest: Grouped email
+- sendWeeklyDigest: Weekly summary
+
+Email templates:
+- Single alert HTML
+- Digest HTML with multiple meetings
+
+Include unsubscribe links.
+```
+
+### Prompt 5.5: Alert Crons
+```
+Implement alert cron jobs:
+
+sendImmediateAlerts action:
+- Query pending alerts
+- Send each
+- Update status
+
+sendDailyDigest action:
+- Query queued daily alerts
+- Group by user
+- Send digest per user
+- Update statuses
+
+Similar for weekly.
+```
+
+### Prompt 5.6: Dashboard Feed
+```
+Enhance dashboard for alerts:
+
+1. Header badge: unread count
+2. Feed shows subscribed municipalities
+3. Highlight new items
+4. Mark as read on view
 ```
 
 ---
 
-## Usage Instructions
+## Phase 6: Usage & Monetization (Days 23-26)
 
-1. Start with Phase 0 prompts to set up the project structure
-2. Execute each prompt one at a time
-3. Test after each prompt before moving on
-4. Modify prompts as needed based on your specific needs
-5. Reference CLAUDE.md and ARCHITECTURE.md throughout
+### Prompt 6.1: Usage Tracking
+```
+Implement convex/usage.ts:
 
-Each prompt is designed to be self-contained but builds on previous work.
+recordUsage mutation:
+- Track action in time windows
+- Hour, day, month granularity
+
+checkLimit query:
+- Check against tier limits
+- Return allowed, limit, current, resetsAt
+
+getUsageStats query:
+- User's current usage
+- For UI display
+
+Add tracking to: summary view, upload, alerts.
+```
+
+### Prompt 6.2: Rate Limits
+```
+Enforce rate limits:
+
+1. Before summary view: check limit
+2. In upload form: check limit
+3. Show paywall when exceeded
+4. Clear error messages
+5. "Upgrade to Pro" CTAs
+6. Show reset time
+```
+
+### Prompt 6.3: Usage Display
+```
+Show usage in UI:
+
+1. User menu: quick summary
+2. Dashboard widget: progress bars
+3. Pricing page: current usage
+4. Color coding: green/yellow/red
+```
+
+### Prompt 6.4: Stripe Integration
+```
+Add Stripe:
+
+convex/stripe.ts:
+- createCheckoutSession
+- createPortalSession
+- handleWebhook
+
+Webhooks:
+- checkout.session.completed → upgrade
+- subscription.updated → update period
+- subscription.deleted → downgrade
+
+src/routes/api/webhooks/stripe.ts:
+- Verify signature
+- Route to handler
+```
+
+### Prompt 6.5: Pricing Page
+```
+Build src/routes/pricing.tsx:
+
+1. Free / Pro / Enterprise cards
+2. Feature comparison table
+3. FAQ accordion
+4. Dynamic: show current tier
+5. Upgrade/manage buttons
+```
+
+---
+
+## Phase 7: Polish & Launch (Days 27-30)
+
+### Prompt 7.1: Error Handling
+```
+Add error handling:
+
+1. Error boundaries (root, page, component)
+2. Error pages (404, 500, rate limit, auth)
+3. Failed states with retry
+4. Toast notifications (success, error)
+```
+
+### Prompt 7.2: Loading States
+```
+Add loading everywhere:
+
+1. Page skeletons
+2. Component skeletons
+3. Action spinners
+4. Optimistic updates
+5. Suspense boundaries
+```
+
+### Prompt 7.3: SEO
+```
+Implement SEO:
+
+1. Per-page meta tags
+2. /sitemap.xml route
+3. robots.txt
+4. JSON-LD structured data
+5. Core Web Vitals optimization
+```
+
+### Prompt 7.4: Admin Dashboard
+```
+Complete admin:
+
+/admin overview stats
+/admin/municipalities CRUD
+/admin/users management
+/admin/scrapers (from 4.7)
+
+Add isAdmin check to users.
+```
+
+### Prompt 7.5: Testing
+```
+Full test pass:
+
+1. Auth flows
+2. Core flows (browse, view, upload)
+3. Subscription flows
+4. Payment flows
+5. Edge cases
+6. Responsive (375, 768, 1280)
+7. Performance
+```
+
+### Prompt 7.6: Deploy
+```
+Deploy to production:
+
+1. Production Convex, WorkOS, Stripe, Resend
+2. npx convex deploy --prod
+3. Cloudflare setup
+4. DNS configuration
+5. Verify all flows
+6. Set up monitoring
+```
+
+---
+
+## Maintenance Prompts
+
+### Add Municipality
+```
+1. Get: name, state, website, meetings URL
+2. Detect platform type
+3. Configure selectors
+4. Test scrape
+5. Add to database
+6. Verify meetings created
+```
+
+### Debug Failed Scrape
+```
+1. Check job history
+2. Review errors
+3. Test page manually
+4. Update selectors/URL
+5. Re-run and verify
+```
+
+### Improve AI Quality
+```
+1. Identify issues
+2. Collect examples
+3. Update prompt
+4. Test improvements
+5. Deploy new version
+```
+
+### Add Scraper Platform
+```
+1. Research platform patterns
+2. Create scraper module
+3. Implement interface
+4. Add to registry
+5. Test thoroughly
+6. Document
+```

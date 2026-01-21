@@ -57,6 +57,10 @@ export const Route = createFileRoute('/api/auth/callback')({
                 await convex.mutation(api.functions.users.mutations.upsertOnLogin, {
                   workosUserId: user.id,
                   email: user.email,
+                  name: user.firstName && user.lastName
+                    ? `${user.firstName} ${user.lastName}`
+                    : user.firstName || undefined,
+                  avatarUrl: user.profilePictureUrl || undefined,
                 })
               }
             } catch (e) {
