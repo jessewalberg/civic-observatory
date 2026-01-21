@@ -210,3 +210,70 @@ export const getMeetingTypes = query({
     return Array.from(types);
   },
 });
+
+// ═══════════════════════════════════════════════════════════════
+// FIND BY SOURCE URL - Check for duplicate scraped content
+// ═══════════════════════════════════════════════════════════════
+export const findBySourceUrl = query({
+  args: {
+    sourceUrl: v.string(),
+    municipalityId: v.optional(v.id("municipalities")),
+  },
+  handler: async (ctx, args) => {
+    // Get all meetings and filter by sourceUrl
+    // Note: Could add an index on sourceUrl if this query is slow
+    let meetings = await ctx.db.query("meetings").collect();
+
+    meetings = meetings.filter((m) => m.sourceUrl === args.sourceUrl);
+
+    if (args.municipalityId) {
+      meetings = meetings.filter((m) => m.municipalityId === args.municipalityId);
+    }
+
+    return meetings[0] ?? null;
+  },
+});
+
+// ═══════════════════════════════════════════════════════════════
+// FIND BY CONTENT HASH - Check for duplicate content
+// ═══════════════════════════════════════════════════════════════
+export const findByContentHash = query({
+  args: {
+    contentHash: v.string(),
+    municipalityId: v.optional(v.id("municipalities")),
+  },
+  handler: async (ctx, args) => {
+    // Use the content hash index
+    const meetings = await ctx.db
+      .query("meetings")
+      .withIndex("by_content_hash", (q) => q.eq("contentHash", args.contentHash))
+      .collect();
+
+    if (args.municipalityId) {
+      const filtered = meetings.filter((m) => m.municipalityId === args.municipalityId);
+      return filtered[0] ?? null;
+    }
+
+    return meetings[0] ?? null;
+  },
+});
+
+// ═══════════════════════════════════════════════════════════════
+// LIST PENDING - Meetings awaiting processing
+// ═══════════════════════════════════════════════════════════════
+export const listPending = query({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = args.limit ?? 50;
+
+    const meetings = await ctx.db
+      .query("meetings")
+      .withIndex("by_status", (q) => q.eq("status", "pending"))
+      .order("asc")
+      .take(limit);
+
+    return meetings;
+  },
+});

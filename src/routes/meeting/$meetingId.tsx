@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { ConvexHttpClient } from 'convex/browser'
-import { useQuery } from 'convex/react'
+import { useMutation, useQuery } from 'convex/react'
 import { useState } from 'react'
 import { motion } from 'motion/react'
 import {
@@ -29,6 +29,7 @@ import {
 import { TopicBadge, type Topic } from '@/components/TopicBadge'
 import { VoteDisplay } from '@/components/VoteDisplay'
 import { ShareButton } from '@/components/ShareButton'
+import { useWorkOSUser } from '@/components/ConvexClientProvider'
 import { cn } from '@/lib/utils'
 
 export const Route = createFileRoute('/meeting/$meetingId')({
@@ -193,11 +194,15 @@ interface MeetingData {
 function MeetingDetailPage() {
   const { meetingId } = Route.useParams()
   const [showRawContent, setShowRawContent] = useState(false)
+  const [isRetrying, setIsRetrying] = useState(false)
+  const [retryError, setRetryError] = useState<string | null>(null)
+  const workosUser = useWorkOSUser()
 
   // Real-time updates via useQuery
   const meeting = useQuery(api.functions.meetings.queries.getWithSummary, {
     id: meetingId as Id<'meetings'>,
   })
+  const retryProcessing = useMutation(api.functions.meetings.mutations.retryProcessing)
 
   if (meeting === undefined) {
     return <MeetingDetailSkeleton />
@@ -230,6 +235,23 @@ function MeetingDetailPage() {
 
   const date = new Date(meeting.meetingDate)
   const typeLabel = meetingTypeLabels[meeting.meetingType] ?? meeting.meetingType
+  const canRetry = Boolean(workosUser)
+
+  const handleRetry = async () => {
+    if (!workosUser || isRetrying) return
+    setIsRetrying(true)
+    setRetryError(null)
+    try {
+      await retryProcessing({
+        meetingId: meeting._id,
+        workosUserId: workosUser.id,
+      })
+    } catch (error) {
+      setRetryError(error instanceof Error ? error.message : 'Failed to retry processing')
+    } finally {
+      setIsRetrying(false)
+    }
+  }
 
   // Show processing state
   if (meeting.status === 'processing') {
@@ -248,12 +270,25 @@ function MeetingDetailPage() {
               <Loader2 className="h-8 w-8 text-primary animate-spin" />
             </div>
             <h2 className="font-display text-xl font-semibold text-foreground mb-2">
-              Processing Meeting
+              Analyzing Meeting
             </h2>
             <p className="text-muted-foreground max-w-md">
-              Our AI is analyzing this meeting and generating a summary. This usually takes 1-2 minutes.
+              Our AI is analyzing this meeting and generating a summary. This usually takes a couple minutes.
               The page will update automatically when ready.
             </p>
+            <div className="flex items-center gap-2 mt-6 text-sm text-muted-foreground">
+              <span>Extracting and summarizing</span>
+              <div className="flex items-center gap-1">
+                {[0, 1, 2].map((dot) => (
+                  <motion.span
+                    key={dot}
+                    className="h-1.5 w-1.5 rounded-full bg-primary/60"
+                    animate={{ opacity: [0.3, 1, 0.3] }}
+                    transition={{ duration: 1.2, repeat: Infinity, delay: dot * 0.2 }}
+                  />
+                ))}
+              </div>
+            </div>
           </motion.div>
         </div>
       </div>
@@ -277,11 +312,15 @@ function MeetingDetailPage() {
               <Clock className="h-8 w-8 text-amber-500" />
             </div>
             <h2 className="font-display text-xl font-semibold text-foreground mb-2">
-              Awaiting Processing
+              Queued for Processing
             </h2>
             <p className="text-muted-foreground max-w-md">
-              This meeting is queued for AI summarization. Check back soon for the full summary.
+              This meeting is in the processing queue. We'll start as soon as capacity opens up.
             </p>
+            <div className="mt-6 inline-flex items-center gap-2 rounded-full border border-amber-500/20 bg-amber-500/10 px-4 py-2 text-sm text-amber-500">
+              <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+              Waiting in line
+            </div>
           </motion.div>
         </div>
       </div>
@@ -315,6 +354,32 @@ function MeetingDetailPage() {
                 </span>
               )}
             </p>
+            <div className="flex flex-col items-center gap-3">
+              <Button
+                onClick={handleRetry}
+                disabled={!canRetry || isRetrying}
+                className="min-w-[160px]"
+              >
+                {isRetrying ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Retrying
+                  </span>
+                ) : (
+                  'Retry Processing'
+                )}
+              </Button>
+              {!canRetry && (
+                <span className="text-xs text-muted-foreground">
+                  Sign in to retry failed processing.
+                </span>
+              )}
+              {retryError && (
+                <span className="text-xs text-red-400">
+                  {retryError}
+                </span>
+              )}
+            </div>
           </motion.div>
         </div>
       </div>
