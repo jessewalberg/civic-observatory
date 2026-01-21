@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "civic-pulse",
+  "main": "./dist/_worker.js",
+  "compatibility_date": "2025-01-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS"
+  },
+  "observability": {
+    "enabled": true
+  },
+  // Environment variables - set these in Cloudflare dashboard or use .dev.vars locally
+  // Required vars:
+  // - VITE_CONVEX_URL
+  // - WORKOS_CLIENT_ID
+  // - WORKOS_API_KEY
+  // - WORKOS_REDIRECT_URI
+  // - WORKOS_COOKIE_PASSWORD
+  // - OPENROUTER_API_KEY
+  "vars": {
+    "NODE_ENV": "production"
+  }
+}
