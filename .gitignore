@@ -30,6 +30,7 @@ coverage/
 
 # Convex
 .convex/
+convex/_generated/
 
 # Generated files
 src/routeTree.gen.ts
