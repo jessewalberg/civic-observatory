@@ -1,7 +1,10 @@
 import { Link } from '@tanstack/react-router'
-import { Building2 } from 'lucide-react'
+import { useQuery } from 'convex/react'
+import { Bell, Building2 } from 'lucide-react'
 import type { User } from '@workos-inc/node'
+import { api } from '../../convex/_generated/api'
 import { SignInButton } from './SignInButton'
+import { Button } from './ui/button'
 
 interface HeaderProps {
   user: User | null
@@ -18,9 +21,34 @@ export function Header({ user, signInUrl }: HeaderProps) {
         </Link>
 
         <nav className="flex items-center gap-6">
+          {user && <NotificationBadge workosUserId={user.id} />}
           <SignInButton user={user} signInUrl={signInUrl} />
         </nav>
       </div>
     </header>
+  )
+}
+
+function NotificationBadge({ workosUserId }: { workosUserId: string }) {
+  // Get the Convex user
+  const convexUser = useQuery(api.functions.users.queries.getByWorkosUserId, { workosUserId })
+
+  // Get unread count
+  const unreadCount = useQuery(
+    api.functions.alerts.queries.getUnreadCount,
+    convexUser ? { userId: convexUser._id } : 'skip'
+  )
+
+  return (
+    <Link to="/dashboard">
+      <Button variant="ghost" size="icon" className="relative">
+        <Bell className="h-5 w-5" />
+        {unreadCount !== undefined && unreadCount > 0 && (
+          <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-xs font-medium text-primary-foreground">
+            {unreadCount > 9 ? '9+' : unreadCount}
+          </span>
+        )}
+      </Button>
+    </Link>
   )
 }

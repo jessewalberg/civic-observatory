@@ -15,6 +15,22 @@ export const LIMITS = {
   },
 } as const;
 
+// Subscription limits by tier
+export const SUBSCRIPTION_LIMITS = {
+  anonymous: {
+    subscriptions: 0,
+    municipalities: 3,
+  },
+  free: {
+    subscriptions: 5,
+    municipalities: 10,
+  },
+  pro: {
+    subscriptions: Infinity,
+    municipalities: Infinity,
+  },
+} as const;
+
 // Type for accessing limits
 export type Tier = keyof typeof LIMITS;
 export type Action = "summary_view" | "meeting_upload" | "api_request" | "alert_sent";

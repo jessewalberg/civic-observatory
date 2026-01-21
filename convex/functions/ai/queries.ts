@@ -45,6 +45,21 @@ export const getPendingMeetings = internalQuery({
 });
 
 // ═══════════════════════════════════════════════════════════════
+// GET SUMMARY BY MEETING - Get the latest summary for a meeting
+// ═══════════════════════════════════════════════════════════════
+export const getSummaryByMeeting = internalQuery({
+  args: {
+    meetingId: v.id("meetings"),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("summaries")
+      .withIndex("by_meeting", (q) => q.eq("meetingId", args.meetingId))
+      .first();
+  },
+});
+
+// ═══════════════════════════════════════════════════════════════
 // GET PROCESSING STATS - Stats on meeting processing
 // ═══════════════════════════════════════════════════════════════
 export const getProcessingStats = internalQuery({

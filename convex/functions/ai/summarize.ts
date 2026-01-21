@@ -99,8 +99,17 @@ export const summarizeMeeting = internalAction({
         status: "summarized",
       });
 
-      // 8. Trigger alert generation (if implemented)
-      // await ctx.scheduler.runAfter(0, internal.alerts.generateAlerts, { meetingId: args.meetingId });
+      // 8. Get the summary ID and trigger alert generation
+      const savedSummary = await ctx.runQuery(internal.functions.ai.queries.getSummaryByMeeting, {
+        meetingId: args.meetingId,
+      });
+
+      if (savedSummary) {
+        await ctx.runMutation(internal.functions.alerts.mutations.generateAlerts, {
+          summaryId: savedSummary._id,
+          meetingId: args.meetingId,
+        });
+      }
 
       return { success: true };
     } catch (error) {

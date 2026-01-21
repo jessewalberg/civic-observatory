@@ -37,7 +37,7 @@ const crons = cronJobs();
 // crons.interval(
 //   "send-immediate-alerts",
 //   { minutes: 5 },
-//   internal.functions.alerts.actions.sendImmediateAlerts,
+//   internal.functions.email.actions.processImmediateAlerts,
 //   {}
 // );
 
@@ -47,7 +47,7 @@ const crons = cronJobs();
 // crons.daily(
 //   "send-daily-digest",
 //   { hourUTC: 8, minuteUTC: 0 },
-//   internal.functions.alerts.actions.sendDailyDigest,
+//   internal.functions.email.actions.sendDailyDigest,
 //   {}
 // );
 
@@ -57,7 +57,7 @@ const crons = cronJobs();
 // crons.weekly(
 //   "send-weekly-digest",
 //   { dayOfWeek: "monday", hourUTC: 8, minuteUTC: 0 },
-//   internal.functions.alerts.actions.sendWeeklyDigest,
+//   internal.functions.email.actions.sendWeeklyDigest,
 //   {}
 // );
 

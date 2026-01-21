@@ -243,11 +243,13 @@ export default defineSchema({
 
     scheduledFor: v.optional(v.number()),
     sentAt: v.optional(v.number()),
+    readAt: v.optional(v.number()),
     deliveryError: v.optional(v.string()),
 
     createdAt: v.number(),
   })
     .index("by_user", ["userId"])
+    .index("by_user_read", ["userId", "readAt"])
     .index("by_status", ["status"])
     .index("by_scheduled", ["status", "scheduledFor"]),
 
