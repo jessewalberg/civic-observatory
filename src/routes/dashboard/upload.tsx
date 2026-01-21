@@ -7,7 +7,6 @@ import {
   FileText,
   Calendar,
   Building2,
-  AlertCircle,
   Loader2,
   CheckCircle2,
   X,
@@ -29,6 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { UsageLimitExceeded } from '@/components/UsageLimitExceeded'
 import { cn } from '@/lib/utils'
 
 export const Route = createFileRoute('/dashboard/upload')({
@@ -113,33 +113,16 @@ function UploadPage() {
   // Usage limit check
   if (usageCheck && !usageCheck.allowed) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-center max-w-md mx-auto px-4"
-        >
-          <div className="rounded-full bg-amber-500/10 p-4 mb-4 mx-auto w-fit">
-            <AlertCircle className="h-8 w-8 text-amber-500" />
-          </div>
-          <h1 className="font-display text-2xl font-bold text-foreground mb-2">
-            Upload Limit Reached
-          </h1>
-          <p className="text-muted-foreground mb-4">
-            You've used all {usageCheck.limit} uploads for this month.
-            {usageCheck.resetsAt && (
-              <span className="block mt-2 text-sm">
-                Resets on {new Date(usageCheck.resetsAt).toLocaleDateString()}
-              </span>
-            )}
-          </p>
-          <a href="/explore">
-            <Button variant="outline">
-              Back to Explore
-            </Button>
-          </a>
-        </motion.div>
-      </div>
+      <UsageLimitExceeded
+        title="Monthly Upload Limit Reached"
+        description="You've used all your meeting uploads for this month."
+        currentUsage={usageCheck.currentUsage}
+        limit={usageCheck.limit}
+        resetsAt={usageCheck.resetsAt}
+        tier={usageCheck.tier as 'anonymous' | 'free' | 'pro'}
+        action="meeting_upload"
+        signInUrl={signInUrl}
+      />
     )
   }
 

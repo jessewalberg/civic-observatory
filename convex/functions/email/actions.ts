@@ -136,6 +136,13 @@ export const sendImmediateAlert = internalAction({
       await ctx.runMutation(internal.functions.alerts.mutations.markSent, {
         alertId: args.alertId,
       });
+
+      // Track usage
+      await ctx.runMutation(internal.functions.usage.mutations.recordUsageInternal, {
+        userId: alert.userId,
+        action: "alert_sent",
+        windowType: "month",
+      });
     } else {
       await ctx.runMutation(internal.functions.alerts.mutations.markFailed, {
         alertId: args.alertId,
@@ -211,6 +218,16 @@ export const sendDailyDigest = internalAction({
         await ctx.runMutation(internal.functions.alerts.mutations.markBatchSent, {
           alertIds,
         });
+
+        // Track usage for each alert in the digest
+        for (const { alert } of userAlerts) {
+          await ctx.runMutation(internal.functions.usage.mutations.recordUsageInternal, {
+            userId: alert.userId,
+            action: "alert_sent",
+            windowType: "month",
+          });
+        }
+
         results.sent++;
       } else {
         for (const alertId of alertIds) {
@@ -301,6 +318,16 @@ export const sendWeeklyDigest = internalAction({
         await ctx.runMutation(internal.functions.alerts.mutations.markBatchSent, {
           alertIds,
         });
+
+        // Track usage for each alert in the digest
+        for (const { alert } of userAlerts) {
+          await ctx.runMutation(internal.functions.usage.mutations.recordUsageInternal, {
+            userId: alert.userId,
+            action: "alert_sent",
+            windowType: "month",
+          });
+        }
+
         results.sent++;
       } else {
         for (const alertId of alertIds) {

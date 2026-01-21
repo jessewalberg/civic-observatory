@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { ConvexHttpClient } from 'convex/browser'
 import { useMutation, useQuery } from 'convex/react'
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion } from 'motion/react'
 import {
   Calendar,
@@ -30,6 +30,8 @@ import { TopicBadge, type Topic } from '@/components/TopicBadge'
 import { VoteDisplay } from '@/components/VoteDisplay'
 import { ShareButton } from '@/components/ShareButton'
 import { useWorkOSUser } from '@/components/ConvexClientProvider'
+import { UsageLimitExceeded } from '@/components/UsageLimitExceeded'
+import { getAuth, getSignInUrl } from '@/authkit/serverFunctions'
 import { cn } from '@/lib/utils'
 
 export const Route = createFileRoute('/meeting/$meetingId')({
@@ -37,16 +39,17 @@ export const Route = createFileRoute('/meeting/$meetingId')({
   loader: async ({ params }) => {
     const convexUrl = import.meta.env.VITE_CONVEX_URL
     if (!convexUrl) {
-      return { meeting: null }
+      return { meeting: null, auth: { user: null }, signInUrl: '' }
     }
     try {
+      const [auth, signInUrl] = await Promise.all([getAuth(), getSignInUrl()])
       const convex = new ConvexHttpClient(convexUrl)
       const meeting = await convex.query(api.functions.meetings.queries.getWithSummary, {
         id: params.meetingId as Id<'meetings'>,
       })
-      return { meeting }
+      return { meeting, auth, signInUrl }
     } catch {
-      return { meeting: null }
+      return { meeting: null, auth: { user: null }, signInUrl: '' }
     }
   },
   head: ({ loaderData }) => {
@@ -193,16 +196,45 @@ interface MeetingData {
 
 function MeetingDetailPage() {
   const { meetingId } = Route.useParams()
+  const { auth, signInUrl } = Route.useLoaderData()
   const [showRawContent, setShowRawContent] = useState(false)
   const [isRetrying, setIsRetrying] = useState(false)
   const [retryError, setRetryError] = useState<string | null>(null)
   const workosUser = useWorkOSUser()
+  const hasTrackedView = useRef(false)
 
   // Real-time updates via useQuery
   const meeting = useQuery(api.functions.meetings.queries.getWithSummary, {
     id: meetingId as Id<'meetings'>,
   })
   const retryProcessing = useMutation(api.functions.meetings.mutations.retryProcessing)
+  const recordUsage = useMutation(api.functions.usage.mutations.recordUsage)
+
+  // Check usage limit for summary views
+  const usageCheck = useQuery(
+    api.functions.usage.queries.checkLimit,
+    workosUser ? { workosUserId: workosUser.id, action: 'summary_view' } : 'skip'
+  )
+
+  // Track summary view for authenticated users (only if within limit)
+  useEffect(() => {
+    if (
+      meeting?.status === 'summarized' &&
+      meeting.summary &&
+      workosUser &&
+      !hasTrackedView.current &&
+      usageCheck?.allowed !== false // Don't track if limit exceeded
+    ) {
+      hasTrackedView.current = true
+      recordUsage({
+        workosUserId: workosUser.id,
+        action: 'summary_view',
+        windowType: 'day',
+      }).catch(() => {
+        // Silently fail - don't interrupt user experience for tracking
+      })
+    }
+  }, [meeting, workosUser, recordUsage, usageCheck])
 
   if (meeting === undefined) {
     return <MeetingDetailSkeleton />
@@ -230,6 +262,27 @@ function MeetingDetailPage() {
           </Link>
         </motion.div>
       </div>
+    )
+  }
+
+  // Show rate limit exceeded for summarized meetings with summary content
+  if (
+    meeting.status === 'summarized' &&
+    meeting.summary &&
+    usageCheck &&
+    !usageCheck.allowed
+  ) {
+    return (
+      <UsageLimitExceeded
+        title="Daily View Limit Reached"
+        description="You've reached your daily limit for viewing meeting summaries."
+        currentUsage={usageCheck.currentUsage}
+        limit={usageCheck.limit}
+        resetsAt={usageCheck.resetsAt}
+        tier={usageCheck.tier as 'anonymous' | 'free' | 'pro'}
+        action="summary_view"
+        signInUrl={signInUrl}
+      />
     )
   }
 

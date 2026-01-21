@@ -5,8 +5,6 @@ import { motion } from 'motion/react'
 import {
   Bell,
   Building2,
-  Calendar,
-  Check,
   CheckCheck,
   Clock,
   Loader2,
@@ -18,6 +16,7 @@ import { getAuth, getSignInUrl } from '@/authkit/serverFunctions'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { UsageWidget } from '@/components/UsageWidget'
 import { cn } from '@/lib/utils'
 
 export const Route = createFileRoute('/dashboard/')({
@@ -136,32 +135,32 @@ function DashboardContent({ workosUserId }: { workosUserId: string }) {
             )}
           </div>
 
-          {/* Stats */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
-            <Card className="p-4">
-              <p className="text-2xl font-bold text-foreground">
-                {alertCounts?.unread ?? 0}
-              </p>
-              <p className="text-xs text-muted-foreground">Unread</p>
-            </Card>
-            <Card className="p-4">
-              <p className="text-2xl font-bold text-foreground">
-                {alertCounts?.sent ?? 0}
-              </p>
-              <p className="text-xs text-muted-foreground">Total Alerts</p>
-            </Card>
-            <Card className="p-4">
-              <p className="text-2xl font-bold text-foreground">
-                {subscriptionCount?.active ?? 0}
-              </p>
-              <p className="text-xs text-muted-foreground">Subscriptions</p>
-            </Card>
-            <Card className="p-4 hidden sm:block">
-              <p className="text-2xl font-bold text-foreground">
-                {user.tier === 'pro' ? 'Pro' : 'Free'}
-              </p>
-              <p className="text-xs text-muted-foreground">Plan</p>
-            </Card>
+          {/* Stats and Usage */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
+            {/* Quick Stats */}
+            <div className="lg:col-span-2 grid grid-cols-2 sm:grid-cols-3 gap-4">
+              <Card className="p-4">
+                <p className="text-2xl font-bold text-foreground">
+                  {alertCounts?.unread ?? 0}
+                </p>
+                <p className="text-xs text-muted-foreground">Unread</p>
+              </Card>
+              <Card className="p-4">
+                <p className="text-2xl font-bold text-foreground">
+                  {alertCounts?.sent ?? 0}
+                </p>
+                <p className="text-xs text-muted-foreground">Total Alerts</p>
+              </Card>
+              <Card className="p-4">
+                <p className="text-2xl font-bold text-foreground">
+                  {subscriptionCount?.active ?? 0}
+                </p>
+                <p className="text-xs text-muted-foreground">Subscriptions</p>
+              </Card>
+            </div>
+
+            {/* Usage Widget */}
+            <UsageWidget workosUserId={workosUserId} />
           </div>
 
           {/* Feed */}

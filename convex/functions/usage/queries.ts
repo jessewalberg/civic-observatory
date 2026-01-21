@@ -1,4 +1,4 @@
-import { query } from "../../_generated/server";
+import { query, internalQuery } from "../../_generated/server";
 import { v } from "convex/values";
 import { LIMITS, type Tier, type Action } from "../../lib/constants/limits";
 
@@ -225,6 +225,114 @@ export const getUserUsageSummary = query({
 });
 
 // ═══════════════════════════════════════════════════════════════
+// GET USAGE STATS - Simplified stats for UI widget
+// ═══════════════════════════════════════════════════════════════
+export const getUsageStats = query({
+  args: {
+    workosUserId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_workos_id", (q) => q.eq("workosUserId", args.workosUserId))
+      .first();
+
+    if (!user) {
+      return null;
+    }
+
+    const tier = user.tier as Tier;
+    const tierLimits = LIMITS[tier];
+
+    // Get summary_view stats
+    const viewLimits = tierLimits["summary_view" as keyof typeof tierLimits];
+    let summaryViewStats = {
+      current: 0,
+      limit: Infinity,
+      remaining: Infinity,
+      windowType: "day",
+      resetsAt: undefined as number | undefined,
+    };
+
+    if (viewLimits) {
+      const [windowType, limit] = Object.entries(viewLimits)[0] as [
+        "hour" | "day" | "month",
+        number
+      ];
+      const windowStart = getWindowStart(windowType);
+      const record = await ctx.db
+        .query("usageRecords")
+        .withIndex("by_user_action_window", (q) =>
+          q
+            .eq("userId", user._id)
+            .eq("action", "summary_view")
+            .eq("windowType", windowType)
+            .eq("windowStart", windowStart)
+        )
+        .first();
+
+      const current = record?.count ?? 0;
+      summaryViewStats = {
+        current,
+        limit,
+        remaining: limit === Infinity ? Infinity : Math.max(0, limit - current),
+        windowType,
+        resetsAt:
+          limit === Infinity
+            ? undefined
+            : getWindowEnd(windowType, windowStart),
+      };
+    }
+
+    // Get meeting_upload stats
+    const uploadLimits = tierLimits["meeting_upload" as keyof typeof tierLimits];
+    let meetingUploadStats = {
+      current: 0,
+      limit: Infinity,
+      remaining: Infinity,
+      windowType: "month",
+      resetsAt: undefined as number | undefined,
+    };
+
+    if (uploadLimits) {
+      const [windowType, limit] = Object.entries(uploadLimits)[0] as [
+        "hour" | "day" | "month",
+        number
+      ];
+      const windowStart = getWindowStart(windowType);
+      const record = await ctx.db
+        .query("usageRecords")
+        .withIndex("by_user_action_window", (q) =>
+          q
+            .eq("userId", user._id)
+            .eq("action", "meeting_upload")
+            .eq("windowType", windowType)
+            .eq("windowStart", windowStart)
+        )
+        .first();
+
+      const current = record?.count ?? 0;
+      meetingUploadStats = {
+        current,
+        limit,
+        remaining: limit === Infinity ? Infinity : Math.max(0, limit - current),
+        windowType,
+        resetsAt:
+          limit === Infinity
+            ? undefined
+            : getWindowEnd(windowType, windowStart),
+      };
+    }
+
+    return {
+      tier,
+      summary_view: summaryViewStats,
+      meeting_upload: meetingUploadStats,
+    };
+  },
+});
+
+// ═══════════════════════════════════════════════════════════════
 // Helper functions
 // ═══════════════════════════════════════════════════════════════
 function getWindowStart(windowType: "hour" | "day" | "month"): number {
@@ -273,3 +381,138 @@ function getWindowEnd(
       return new Date(start.getFullYear(), start.getMonth() + 1, 1).getTime();
   }
 }
+
+// ═══════════════════════════════════════════════════════════════
+// CHECK LIMIT INTERNAL - Server-side limit check with userId
+// ═══════════════════════════════════════════════════════════════
+export const checkLimitInternal = internalQuery({
+  args: {
+    userId: v.id("users"),
+    action: v.union(
+      v.literal("summary_view"),
+      v.literal("meeting_upload"),
+      v.literal("api_request"),
+      v.literal("alert_sent")
+    ),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    if (!user) {
+      return { allowed: false, reason: "User not found" };
+    }
+
+    const tier = user.tier as Tier;
+    const tierLimits = LIMITS[tier];
+    const actionLimits = tierLimits[args.action as keyof typeof tierLimits];
+
+    if (!actionLimits) {
+      return {
+        allowed: false,
+        reason: "Action not available for your tier",
+        currentUsage: 0,
+        limit: 0,
+        tier,
+      };
+    }
+
+    const [windowType, limit] = Object.entries(actionLimits)[0] as [
+      "hour" | "day" | "month",
+      number
+    ];
+
+    if (limit === Infinity) {
+      return {
+        allowed: true,
+        currentUsage: 0,
+        limit: Infinity,
+        remaining: Infinity,
+        tier,
+      };
+    }
+
+    const windowStart = getWindowStart(windowType);
+
+    const record = await ctx.db
+      .query("usageRecords")
+      .withIndex("by_user_action_window", (q) =>
+        q
+          .eq("userId", args.userId)
+          .eq("action", args.action)
+          .eq("windowType", windowType)
+          .eq("windowStart", windowStart)
+      )
+      .first();
+
+    const currentUsage = record?.count ?? 0;
+
+    return {
+      allowed: currentUsage < limit,
+      currentUsage,
+      limit,
+      remaining: Math.max(0, limit - currentUsage),
+      tier,
+      windowType,
+      resetsAt: getWindowEnd(windowType, windowStart),
+    };
+  },
+});
+
+// ═══════════════════════════════════════════════════════════════
+// CHECK ANONYMOUS LIMIT - Check limit for anonymous user by IP hash
+// ═══════════════════════════════════════════════════════════════
+export const checkAnonymousLimit = internalQuery({
+  args: {
+    ipHash: v.string(),
+    action: v.union(
+      v.literal("summary_view"),
+      v.literal("meeting_upload"),
+      v.literal("api_request"),
+      v.literal("alert_sent")
+    ),
+  },
+  handler: async (ctx, args) => {
+    const tier: Tier = "anonymous";
+    const tierLimits = LIMITS[tier];
+    const actionLimits = tierLimits[args.action as keyof typeof tierLimits];
+
+    if (!actionLimits) {
+      return {
+        allowed: false,
+        reason: "Action not available for anonymous users",
+        currentUsage: 0,
+        limit: 0,
+        tier,
+      };
+    }
+
+    const [windowType, limit] = Object.entries(actionLimits)[0] as [
+      "hour" | "day" | "month",
+      number
+    ];
+
+    const windowStart = getWindowStart(windowType);
+
+    const record = await ctx.db
+      .query("usageRecords")
+      .withIndex("by_ip_action_window", (q) =>
+        q
+          .eq("ipHash", args.ipHash)
+          .eq("action", args.action)
+          .eq("windowType", windowType)
+          .eq("windowStart", windowStart)
+      )
+      .first();
+
+    const currentUsage = record?.count ?? 0;
+
+    return {
+      allowed: currentUsage < limit,
+      currentUsage,
+      limit,
+      remaining: Math.max(0, limit - currentUsage),
+      tier,
+      windowType,
+      resetsAt: getWindowEnd(windowType, windowStart),
+    };
+  },
+});

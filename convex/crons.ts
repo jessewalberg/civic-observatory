@@ -82,7 +82,7 @@ const crons = cronJobs();
 //   "cleanup-old-usage-records",
 //   { day: 1, hourUTC: 3, minuteUTC: 30 },
 //   internal.functions.usage.mutations.deleteOld,
-//   { olderThan: Date.now() - 90 * 24 * 60 * 60 * 1000 } // 90 days
+//   { olderThanDays: 90 }
 // );
 
 export default crons;
