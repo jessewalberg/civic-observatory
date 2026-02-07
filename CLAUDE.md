@@ -1,245 +1,262 @@
-# Civic Pulse - Municipal Meeting Summarizer
+# Civic Pulse — Municipal Meeting Intelligence Platform
 
-## What We're Building
+## What This Project Is
 
-A platform that automatically:
-1. **Scrapes** meeting documents from municipal websites
-2. **Summarizes** them with AI into digestible formats
-3. **Alerts** users when meetings match their interests
-4. **Tracks usage** to manage costs and offer paid tiers
+Civic Pulse is a SaaS platform that automatically scrapes meeting documents from municipal government websites, summarizes them with AI, and alerts users when topics they care about are discussed. Think "Google Alerts for local government meetings."
 
-## Tech Stack
+## Tech Stack (Non-Negotiable)
 
-| Layer | Technology | Why |
-|-------|------------|-----|
-| Framework | TanStack Start | SSR + file routing + server functions |
-| Database | Convex | Real-time sync, scheduled jobs, file storage |
-| Auth | WorkOS AuthKit | Enterprise-ready, handles OAuth |
-| UI | shadcn/ui + Tailwind v4 | Customizable, accessible |
-| AI | Claude API (Anthropic) | Best at structured extraction |
-| Scraping | Convex Actions + Cheerio | Serverless, scalable |
-| Email | Resend | Simple transactional email |
-| Payments | Stripe | Subscriptions |
-| Deploy | Cloudflare Workers | Edge, fast globally |
+| Layer | Technology | Notes |
+|-------|-----------|-------|
+| Frontend Framework | TanStack Start (React) | SSR, type-safe routing, server functions |
+| Backend / Database | Convex | Reactive DB, server functions, crons, file storage |
+| Authentication | WorkOS AuthKit | Hosted UI, social logins, free to 1M MAUs |
+| Hosting | Cloudflare Workers | Edge deployment via Wrangler |
+| UI Components | shadcn/ui + Tailwind v4 | CSS-first config, all components from shadcn |
+| AI | Claude API (Anthropic) | Meeting summarization via Convex actions |
+| Scraping | Convex Actions + Cheerio | Serverless, runs in Convex runtime |
+| Payments | Stripe | Subscriptions, webhooks, customer portal |
+| Email | Resend | Alert notification emails |
+| Animation | Motion (Framer Motion) | Page transitions, micro-interactions |
+| Package Manager | Bun | For all installs, scripts, and commands |
 
-## Project Structure
+## Project Documentation
+
+Read these documents IN ORDER before starting any work:
+
+1. **`docs/DESIGN_SYSTEM.md`** — Design philosophy, color palette, typography, component patterns. Read FIRST before writing any UI code.
+2. **`docs/AUTH_PATTERN.md`** — How authentication works with WorkOS AuthKit. Every route and Convex function must follow this pattern.
+3. **`docs/CONVEX_GUIDE.md`** — How to write Convex functions (queries, mutations, actions), schema design, and cron jobs.
+4. **`docs/ROUTES_AND_PAGES.md`** — Every page in the app, what data it needs, which tier can access it.
+5. **`docs/SCRAPER.md`** — The scraping pipeline: platform detection, HTML extraction, rate limiting.
+6. **`docs/DEPLOYMENT.md`** — Cloudflare Workers setup, Convex deployment, environment variables.
+
+## Critical Rules
+
+0. **Bun only, never npm/npx.** Always use `bun` for all commands. The PATH requires sourcing: run `source ~/.zshrc && bun ...` or use the full path `/Users/home/.bun/bin/bun`. Never use npm, npx, yarn, or pnpm.
+
+1. **Design first, code second.** Set up shadcn/ui and the full design system before building any pages. Every component should look production-grade from day one.
+
+2. **Auth is modeled on WorkOS AuthKit.** Use the official template: https://github.com/get-convex/templates/tree/main/template-tanstack-start-authkit. Do not invent custom auth. Use `getAuth()` for server-side checks, sync users to Convex on first login.
+
+3. **Convex is the API for all data operations.** Never create REST endpoints for reading/writing data. All data flows through Convex queries/mutations/actions. **Exception: auth.** WorkOS session management runs in TanStack Start server functions.
+
+4. **Type safety everywhere.** Convex generates types from your schema. Use them. TanStack Router infers route params. Use them. Never use `any`.
+
+5. **Real-time by default.** Use `useQuery` from Convex React for all data fetching. Data updates live via WebSocket automatically.
+
+6. **Tiered access in Convex, not the frontend.** Subscription checks happen in Convex query/mutation handlers, not in React components. The frontend shows/hides UI, but the backend enforces access.
+
+7. **Dark mode is default.** No light mode toggle. The app is dark-themed only.
+
+## File Structure
 
 ```
 civic-pulse/
-├── CLAUDE.md                    # This file
-├── ARCHITECTURE.md              # Database schema, flows
-├── PROMPTS.md                   # Development prompts
-├── convex/
-│   ├── schema.ts                # 8 tables
-│   ├── users.ts                 # User management
-│   ├── municipalities.ts        # Municipality CRUD
-│   ├── meetings.ts              # Meeting management
-│   ├── summaries.ts             # Summary operations
-│   ├── subscriptions.ts         # Alert subscriptions
-│   ├── alerts.ts                # Alert delivery
-│   ├── usage.ts                 # Rate limiting
-│   ├── ai.ts                    # AI summarization
-│   ├── scrapers/
-│   │   ├── index.ts             # Orchestration
-│   │   ├── registry.ts          # Platform registry
-│   │   ├── granicus.ts          # Granicus scraper
-│   │   ├── civicplus.ts         # CivicPlus scraper
-│   │   ├── generic.ts           # Generic HTML
-│   │   └── types.ts             # Interfaces
-│   ├── crons.ts                 # Scheduled jobs
-│   └── stripe.ts                # Payments
-├── src/
-│   ├── routes/
-│   │   ├── __root.tsx
-│   │   ├── index.tsx            # Landing
-│   │   ├── explore/             # Browse
-│   │   ├── meeting/             # Summary view
-│   │   ├── dashboard/           # User area
-│   │   ├── admin/               # Admin area
+├── src/                          # TanStack Start application
+│   ├── routes/                   # File-based routes
+│   │   ├── __root.tsx            # Root layout: providers, fonts, toaster
+│   │   ├── index.tsx             # Landing page
+│   │   ├── explore/
+│   │   │   ├── index.tsx         # Municipality grid + search
+│   │   │   └── $slug.tsx         # Municipality detail
+│   │   ├── meeting/
+│   │   │   └── $meetingId.tsx    # Meeting summary (KEY PAGE)
+│   │   ├── dashboard/
+│   │   │   ├── index.tsx         # Alert feed
+│   │   │   ├── subscriptions.tsx # Manage subscriptions
+│   │   │   └── upload.tsx        # Manual upload
+│   │   ├── admin/
+│   │   │   ├── index.tsx         # Admin overview
+│   │   │   ├── municipalities.tsx
+│   │   │   ├── users.tsx
+│   │   │   └── scrapers.tsx
 │   │   ├── pricing.tsx
-│   │   └── api/auth/callback.ts
+│   │   └── api/
+│   │       ├── auth/callback.ts  # WorkOS callback
+│   │       ├── stripe/webhook.ts # Stripe webhook
+│   │       ├── sitemap.tsx
+│   │       └── robots.tsx
 │   ├── components/
-│   │   ├── ui/                  # shadcn
-│   │   ├── layout/
-│   │   ├── meetings/
-│   │   ├── subscriptions/
-│   │   └── admin/
-│   └── lib/
-├── prompts/
-│   └── summarize.md             # AI prompt
-└── .env.example
+│   │   ├── ui/                   # shadcn/ui components (DO NOT MODIFY)
+│   │   ├── layout/               # Header, Footer
+│   │   ├── skeletons/            # Loading states
+│   │   ├── error/                # Error boundaries
+│   │   ├── TopicBadge.tsx        # Topic color badges
+│   │   └── UsageWidget.tsx       # Usage display
+│   ├── lib/
+│   │   ├── utils.ts              # cn(), formatDate()
+│   │   ├── toast.ts              # Toast wrapper
+│   │   └── seo.ts                # SEO helpers
+│   ├── authkit/
+│   │   └── serverFunctions.ts    # WorkOS helpers
+│   └── styles.css                # Tailwind + design tokens
+├── convex/                       # Convex backend (THIS IS THE ENTIRE BACKEND)
+│   ├── schema.ts                 # Database schema (8 tables)
+│   ├── _generated/               # Auto-generated types
+│   ├── functions/
+│   │   ├── users/                # User queries, mutations
+│   │   ├── municipalities/       # Municipality CRUD
+│   │   ├── meetings/             # Meeting management
+│   │   ├── summaries/            # Summary queries
+│   │   ├── subscriptions/        # Alert subscriptions
+│   │   ├── alerts/               # Alert generation, email
+│   │   ├── scrapeJobs/           # Scraper job tracking
+│   │   ├── usage/                # Rate limiting
+│   │   ├── ai/                   # Summarization actions
+│   │   └── stripe/               # Payment actions
+│   ├── scrapers/
+│   │   ├── types.ts              # Scraper interfaces
+│   │   ├── registry.ts           # Platform detection
+│   │   ├── granicus.ts           # Granicus scraper
+│   │   ├── civicplus.ts          # CivicPlus scraper
+│   │   ├── generic.ts            # Generic HTML scraper
+│   │   └── utils.ts              # Shared utilities
+│   └── crons.ts                  # Scheduled jobs
+├── docs/                         # Documentation for Claude Code
+├── prompts/                      # Build prompts (in order)
+├── vite.config.ts
+├── wrangler.toml
+├── components.json               # shadcn/ui config
+└── package.json
 ```
 
-## Database Tables (8)
+## Database Schema (8 Tables)
 
-| Table | Purpose |
-|-------|---------|
-| users | WorkOS sync, tier, Stripe |
-| municipalities | Places, scrape config |
-| meetings | Raw documents, status |
-| summaries | AI output |
-| subscriptions | Alert preferences |
-| alerts | Delivery tracking |
-| scrapeJobs | Scraper history |
-| usageRecords | Rate limiting |
+| Table | Purpose | Key Fields |
+|-------|---------|------------|
+| `users` | User accounts | workosUserId, email, tier, role, stripeCustomerId |
+| `municipalities` | Locations to scrape | name, slug, state, platform, scrapeConfig |
+| `meetings` | Raw meeting documents | municipalityId, title, meetingType, processingStatus |
+| `summaries` | AI-generated summaries | meetingId, executiveSummary, keyDecisions, discussionTopics |
+| `subscriptions` | Alert preferences | userId, municipalityId, topics, frequency |
+| `alerts` | Pending/sent alerts | userId, meetingId, matchedTopics, isSent |
+| `scrapeJobs` | Scraper run history | municipalityId, status, stats, errors |
+| `usageRecords` | Rate limiting | userId, action, timestamp |
 
 ## User Tiers
 
 | Feature | Anonymous | Free | Pro ($15/mo) |
-|---------|-----------|------|--------------|
+|---------|:---------:|:----:|:------------:|
 | View summaries | 10/day | 50/day | Unlimited |
 | Municipalities | 3 | 10 | Unlimited |
 | Subscriptions | 0 | 5 | Unlimited |
-| Email alerts | No | Daily | Immediate |
-| Upload meetings | No | 3/month | 20/month |
-| API access | No | No | Yes |
+| Email alerts | — | Daily digest | Immediate |
+| Upload meetings | — | 3/month | 20/month |
+| API access | — | — | Yes |
 
-## Scraper Architecture
+## Build Order
 
-### Platform Types
-- **Granicus** (~40%): Structured pages
-- **CivicPlus** (~30%): Consistent HTML
-- **Generic** (~20%): Custom selectors
-- **Manual** (~10%): Upload only
+This is the sequence of work. Do NOT skip ahead. Each phase corresponds to a prompt file in `prompts/`.
 
-### Scraper Design
-- Modular: One module per platform
-- Configurable: Per-municipality selectors
-- Resilient: Retries, error tracking
-- Observable: Job history, logging
+### Phase 0: Scaffold + Design System (`prompts/00-scaffold-design-system.md`)
+1. Create project from TanStack Start template
+2. Add Convex + WorkOS AuthKit
+3. Add Cloudflare Workers support
+4. Install and configure shadcn/ui with custom dark theme
+5. Build ALL reusable components with the design system applied
+6. Create layout shell (Header, Footer)
+7. Verify auth flow works end-to-end
+8. Create placeholder routes for every page
 
-### Scrape Flow
-```
-Cron → For each municipality:
-  → Create scrapeJob
-  → Get platform scraper
-  → Scrape meetings page
-  → For each new meeting:
-    → Extract content
-    → Create meeting record
-    → Schedule AI summarization
-  → Update job results
-```
+### Phase 1: Database + Scraper (`prompts/01-schema-scraper.md`)
+9. Define Convex schema (all 8 tables with indexes)
+10. Create auth helper functions
+11. Build municipality queries and mutations
+12. Build meeting and summary queries
+13. Build scraper actions (registry + platform scrapers + extractors)
+14. Set up crons for scheduled crawling
+15. Seed database with test data
 
-## Alert System
+### Phase 2: Core Pages (`prompts/02-core-pages.md`)
+16. Landing page with hero, features, CTA
+17. Explore page with municipality grid + search/filter
+18. Municipality detail with meeting list
+19. Meeting summary page with all 4 tabs (summary, decisions, topics, comments)
+20. Build TopicBadge, VoteDisplay, and chart components
 
-### Flow
-```
-New summary created
-  → Find matching subscriptions
-    → Topic match
-    → Meeting type match
-    → Keyword filters
-  → Create alert records
-  → Based on frequency:
-    → Immediate: Send now
-    → Daily/Weekly: Queue for batch
-```
+### Phase 3: Upload + AI (`prompts/03-upload-ai.md`)
+21. Upload page with drag-and-drop file input
+22. File storage via Convex
+23. PDF text extraction action
+24. AI summarization action (Claude API)
+25. Processing status UI (pending → processing → complete/failed)
+26. Usage tracking for upload limits
 
-### Frequencies
-- **Immediate**: Within 5 minutes
-- **Daily**: 8am digest
-- **Weekly**: Monday 8am
+### Phase 4: Subscriptions + Alerts (`prompts/04-subscriptions-alerts.md`)
+27. Subscription CRUD mutations
+28. Subscription modal with topic/keyword filters
+29. Alert generation on new summary
+30. Email sending action (Resend)
+31. Cron jobs (immediate, daily digest, weekly digest)
+32. Dashboard alert feed
 
-## Development Phases
+### Phase 5: Monetization (`prompts/05-monetization.md`)
+33. Usage tracking queries
+34. Rate limiting checks
+35. Usage display widgets
+36. Stripe checkout session action
+37. Stripe webhook handler
+38. Customer portal action
+39. Pricing page with tier comparison
 
-### Phase 1: Foundation (Days 1-4)
-- Project scaffold
-- Database schema
-- Auth flow
-- Design system
-- Landing page
-- Seed data
+### Phase 6: Admin Dashboard (`prompts/06-admin-dashboard.md`)
+40. Admin access control (isAdmin check)
+41. Admin overview with stats
+42. Municipality CRUD admin
+43. User management (tier, role changes)
+44. Scraper monitoring and manual triggers
 
-### Phase 2: Browse & View (Days 5-8)
-- Municipality functions
-- Explore page
-- Municipality detail
-- Meeting summary page
-- Share functionality
-
-### Phase 3: Manual Upload (Days 9-11)
-- Meeting functions
-- Upload page
-- AI summarization
-- PDF extraction
-- Processing UI
-
-### Phase 4: Scrapers (Days 12-17)
-- Scraper architecture
-- Granicus scraper
-- CivicPlus scraper
-- Generic scraper
-- Orchestration
-- Admin UI
-- Cron jobs
-
-### Phase 5: Subscriptions (Days 18-22)
-- Subscription functions
-- Subscription UI
-- Alert generation
-- Email sending
-- Alert crons
-- Dashboard feed
-
-### Phase 6: Monetization (Days 23-26)
-- Usage tracking
-- Rate limiting
-- Usage display
-- Stripe integration
-- Pricing page
-
-### Phase 7: Polish (Days 27-30)
-- Error handling
-- Loading states
-- SEO
-- Admin dashboard
-- Testing
-- Deployment
-
-## Design System
-
-### Colors
-```css
---accent: #FF6B4A;        /* Coral */
---bg: #0A0A0B;            /* Near black */
---surface: #141416;       /* Cards */
---text: #FAFAFA;
---text-muted: #A0A0A5;
-```
-
-### Typography
-- Display: Fraunces (serif)
-- Body: DM Sans (sans)
-- Mono: JetBrains Mono
-
-### Style
-- Editorial magazine feel (Bloomberg/Politico)
-- Dark mode default
-- High contrast
-- Motion animations
+### Phase 7: Polish + Production (`prompts/07-polish-production.md`)
+45. Error boundaries on all routes
+46. Loading skeletons on all pages
+47. Toast notifications
+48. SEO (meta tags, sitemap, robots.txt)
+49. Responsive audit
+50. Pre-deploy checklist
+51. Production deployment
 
 ## Commands
 
 ```bash
-pnpm dev          # Start dev
-pnpm build        # Production build
-pnpm lint         # Biome lint
-pnpm typecheck    # TS check
-npx convex dev    # Convex backend
+# Development
+bun dev               # Start frontend dev server
+bun convex dev        # Start Convex dev server (run in separate terminal)
+
+# Code Quality
+bun typecheck         # TypeScript check
+bun lint              # Biome lint
+
+# Production
+bun run build         # Build for production
+bun convex deploy --prod   # Deploy Convex
+bun wrangler deploy        # Deploy to Cloudflare
 ```
 
 ## Environment Variables
 
 ```env
-CONVEX_DEPLOYMENT=
-VITE_CONVEX_URL=
-WORKOS_CLIENT_ID=
-WORKOS_API_KEY=
-WORKOS_REDIRECT_URI=
-WORKOS_COOKIE_PASSWORD=
-ANTHROPIC_API_KEY=
-RESEND_API_KEY=
-STRIPE_SECRET_KEY=
-STRIPE_WEBHOOK_SECRET=
+# Convex
+CONVEX_DEPLOYMENT=dev:your-deployment
+VITE_CONVEX_URL=https://your-deployment.convex.cloud
+
+# WorkOS AuthKit
+WORKOS_CLIENT_ID=client_...
+WORKOS_API_KEY=sk_test_...
+WORKOS_REDIRECT_URI=http://localhost:3000/api/auth/callback
+WORKOS_COOKIE_PASSWORD=32-character-minimum-secret
+
+# Anthropic Claude
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Resend
+RESEND_API_KEY=re_...
+
+# Stripe
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_PRO_PRICE_ID=price_...
+
+# App
+SITE_URL=http://localhost:3000
 ```

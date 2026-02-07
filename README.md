@@ -4,10 +4,6 @@ AI-powered summaries of local government meetings.
 
 ## Quick Start
 
-1. **Read the docs**: `CLAUDE.md`, `ARCHITECTURE.md`, `PROMPTS.md`
-2. **Clone reference**: Start from [jessewalberg/aita](https://github.com/jessewalberg/aita)
-3. **Execute prompts**: Follow `PROMPTS.md` in order
-
 ## Tech Stack
 
 | Layer | Tech |

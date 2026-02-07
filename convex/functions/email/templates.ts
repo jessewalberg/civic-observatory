@@ -149,101 +149,99 @@ const baseStyles = `
 // TYPES
 // ═══════════════════════════════════════════════════════════════
 interface MeetingData {
-  title: string;
-  meetingType: string;
-  meetingDate: number;
-  municipalityName: string;
-  municipalityState: string;
-  executiveSummary: string;
-  topics: string[];
-  matchedTopics: string[];
-  keyDecisions: Array<{
-    title: string;
-    description: string;
-    voteResult?: {
-      yes: number;
-      no: number;
-      passed: boolean;
-    };
-  }>;
-  meetingUrl: string;
+	title: string;
+	meetingType: string;
+	meetingDate: number;
+	municipalityName: string;
+	municipalityState: string;
+	executiveSummary: string;
+	topics: string[];
+	matchedTopics: string[];
+	keyDecisions: Array<{
+		title: string;
+		description: string;
+		voteResult?: {
+			yes: number;
+			no: number;
+			passed: boolean;
+		};
+	}>;
+	meetingUrl: string;
 }
 
 interface EmailParams {
-  userName?: string;
-  unsubscribeUrl: string;
-  manageSubscriptionsUrl: string;
-  baseUrl: string;
+	userName?: string;
+	unsubscribeUrl: string;
+	manageSubscriptionsUrl: string;
+	baseUrl: string;
 }
 
 // ═══════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS
 // ═══════════════════════════════════════════════════════════════
 function formatDate(timestamp: number): string {
-  return new Date(timestamp).toLocaleDateString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+	return new Date(timestamp).toLocaleDateString("en-US", {
+		weekday: "long",
+		year: "numeric",
+		month: "long",
+		day: "numeric",
+	});
 }
 
 function formatMeetingType(type: string): string {
-  const labels: Record<string, string> = {
-    city_council: "City Council",
-    school_board: "School Board",
-    planning_commission: "Planning Commission",
-    zoning_board: "Zoning Board",
-    budget_committee: "Budget Committee",
-    other: "Meeting",
-  };
-  return labels[type] ?? type;
+	const labels: Record<string, string> = {
+		city_council: "City Council",
+		school_board: "School Board",
+		planning_commission: "Planning Commission",
+		zoning_board: "Zoning Board",
+		budget_committee: "Budget Committee",
+		other: "Meeting",
+	};
+	return labels[type] ?? type;
 }
 
 function renderTopics(topics: string[], matchedTopics: string[]): string {
-  return topics
-    .slice(0, 5)
-    .map((topic) => {
-      const isMatched = matchedTopics.some(
-        (mt) => topic.toLowerCase().includes(mt.toLowerCase())
-      );
-      return `<span class="topic-tag ${isMatched ? "matched-tag" : ""}">${topic}</span>`;
-    })
-    .join("");
+	return topics
+		.slice(0, 5)
+		.map((topic) => {
+			const isMatched = matchedTopics.some((mt) =>
+				topic.toLowerCase().includes(mt.toLowerCase()),
+			);
+			return `<span class="topic-tag ${isMatched ? "matched-tag" : ""}">${topic}</span>`;
+		})
+		.join("");
 }
 
-function renderKeyDecisions(
-  decisions: MeetingData["keyDecisions"]
-): string {
-  if (!decisions || decisions.length === 0) return "";
+function renderKeyDecisions(decisions: MeetingData["keyDecisions"]): string {
+	if (!decisions || decisions.length === 0) return "";
 
-  const decisionsHtml = decisions
-    .slice(0, 3)
-    .map((d) => {
-      let voteHtml = "";
-      if (d.voteResult) {
-        const voteClass = d.voteResult.passed ? "" : "failed";
-        const voteText = d.voteResult.passed ? "Passed" : "Failed";
-        voteHtml = `<div class="vote-result ${voteClass}">${voteText} (${d.voteResult.yes}-${d.voteResult.no})</div>`;
-      }
-      return `
+	const decisionsHtml = decisions
+		.slice(0, 3)
+		.map((d) => {
+			let voteHtml = "";
+			if (d.voteResult) {
+				const voteClass = d.voteResult.passed ? "" : "failed";
+				const voteText = d.voteResult.passed ? "Passed" : "Failed";
+				voteHtml = `<div class="vote-result ${voteClass}">${voteText} (${d.voteResult.yes}-${d.voteResult.no})</div>`;
+			}
+			return `
         <div class="decision">
           <div class="decision-title">${d.title}</div>
           <div class="decision-desc">${d.description}</div>
           ${voteHtml}
         </div>
       `;
-    })
-    .join("");
+		})
+		.join("");
 
-  return `
+	return `
     <div class="section-title">Key Decisions</div>
     ${decisionsHtml}
   `;
 }
 
 function renderMeetingCard(meeting: MeetingData): string {
-  return `
+	return `
     <div class="meeting-card">
       <h3 class="meeting-title">${meeting.title}</h3>
       <div class="meeting-meta">
@@ -264,12 +262,12 @@ function renderMeetingCard(meeting: MeetingData): string {
 // IMMEDIATE ALERT TEMPLATE - Single meeting notification
 // ═══════════════════════════════════════════════════════════════
 export function immediateAlertTemplate(
-  meeting: MeetingData,
-  params: EmailParams
+	meeting: MeetingData,
+	params: EmailParams,
 ): { subject: string; html: string } {
-  const subject = `New Summary: ${meeting.title} - ${meeting.municipalityName}`;
+	const subject = `New Summary: ${meeting.title} - ${meeting.municipalityName}`;
 
-  const html = `
+	const html = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -311,27 +309,27 @@ export function immediateAlertTemplate(
 </html>
   `;
 
-  return { subject, html };
+	return { subject, html };
 }
 
 // ═══════════════════════════════════════════════════════════════
 // DAILY DIGEST TEMPLATE - Multiple meetings from the day
 // ═══════════════════════════════════════════════════════════════
 export function dailyDigestTemplate(
-  meetings: MeetingData[],
-  params: EmailParams
+	meetings: MeetingData[],
+	params: EmailParams,
 ): { subject: string; html: string } {
-  const date = new Date().toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  });
+	const date = new Date().toLocaleDateString("en-US", {
+		weekday: "long",
+		month: "long",
+		day: "numeric",
+	});
 
-  const subject = `Daily Digest: ${meetings.length} new ${meetings.length === 1 ? "summary" : "summaries"} - ${date}`;
+	const subject = `Daily Digest: ${meetings.length} new ${meetings.length === 1 ? "summary" : "summaries"} - ${date}`;
 
-  const meetingsHtml = meetings.map(renderMeetingCard).join("");
+	const meetingsHtml = meetings.map(renderMeetingCard).join("");
 
-  const html = `
+	const html = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -383,36 +381,41 @@ export function dailyDigestTemplate(
 </html>
   `;
 
-  return { subject, html };
+	return { subject, html };
 }
 
 // ═══════════════════════════════════════════════════════════════
 // WEEKLY DIGEST TEMPLATE - Weekly summary with stats
 // ═══════════════════════════════════════════════════════════════
 export function weeklyDigestTemplate(
-  meetings: MeetingData[],
-  params: EmailParams & { weekStats?: { totalMeetings: number; municipalities: number } }
+	meetings: MeetingData[],
+	params: EmailParams & {
+		weekStats?: { totalMeetings: number; municipalities: number };
+	},
 ): { subject: string; html: string } {
-  const weekStart = new Date();
-  weekStart.setDate(weekStart.getDate() - 7);
-  const weekEnd = new Date();
+	const weekStart = new Date();
+	weekStart.setDate(weekStart.getDate() - 7);
+	const weekEnd = new Date();
 
-  const dateRange = `${weekStart.toLocaleDateString("en-US", { month: "short", day: "numeric" })} - ${weekEnd.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+	const dateRange = `${weekStart.toLocaleDateString("en-US", { month: "short", day: "numeric" })} - ${weekEnd.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
 
-  const subject = `Weekly Digest: ${meetings.length} summaries - ${dateRange}`;
+	const subject = `Weekly Digest: ${meetings.length} summaries - ${dateRange}`;
 
-  // Group meetings by municipality
-  const byMunicipality = meetings.reduce((acc, meeting) => {
-    const key = `${meeting.municipalityName}, ${meeting.municipalityState}`;
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(meeting);
-    return acc;
-  }, {} as Record<string, MeetingData[]>);
+	// Group meetings by municipality
+	const byMunicipality = meetings.reduce(
+		(acc, meeting) => {
+			const key = `${meeting.municipalityName}, ${meeting.municipalityState}`;
+			if (!acc[key]) acc[key] = [];
+			acc[key].push(meeting);
+			return acc;
+		},
+		{} as Record<string, MeetingData[]>,
+	);
 
-  const municipalitySections = Object.entries(byMunicipality)
-    .map(([municipality, municipalityMeetings]) => {
-      const meetingsHtml = municipalityMeetings.map(renderMeetingCard).join("");
-      return `
+	const municipalitySections = Object.entries(byMunicipality)
+		.map(([municipality, municipalityMeetings]) => {
+			const meetingsHtml = municipalityMeetings.map(renderMeetingCard).join("");
+			return `
         <div style="margin-bottom: 32px;">
           <h2 style="font-size: 18px; color: #1a1a1a; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #FF6B4A;">
             ${municipality}
@@ -420,11 +423,11 @@ export function weeklyDigestTemplate(
           ${meetingsHtml}
         </div>
       `;
-    })
-    .join("");
+		})
+		.join("");
 
-  const statsHtml = params.weekStats
-    ? `
+	const statsHtml = params.weekStats
+		? `
       <div style="background-color: #f8f9fa; border-radius: 8px; padding: 20px; margin-bottom: 24px; text-align: center;">
         <div style="display: inline-block; margin: 0 20px;">
           <div style="font-size: 32px; font-weight: 700; color: #FF6B4A;">${params.weekStats.totalMeetings}</div>
@@ -440,9 +443,9 @@ export function weeklyDigestTemplate(
         </div>
       </div>
     `
-    : "";
+		: "";
 
-  const html = `
+	const html = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -494,7 +497,7 @@ export function weeklyDigestTemplate(
 </html>
   `;
 
-  return { subject, html };
+	return { subject, html };
 }
 
 // ═══════════════════════════════════════════════════════════════

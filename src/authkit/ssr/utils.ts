@@ -4,13 +4,13 @@
  * This is useful for lazy initialization.
  */
 export function lazy<T>(fn: () => T): () => T {
-  let called = false
-  let result: T
-  return () => {
-    if (!called) {
-      result = fn()
-      called = true
-    }
-    return result
-  }
+	let called = false;
+	let result: T;
+	return () => {
+		if (!called) {
+			result = fn();
+			called = true;
+		}
+		return result;
+	};
 }

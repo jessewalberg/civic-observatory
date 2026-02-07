@@ -1,40 +1,40 @@
 // Types
-export type {
-  Platform,
-  MeetingType,
-  ScraperConfig,
-  ScrapedMeeting,
-  ScraperError,
-  ScraperResult,
-  Scraper,
-  ScrapeJobContext,
-  ContentExtractionResult,
-} from "./types";
 
 // Registry
 export {
-  registerScraper,
-  getScraper,
-  getAllScrapers,
-  hasScraperFor,
-  detectPlatform,
-  findScraperForUrl,
-  platformInfo,
-  type PlatformInfo,
+	detectPlatform,
+	findScraperForUrl,
+	getAllScrapers,
+	getScraper,
+	hasScraperFor,
+	type PlatformInfo,
+	platformInfo,
+	registerScraper,
 } from "./registry";
+export type {
+	ContentExtractionResult,
+	MeetingType,
+	Platform,
+	ScrapedMeeting,
+	ScrapeJobContext,
+	Scraper,
+	ScraperConfig,
+	ScraperError,
+	ScraperResult,
+} from "./types";
 
 // Utilities
 export {
-  parseDate,
-  inferMeetingType,
-  hashContent,
-  hashMeetingId,
-  normalizeUrl,
-  resolveUrl,
-  extractDomain,
-  htmlToText,
-  truncateText,
-  extractSummary,
+	extractDomain,
+	extractSummary,
+	hashContent,
+	hashMeetingId,
+	htmlToText,
+	inferMeetingType,
+	normalizeUrl,
+	parseDate,
+	resolveUrl,
+	truncateText,
 } from "./utils";
 
 // Note: Scraper implementations (granicus, civicplus, etc.) use "use node"

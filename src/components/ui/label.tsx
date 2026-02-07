@@ -1,21 +1,19 @@
-import * as React from "react"
+import type * as React from "react";
 
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/utils";
 
-function Label({
-  className,
-  ...props
-}: React.ComponentProps<"label">) {
-  return (
-    <label
-      data-slot="label"
-      className={cn(
-        "text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
-        className
-      )}
-      {...props}
-    />
-  )
+function Label({ className, ...props }: React.ComponentProps<"label">) {
+	return (
+		// biome-ignore lint/a11y/noLabelWithoutControl: Label component is designed to work with htmlFor or wrap controls
+		<label
+			data-slot="label"
+			className={cn(
+				"text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
+				className,
+			)}
+			{...props}
+		/>
+	);
 }
 
-export { Label }
+export { Label };

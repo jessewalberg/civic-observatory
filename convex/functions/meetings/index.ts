@@ -1,21 +1,21 @@
 // Meeting queries
-export {
-  get,
-  getWithSummary,
-  getRecent,
-  listByMunicipality,
-  countByMunicipality,
-  getMeetingTypes,
-  findBySourceUrl,
-  findByContentHash,
-  listPending,
-} from "./queries";
 
 // Meeting mutations
 export {
-  create,
-  updateStatus,
-  createFromScrape,
-  remove,
-  retryProcessing,
+	create,
+	createFromScrape,
+	remove,
+	retryProcessing,
+	updateStatus,
 } from "./mutations";
+export {
+	countByMunicipality,
+	findByContentHash,
+	findBySourceUrl,
+	get,
+	getMeetingTypes,
+	getRecent,
+	getWithSummary,
+	listByMunicipality,
+	listPending,
+} from "./queries";

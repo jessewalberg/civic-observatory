@@ -37,3 +37,7 @@ src/routeTree.gen.ts
 
 # Wrangler
 .wrangler/
+
+# Documentation (local only)
+docs/
+prompts/

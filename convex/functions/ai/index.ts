@@ -1,9 +1,21 @@
 // AI queries (internal)
-export { getMeetingForProcessing, getPendingMeetings, getProcessingStats } from "./queries";
+
+export { extractPdf } from "./extractPdf";
 
 // AI mutations (internal)
-export { updateMeetingStatus, createSummary, updateMeetingContent } from "./mutations";
-
+export {
+	createSummary,
+	updateMeetingContent,
+	updateMeetingStatus,
+} from "./mutations";
+export {
+	getMeetingForProcessing,
+	getPendingMeetings,
+	getProcessingStats,
+} from "./queries";
 // AI actions
-export { summarizeMeeting, processPendingMeetings, retryFailedMeeting } from "./summarize";
-export { extractPdf } from "./extractPdf";
+export {
+	processPendingMeetings,
+	retryFailedMeeting,
+	summarizeMeeting,
+} from "./summarize";

@@ -12,7 +12,7 @@ const scrapers = new Map<Platform, Scraper>();
  * @param scraper - Scraper implementation to register
  */
 export function registerScraper(scraper: Scraper): void {
-  scrapers.set(scraper.platform, scraper);
+	scrapers.set(scraper.platform, scraper);
 }
 
 /**
@@ -21,7 +21,7 @@ export function registerScraper(scraper: Scraper): void {
  * @returns Scraper instance or undefined if not registered
  */
 export function getScraper(platform: Platform): Scraper | undefined {
-  return scrapers.get(platform);
+	return scrapers.get(platform);
 }
 
 /**
@@ -29,7 +29,7 @@ export function getScraper(platform: Platform): Scraper | undefined {
  * @returns Array of registered scrapers
  */
 export function getAllScrapers(): Scraper[] {
-  return Array.from(scrapers.values());
+	return Array.from(scrapers.values());
 }
 
 /**
@@ -38,7 +38,7 @@ export function getAllScrapers(): Scraper[] {
  * @returns true if scraper is registered
  */
 export function hasScraperFor(platform: Platform): boolean {
-  return scrapers.has(platform);
+	return scrapers.has(platform);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -47,35 +47,35 @@ export function hasScraperFor(platform: Platform): boolean {
 
 /** URL patterns for platform detection */
 const platformPatterns: Array<{ pattern: RegExp; platform: Platform }> = [
-  // Granicus patterns
-  {
-    pattern: /granicus\.com/i,
-    platform: "granicus",
-  },
-  {
-    pattern: /legistar\.com/i,
-    platform: "granicus",
-  },
-  {
-    pattern: /\.insite\.com/i,
-    platform: "granicus",
-  },
+	// Granicus patterns
+	{
+		pattern: /granicus\.com/i,
+		platform: "granicus",
+	},
+	{
+		pattern: /legistar\.com/i,
+		platform: "granicus",
+	},
+	{
+		pattern: /\.insite\.com/i,
+		platform: "granicus",
+	},
 
-  // CivicPlus patterns
-  {
-    pattern: /civicplus\.com/i,
-    platform: "civicplus",
-  },
-  {
-    pattern: /\.civicweb\.net/i,
-    platform: "civicplus",
-  },
-  {
-    pattern: /municipalcodeonline\.com/i,
-    platform: "civicplus",
-  },
+	// CivicPlus patterns
+	{
+		pattern: /civicplus\.com/i,
+		platform: "civicplus",
+	},
+	{
+		pattern: /\.civicweb\.net/i,
+		platform: "civicplus",
+	},
+	{
+		pattern: /municipalcodeonline\.com/i,
+		platform: "civicplus",
+	},
 
-  // Note: "manual" platform doesn't have URL patterns - it's for uploads only
+	// Note: "manual" platform doesn't have URL patterns - it's for uploads only
 ];
 
 /**
@@ -84,16 +84,16 @@ const platformPatterns: Array<{ pattern: RegExp; platform: Platform }> = [
  * @returns Detected platform or "generic" if unknown
  */
 export function detectPlatform(url: string): Platform {
-  const normalizedUrl = url.toLowerCase();
+	const normalizedUrl = url.toLowerCase();
 
-  for (const { pattern, platform } of platformPatterns) {
-    if (pattern.test(normalizedUrl)) {
-      return platform;
-    }
-  }
+	for (const { pattern, platform } of platformPatterns) {
+		if (pattern.test(normalizedUrl)) {
+			return platform;
+		}
+	}
 
-  // Default to generic scraper
-  return "generic";
+	// Default to generic scraper
+	return "generic";
 }
 
 /**
@@ -103,23 +103,23 @@ export function detectPlatform(url: string): Platform {
  * @returns Scraper that can handle the URL, or undefined
  */
 export function findScraperForUrl(url: string): Scraper | undefined {
-  // First, try platform detection
-  const detectedPlatform = detectPlatform(url);
-  const platformScraper = getScraper(detectedPlatform);
+	// First, try platform detection
+	const detectedPlatform = detectPlatform(url);
+	const platformScraper = getScraper(detectedPlatform);
 
-  if (platformScraper?.canHandle(url)) {
-    return platformScraper;
-  }
+	if (platformScraper?.canHandle(url)) {
+		return platformScraper;
+	}
 
-  // Fall back to checking all scrapers
-  for (const scraper of scrapers.values()) {
-    if (scraper.canHandle(url)) {
-      return scraper;
-    }
-  }
+	// Fall back to checking all scrapers
+	for (const scraper of scrapers.values()) {
+		if (scraper.canHandle(url)) {
+			return scraper;
+		}
+	}
 
-  // Return generic scraper as last resort
-  return getScraper("generic");
+	// Return generic scraper as last resort
+	return getScraper("generic");
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -127,35 +127,35 @@ export function findScraperForUrl(url: string): Scraper | undefined {
 // ═══════════════════════════════════════════════════════════════
 
 export interface PlatformInfo {
-  name: string;
-  description: string;
-  commonUrls: string[];
-  marketShare: string;
+	name: string;
+	description: string;
+	commonUrls: string[];
+	marketShare: string;
 }
 
 export const platformInfo: Record<Platform, PlatformInfo> = {
-  granicus: {
-    name: "Granicus",
-    description: "Leading provider of government meeting management software",
-    commonUrls: ["*.granicus.com", "*.legistar.com", "*.insite.com"],
-    marketShare: "~40%",
-  },
-  civicplus: {
-    name: "CivicPlus",
-    description: "Municipal website and agenda management platform",
-    commonUrls: ["*.civicplus.com", "*.civicweb.net"],
-    marketShare: "~30%",
-  },
-  generic: {
-    name: "Generic",
-    description: "Custom HTML scraper for sites without standard platform",
-    commonUrls: [],
-    marketShare: "~20%",
-  },
-  manual: {
-    name: "Manual Upload",
-    description: "Municipalities where we only accept manual uploads",
-    commonUrls: [],
-    marketShare: "~10%",
-  },
+	granicus: {
+		name: "Granicus",
+		description: "Leading provider of government meeting management software",
+		commonUrls: ["*.granicus.com", "*.legistar.com", "*.insite.com"],
+		marketShare: "~40%",
+	},
+	civicplus: {
+		name: "CivicPlus",
+		description: "Municipal website and agenda management platform",
+		commonUrls: ["*.civicplus.com", "*.civicweb.net"],
+		marketShare: "~30%",
+	},
+	generic: {
+		name: "Generic",
+		description: "Custom HTML scraper for sites without standard platform",
+		commonUrls: [],
+		marketShare: "~20%",
+	},
+	manual: {
+		name: "Manual Upload",
+		description: "Municipalities where we only accept manual uploads",
+		commonUrls: [],
+		marketShare: "~10%",
+	},
 };

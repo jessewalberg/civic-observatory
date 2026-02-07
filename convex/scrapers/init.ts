@@ -1,8 +1,8 @@
 "use node";
 
-import { registerScraper } from "./registry";
-import { granicusScraper } from "./granicus";
 import { genericScraper } from "./generic";
+import { granicusScraper } from "./granicus";
+import { registerScraper } from "./registry";
 
 // ═══════════════════════════════════════════════════════════════
 // SCRAPER INITIALIZATION
@@ -13,14 +13,14 @@ import { genericScraper } from "./generic";
 let initialized = false;
 
 export function initializeScrapers(): void {
-  if (initialized) return;
+	if (initialized) return;
 
-  // Register platform scrapers
-  registerScraper(granicusScraper);
-  // registerScraper(civicPlusScraper); // TODO: Implement CivicPlus scraper
-  registerScraper(genericScraper); // Fallback for custom sites
+	// Register platform scrapers
+	registerScraper(granicusScraper);
+	// registerScraper(civicPlusScraper); // TODO: Implement CivicPlus scraper
+	registerScraper(genericScraper); // Fallback for custom sites
 
-  initialized = true;
+	initialized = true;
 }
 
 // Auto-initialize when imported

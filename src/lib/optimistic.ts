@@ -23,38 +23,38 @@
  * }
  */
 export function createOptimisticHandler<T>(initialValue: T | null = null) {
-  let value = initialValue
+	let value = initialValue;
 
-  return {
-    get: () => value,
-    set: (newValue: T) => {
-      value = newValue
-    },
-    clear: () => {
-      value = null
-    },
-    isOptimistic: () => value !== null,
-  }
+	return {
+		get: () => value,
+		set: (newValue: T) => {
+			value = newValue;
+		},
+		clear: () => {
+			value = null;
+		},
+		isOptimistic: () => value !== null,
+	};
 }
 
 /**
  * Type for optimistic update configuration
  */
 export interface OptimisticUpdateConfig<TData, TOptimistic> {
-  /** The real data from the server */
-  data: TData | undefined
-  /** The optimistic value to use while mutation is in flight */
-  optimisticValue: TOptimistic | null
-  /** Whether to prefer the optimistic value over real data */
-  preferOptimistic: boolean
+	/** The real data from the server */
+	data: TData | undefined;
+	/** The optimistic value to use while mutation is in flight */
+	optimisticValue: TOptimistic | null;
+	/** Whether to prefer the optimistic value over real data */
+	preferOptimistic: boolean;
 }
 
 /**
  * Get the display value, preferring optimistic data when available
  */
 export function getOptimisticValue<T>(
-  realValue: T,
-  optimisticValue: T | null
+	realValue: T,
+	optimisticValue: T | null,
 ): T {
-  return optimisticValue ?? realValue
+	return optimisticValue ?? realValue;
 }

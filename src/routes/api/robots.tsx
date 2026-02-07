@@ -1,13 +1,13 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute } from "@tanstack/react-router";
 
-export const Route = createFileRoute('/api/robots')({
-  server: {
-    handlers: {
-      GET: async ({ request }) => {
-        const url = new URL(request.url)
-        const baseUrl = `${url.protocol}//${url.host}`
+export const Route = createFileRoute("/api/robots")({
+	server: {
+		handlers: {
+			GET: async ({ request }) => {
+				const url = new URL(request.url);
+				const baseUrl = `${url.protocol}//${url.host}`;
 
-        const robotsTxt = `# Civic Pulse robots.txt
+				const robotsTxt = `# Civic Pulse robots.txt
 # https://civicpulse.io
 
 User-agent: *
@@ -41,15 +41,15 @@ Crawl-delay: 0
 User-agent: Bingbot
 Allow: /
 Crawl-delay: 1
-`
+`;
 
-        return new Response(robotsTxt, {
-          headers: {
-            'Content-Type': 'text/plain',
-            'Cache-Control': 'public, max-age=86400',
-          },
-        })
-      },
-    },
-  },
-})
+				return new Response(robotsTxt, {
+					headers: {
+						"Content-Type": "text/plain",
+						"Cache-Control": "public, max-age=86400",
+					},
+				});
+			},
+		},
+	},
+});
