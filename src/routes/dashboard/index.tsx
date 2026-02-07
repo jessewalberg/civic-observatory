@@ -1,22 +1,23 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery, useMutation } from 'convex/react'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { motion } from 'motion/react'
 import {
   Bell,
   Building2,
   CheckCheck,
   Clock,
-  Loader2,
   Plus,
 } from 'lucide-react'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
 import { getAuth, getSignInUrl } from '@/authkit/serverFunctions'
-import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { LoadingButton } from '@/components/ui/loading-button'
 import { UsageWidget } from '@/components/UsageWidget'
+import { DashboardSkeleton } from '@/components/skeletons'
 import { cn } from '@/lib/utils'
 
 export const Route = createFileRoute('/dashboard/')({
@@ -31,6 +32,7 @@ export const Route = createFileRoute('/dashboard/')({
     ],
   }),
   component: DashboardPage,
+  pendingComponent: DashboardSkeleton,
 })
 
 function DashboardPage() {
@@ -91,18 +93,34 @@ function DashboardContent({ workosUserId }: { workosUserId: string }) {
   const markAsRead = useMutation(api.functions.alerts.mutations.markAsRead)
   const markAllAsRead = useMutation(api.functions.alerts.mutations.markAllAsRead)
 
+  // Loading/action states
+  const [isMarkingAllRead, setIsMarkingAllRead] = useState(false)
+  const [optimisticUnreadCount, setOptimisticUnreadCount] = useState<number | null>(null)
+
   // Loading state
   if (!user || feed === undefined) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    )
+    return <DashboardSkeleton />
   }
 
   const handleMarkAllAsRead = async () => {
-    await markAllAsRead({ userId: user._id })
+    // Optimistic update - immediately show 0 unread
+    setIsMarkingAllRead(true)
+    setOptimisticUnreadCount(0)
+
+    try {
+      await markAllAsRead({ userId: user._id })
+    } catch {
+      // Revert optimistic update on error
+      setOptimisticUnreadCount(null)
+    } finally {
+      setIsMarkingAllRead(false)
+      // Clear optimistic state after a delay to let real data sync
+      setTimeout(() => setOptimisticUnreadCount(null), 500)
+    }
   }
+
+  // Use optimistic count if available, otherwise real count
+  const displayUnreadCount = optimisticUnreadCount ?? (alertCounts?.unread ?? 0)
 
   return (
     <div className="min-h-screen bg-background">
@@ -127,11 +145,16 @@ function DashboardContent({ workosUserId }: { workosUserId: string }) {
                 Your personalized feed of local government updates.
               </p>
             </div>
-            {(alertCounts?.unread ?? 0) > 0 && (
-              <Button variant="outline" onClick={handleMarkAllAsRead}>
+            {displayUnreadCount > 0 && (
+              <LoadingButton
+                variant="outline"
+                onClick={handleMarkAllAsRead}
+                loading={isMarkingAllRead}
+                loadingText="Marking..."
+              >
                 <CheckCheck className="h-4 w-4 mr-2" />
                 Mark All Read
-              </Button>
+              </LoadingButton>
             )}
           </div>
 
@@ -141,7 +164,7 @@ function DashboardContent({ workosUserId }: { workosUserId: string }) {
             <div className="lg:col-span-2 grid grid-cols-2 sm:grid-cols-3 gap-4">
               <Card className="p-4">
                 <p className="text-2xl font-bold text-foreground">
-                  {alertCounts?.unread ?? 0}
+                  {displayUnreadCount}
                 </p>
                 <p className="text-xs text-muted-foreground">Unread</p>
               </Card>
@@ -251,7 +274,7 @@ function FeedItem({
 }: {
   item: FeedItemType
   userId: Id<'users'>
-  onMarkRead: (args: { alertId: Id<'alerts'>; userId: Id<'users'> }) => Promise<void>
+  onMarkRead: (args: { alertId: Id<'alerts'>; userId: Id<'users'> }) => Promise<void | null>
 }) {
   // Mark as read when item becomes visible
   useEffect(() => {

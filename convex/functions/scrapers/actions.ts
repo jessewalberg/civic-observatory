@@ -7,7 +7,7 @@ import { v } from "convex/values";
 // Initialize scrapers when this module loads
 import "../../scrapers/init";
 import { getScraper, findScraperForUrl } from "../../scrapers/registry";
-import type { ScraperConfig, ScrapedMeeting, ScraperError } from "../../scrapers/types";
+import type { ScraperConfig, ScraperError } from "../../scrapers/types";
 import type { Id } from "../../_generated/dataModel";
 
 // Result types for actions

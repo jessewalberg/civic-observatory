@@ -17,9 +17,35 @@ import {
   MunicipalityCard,
   MunicipalityCardSkeleton,
 } from '@/components/MunicipalityCard'
+import { ExploreSkeleton } from '@/components/skeletons'
 
 export const Route = createFileRoute('/explore/')({
   component: ExplorePage,
+  pendingComponent: ExploreSkeleton,
+  head: () => ({
+    meta: [
+      { title: 'Explore Municipalities | Civic Pulse' },
+      {
+        name: 'description',
+        content:
+          'Browse and search local governments across the United States. Find meeting summaries from city councils, school boards, and planning commissions.',
+      },
+      { property: 'og:title', content: 'Explore Municipalities | Civic Pulse' },
+      {
+        property: 'og:description',
+        content:
+          'Browse and search local governments across the United States. Find meeting summaries from city councils, school boards, and planning commissions.',
+      },
+      { property: 'og:type', content: 'website' },
+      { name: 'twitter:card', content: 'summary' },
+      { name: 'twitter:title', content: 'Explore Municipalities | Civic Pulse' },
+      {
+        name: 'twitter:description',
+        content:
+          'Browse and search local governments across the United States. Find meeting summaries.',
+      },
+    ],
+  }),
 })
 
 // US States for filter dropdown

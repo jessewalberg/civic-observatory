@@ -25,23 +25,62 @@ import { CompactVoteDisplay } from '@/components/VoteDisplay'
 
 export const Route = createFileRoute('/')({
   component: LandingPage,
-  head: () => ({
-    meta: [
-      { title: 'Civic Pulse - Municipal Meeting Summarizer' },
-      {
-        name: 'description',
-        content:
-          'AI-powered summaries of local government meetings. Stay informed about your community.',
+  head: () => {
+    const title = 'Civic Pulse - Municipal Meeting Summarizer'
+    const description =
+      'AI-powered summaries of local government meetings. Stay informed about city councils, school boards, and planning commissions in your community.'
+
+    const jsonLd = {
+      '@context': 'https://schema.org',
+      '@type': 'WebApplication',
+      name: 'Civic Pulse',
+      description,
+      applicationCategory: 'GovernmentApplication',
+      operatingSystem: 'Web',
+      offers: {
+        '@type': 'Offer',
+        price: '0',
+        priceCurrency: 'USD',
+        description: 'Free tier with 50 daily summary views',
       },
-      { property: 'og:title', content: 'Civic Pulse - Municipal Meeting Summarizer' },
-      {
-        property: 'og:description',
-        content:
-          'AI-powered summaries of local government meetings. Stay informed about your community.',
+      featureList: [
+        'AI-powered meeting summaries',
+        'Real-time alerts',
+        'Municipal tracking',
+        'Email digests',
+      ],
+      creator: {
+        '@type': 'Organization',
+        name: 'Civic Pulse',
+        description: 'Making local government accessible to everyone',
       },
-      { property: 'og:type', content: 'website' },
-    ],
-  }),
+    }
+
+    return {
+      meta: [
+        { title },
+        { name: 'description', content: description },
+        { property: 'og:title', content: title },
+        { property: 'og:description', content: description },
+        { property: 'og:type', content: 'website' },
+        { property: 'og:site_name', content: 'Civic Pulse' },
+        { name: 'twitter:card', content: 'summary_large_image' },
+        { name: 'twitter:title', content: title },
+        { name: 'twitter:description', content: description },
+        {
+          name: 'keywords',
+          content:
+            'local government, municipal meetings, city council, school board, planning commission, AI summaries, civic engagement',
+        },
+      ],
+      scripts: [
+        {
+          type: 'application/ld+json',
+          children: JSON.stringify(jsonLd),
+        },
+      ],
+    }
+  },
 })
 
 // Mock data for recent meetings

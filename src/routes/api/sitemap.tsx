@@ -71,6 +71,7 @@ function generateSitemap(
   const staticUrls = [
     { loc: '/', changefreq: 'daily', priority: '1.0', lastmod: today },
     { loc: '/explore', changefreq: 'daily', priority: '0.9', lastmod: today },
+    { loc: '/pricing', changefreq: 'weekly', priority: '0.8', lastmod: today },
   ]
 
   const municipalityUrls = municipalities.map((m) => ({

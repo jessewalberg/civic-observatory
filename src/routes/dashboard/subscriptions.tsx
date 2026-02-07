@@ -8,7 +8,7 @@ import {
   Building2,
   Loader2,
   Mail,
-  MailOff,
+  MailX,
   Pencil,
   Plus,
   Trash2,
@@ -29,7 +29,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { SubscriptionModal } from '@/components/SubscriptionModal'
-import { cn } from '@/lib/utils'
+// cn utility not currently used
 
 export const Route = createFileRoute('/dashboard/subscriptions')({
   loader: async () => {
@@ -79,9 +79,6 @@ function SubscriptionsPage() {
 
 function SubscriptionsContent({ workosUserId }: { workosUserId: string }) {
   const [editingSubscription, setEditingSubscription] = useState<Subscription | null>(null)
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false)
-  const [selectedMunicipalityId, setSelectedMunicipalityId] = useState<Id<'municipalities'> | null>(null)
-  const [selectedMunicipalityName, setSelectedMunicipalityName] = useState('')
 
   // Get user
   const user = useQuery(api.functions.users.queries.getByWorkosUserId, { workosUserId })
@@ -137,12 +134,6 @@ function SubscriptionsContent({ workosUserId }: { workosUserId: string }) {
     } catch (error) {
       toast.error('Failed to unsubscribe')
     }
-  }
-
-  const handleAddSubscription = (municipalityId: Id<'municipalities'>, name: string) => {
-    setSelectedMunicipalityId(municipalityId)
-    setSelectedMunicipalityName(name)
-    setIsAddModalOpen(true)
   }
 
   return (
@@ -291,7 +282,7 @@ function SubscriptionsContent({ workosUserId }: { workosUserId: string }) {
                           {subscription.emailEnabled ? (
                             <Mail className="h-3 w-3 text-muted-foreground" />
                           ) : (
-                            <MailOff className="h-3 w-3 text-muted-foreground" />
+                            <MailX className="h-3 w-3 text-muted-foreground" />
                           )}
                         </div>
                       </TableCell>
@@ -365,18 +356,6 @@ function SubscriptionsContent({ workosUserId }: { workosUserId: string }) {
           municipalityName={editingSubscription.municipality?.name ?? 'Unknown'}
           userId={user._id}
           existingSubscription={editingSubscription}
-        />
-      )}
-
-      {/* Add Modal (when coming from municipality selection) */}
-      {isAddModalOpen && selectedMunicipalityId && (
-        <SubscriptionModal
-          open={isAddModalOpen}
-          onOpenChange={setIsAddModalOpen}
-          municipalityId={selectedMunicipalityId}
-          municipalityName={selectedMunicipalityName}
-          userId={user._id}
-          existingSubscription={null}
         />
       )}
     </div>

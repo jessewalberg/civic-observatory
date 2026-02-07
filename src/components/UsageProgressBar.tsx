@@ -32,7 +32,6 @@ export function UsageProgressBar({
   }
 
   const percentage = Math.min(100, (current / limit) * 100)
-  const remaining = Math.max(0, limit - current)
 
   // Color based on usage percentage
   const getColor = () => {

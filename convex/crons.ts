@@ -1,5 +1,7 @@
 import { cronJobs } from "convex/server";
-import { internal } from "./_generated/api";
+// Used in commented cron jobs - uncomment when enabling crons
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { internal as _internal } from "./_generated/api";
 
 const crons = cronJobs();
 

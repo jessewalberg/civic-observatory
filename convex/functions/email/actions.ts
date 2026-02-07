@@ -25,7 +25,7 @@ export const sendEmail = internalAction({
     html: v.string(),
     replyTo: v.optional(v.string()),
   },
-  handler: async (ctx, args): Promise<{ success: boolean; error?: string; id?: string }> => {
+  handler: async (_ctx, args): Promise<{ success: boolean; error?: string; id?: string }> => {
     const apiKey = process.env.RESEND_API_KEY;
 
     if (!apiKey) {

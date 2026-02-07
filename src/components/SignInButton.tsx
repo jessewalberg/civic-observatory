@@ -110,7 +110,7 @@ function UserMenu({ user }: { user: User }) {
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
-          <Link to="/pricing" className="cursor-pointer">
+          <Link to="/pricing" search={{ success: false, canceled: false }} className="cursor-pointer">
             <CreditCard className="mr-2 h-4 w-4" />
             {usageStats?.tier === 'pro' ? 'Manage Plan' : 'Upgrade to Pro'}
           </Link>

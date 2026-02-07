@@ -7,7 +7,6 @@ import {
   FileText,
   Calendar,
   Building2,
-  Loader2,
   CheckCircle2,
   X,
   FileUp,
@@ -16,7 +15,6 @@ import { toast } from 'sonner'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
 import { getAuth, getSignInUrl } from '@/authkit/serverFunctions'
-import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -28,6 +26,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { LoadingButton } from '@/components/ui/loading-button'
+import { Button } from '@/components/ui/button'
 import { UsageLimitExceeded } from '@/components/UsageLimitExceeded'
 import { cn } from '@/lib/utils'
 
@@ -427,24 +427,17 @@ function UploadPage() {
               </div>
 
               {/* Submit Button */}
-              <Button
+              <LoadingButton
                 type="submit"
                 size="lg"
                 className="w-full"
-                disabled={isSubmitting || !municipalityId || !title || !meetingType || !meetingDate || !content}
+                loading={isSubmitting}
+                loadingText="Uploading..."
+                disabled={!municipalityId || !title || !meetingType || !meetingDate || !content}
               >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Uploading...
-                  </>
-                ) : (
-                  <>
-                    <Upload className="h-4 w-4 mr-2" />
-                    Upload Meeting
-                  </>
-                )}
-              </Button>
+                <Upload className="h-4 w-4 mr-2" />
+                Upload Meeting
+              </LoadingButton>
             </form>
           </Card>
         </motion.div>

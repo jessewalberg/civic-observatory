@@ -54,7 +54,7 @@ const monthNames: Record<string, number> = {
  * @param format - Optional format hint (e.g., "MM/DD/YYYY")
  * @returns Timestamp in milliseconds, or null if parsing fails
  */
-export function parseDate(dateStr: string, format?: string): number | null {
+export function parseDate(dateStr: string, _format?: string): number | null {
   if (!dateStr) return null;
 
   const trimmed = dateStr.trim();

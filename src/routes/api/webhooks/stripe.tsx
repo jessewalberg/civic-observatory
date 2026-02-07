@@ -61,14 +61,15 @@ export const Route = createFileRoute('/api/webhooks/stripe')({
 
               if (session.mode === 'subscription' && session.subscription && session.customer) {
                 // Get subscription details
-                const subscription = await stripe.subscriptions.retrieve(
+                const subscriptionData = await stripe.subscriptions.retrieve(
                   session.subscription as string
                 )
+                const subscription = subscriptionData as Stripe.Subscription & { current_period_end?: number }
 
                 await convex.mutation(api.functions.stripe.mutations.handleCheckoutCompleted, {
                   stripeCustomerId: session.customer as string,
                   stripeSubscriptionId: subscription.id,
-                  currentPeriodEnd: subscription.current_period_end * 1000,
+                  currentPeriodEnd: (subscription.current_period_end ?? 0) * 1000,
                 })
 
                 console.log('Checkout completed for customer:', session.customer)
@@ -77,11 +78,11 @@ export const Route = createFileRoute('/api/webhooks/stripe')({
             }
 
             case 'customer.subscription.updated': {
-              const subscription = event.data.object as Stripe.Subscription
+              const subscription = event.data.object as Stripe.Subscription & { current_period_end?: number }
 
               await convex.mutation(api.functions.stripe.mutations.handleSubscriptionUpdated, {
                 stripeSubscriptionId: subscription.id,
-                currentPeriodEnd: subscription.current_period_end * 1000,
+                currentPeriodEnd: (subscription.current_period_end ?? 0) * 1000,
                 status: subscription.status,
               })
 

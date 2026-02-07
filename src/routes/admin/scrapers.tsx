@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { useQuery, useAction } from 'convex/react'
 import { useState } from 'react'
 import { motion } from 'motion/react'
@@ -10,6 +10,7 @@ import {
   Loader2,
   Play,
   Server,
+  Shield,
   XCircle,
   Building2,
   ExternalLink,
@@ -45,6 +46,7 @@ export const Route = createFileRoute('/admin/scrapers')({
     meta: [
       { title: 'Scraper Admin | Civic Pulse' },
       { name: 'description', content: 'Manage web scrapers' },
+      { name: 'robots', content: 'noindex, nofollow' },
     ],
   }),
   component: ScrapersAdminPage,
@@ -87,6 +89,7 @@ function ScrapersContent({ workosUserId }: { workosUserId: string }) {
   const [scrapingIds, setScrapingIds] = useState<Set<string>>(new Set())
 
   // Queries
+  const isAdmin = useQuery(api.functions.users.queries.isAdmin, { workosUserId })
   const stats = useQuery(api.functions.scrapeJobs.queries.getStats, {})
   const recentJobs = useQuery(api.functions.scrapeJobs.queries.getRecent, { limit: 20 })
   const runningJobs = useQuery(api.functions.scrapeJobs.queries.getRunning, {})
@@ -113,12 +116,37 @@ function ScrapersContent({ workosUserId }: { workosUserId: string }) {
     }
   }
 
-  const isLoading = stats === undefined || municipalities === undefined
+  const isLoading = isAdmin === undefined || stats === undefined || municipalities === undefined
 
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  if (!isAdmin) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center max-w-md mx-auto px-4"
+        >
+          <div className="rounded-full bg-red-500/10 p-4 mb-4 mx-auto w-fit">
+            <Shield className="h-8 w-8 text-red-400" />
+          </div>
+          <h1 className="font-display text-2xl font-bold text-foreground mb-2">
+            Access Denied
+          </h1>
+          <p className="text-muted-foreground mb-6">
+            You do not have admin privileges.
+          </p>
+          <Link to="/">
+            <Button variant="outline">Return Home</Button>
+          </Link>
+        </motion.div>
       </div>
     )
   }
@@ -140,6 +168,13 @@ function ScrapersContent({ workosUserId }: { workosUserId: string }) {
         >
           {/* Header */}
           <div className="mb-8">
+            <div className="flex items-center gap-3 mb-2">
+              <Link to="/admin">
+                <Button variant="ghost" size="sm">
+                  ← Admin
+                </Button>
+              </Link>
+            </div>
             <div className="flex items-center gap-3 mb-2">
               <div className="rounded-full bg-primary/10 p-2">
                 <Server className="h-5 w-5 text-primary" />

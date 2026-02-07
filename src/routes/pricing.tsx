@@ -3,6 +3,7 @@ import { useQuery, useAction } from 'convex/react'
 import { useState } from 'react'
 import { motion } from 'motion/react'
 import { Check, Sparkles, Zap, Loader2, CheckCircle, XCircle, X, Building2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { api } from '../../convex/_generated/api'
 import { getAuth, getSignInUrl } from '@/authkit/serverFunctions'
 import { Button } from '@/components/ui/button'
@@ -26,12 +27,58 @@ export const Route = createFileRoute('/pricing')({
     const [auth, signInUrl] = await Promise.all([getAuth(), getSignInUrl()])
     return { auth, signInUrl }
   },
-  head: () => ({
-    meta: [
-      { title: 'Pricing | Civic Pulse' },
-      { name: 'description', content: 'Choose the plan that fits your needs. Free and Pro plans available.' },
-    ],
-  }),
+  head: () => {
+    const description =
+      'Choose the plan that fits your needs. Free tier includes 50 daily summaries. Pro plan at $15/month for unlimited access and real-time alerts.'
+
+    const jsonLd = {
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      name: 'Pricing',
+      description,
+      mainEntity: {
+        '@type': 'Product',
+        name: 'Civic Pulse Pro',
+        description: 'Unlimited access to municipal meeting summaries with real-time alerts',
+        offers: [
+          {
+            '@type': 'Offer',
+            name: 'Free',
+            price: '0',
+            priceCurrency: 'USD',
+            description: '50 summary views per day, 3 uploads per month',
+          },
+          {
+            '@type': 'Offer',
+            name: 'Pro',
+            price: '15',
+            priceCurrency: 'USD',
+            billingDuration: 'P1M',
+            description: 'Unlimited summaries, 20 uploads, immediate alerts, API access',
+          },
+        ],
+      },
+    }
+
+    return {
+      meta: [
+        { title: 'Pricing | Civic Pulse' },
+        { name: 'description', content: description },
+        { property: 'og:title', content: 'Pricing | Civic Pulse' },
+        { property: 'og:description', content: description },
+        { property: 'og:type', content: 'website' },
+        { name: 'twitter:card', content: 'summary' },
+        { name: 'twitter:title', content: 'Pricing | Civic Pulse' },
+        { name: 'twitter:description', content: description },
+      ],
+      scripts: [
+        {
+          type: 'application/ld+json',
+          children: JSON.stringify(jsonLd),
+        },
+      ],
+    }
+  },
   component: PricingPage,
 })
 
@@ -322,6 +369,7 @@ function PlanCard({ plan, isLoggedIn, signInUrl, workosUserId }: PlanCardProps) 
       }
     } catch (error) {
       console.error('Failed to create checkout session:', error)
+      toast.error('Failed to start checkout. Please try again or contact support.')
       setIsLoading(false)
     }
   }
@@ -337,6 +385,7 @@ function PlanCard({ plan, isLoggedIn, signInUrl, workosUserId }: PlanCardProps) 
       }
     } catch (error) {
       console.error('Failed to create portal session:', error)
+      toast.error('Failed to open billing portal. Please try again or contact support.')
       setIsLoading(false)
     }
   }

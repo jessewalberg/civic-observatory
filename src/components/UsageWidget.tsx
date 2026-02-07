@@ -15,7 +15,7 @@ interface UsageWidgetProps {
 export function UsageWidget({ workosUserId, variant = 'card' }: UsageWidgetProps) {
   const usageStats = useQuery(api.functions.usage.queries.getUsageStats, { workosUserId })
 
-  if (usageStats === undefined) {
+  if (usageStats === undefined || usageStats === null) {
     return variant === 'card' ? <UsageWidgetSkeleton /> : <UsageCompactSkeleton />
   }
 
@@ -75,7 +75,7 @@ function UsageCardView({ stats }: { stats: UsageStats }) {
 
       {!isPro && (
         <div className="mt-4 pt-4 border-t border-border">
-          <Link to="/pricing">
+          <Link to="/pricing" search={{ success: false, canceled: false }}>
             <Button variant="outline" size="sm" className="w-full">
               <Sparkles className="h-4 w-4 mr-2" />
               Upgrade for More

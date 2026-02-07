@@ -19,8 +19,8 @@ import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
 import { Card } from '@/components/ui/card'
+import { MeetingDetailSkeleton } from '@/components/skeletons'
 import {
   Collapsible,
   CollapsibleContent,
@@ -36,6 +36,7 @@ import { cn } from '@/lib/utils'
 
 export const Route = createFileRoute('/meeting/$meetingId')({
   component: MeetingDetailPage,
+  pendingComponent: MeetingDetailSkeleton,
   loader: async ({ params }) => {
     const convexUrl = import.meta.env.VITE_CONVEX_URL
     if (!convexUrl) {
@@ -196,7 +197,7 @@ interface MeetingData {
 
 function MeetingDetailPage() {
   const { meetingId } = Route.useParams()
-  const { auth, signInUrl } = Route.useLoaderData()
+  const { auth: _auth, signInUrl } = Route.useLoaderData()
   const [showRawContent, setShowRawContent] = useState(false)
   const [isRetrying, setIsRetrying] = useState(false)
   const [retryError, setRetryError] = useState<string | null>(null)
@@ -826,65 +827,5 @@ function PublicCommentsCard({ comments }: PublicCommentsCardProps) {
         )}
       </div>
     </Card>
-  )
-}
-
-// Loading skeleton
-function MeetingDetailSkeleton() {
-  return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-8 max-w-4xl">
-        {/* Breadcrumb skeleton */}
-        <div className="flex items-center gap-2 mb-6">
-          <Skeleton className="h-4 w-16" />
-          <Skeleton className="h-4 w-4" />
-          <Skeleton className="h-4 w-24" />
-          <Skeleton className="h-4 w-4" />
-          <Skeleton className="h-4 w-32" />
-        </div>
-
-        {/* Title skeleton */}
-        <Skeleton className="h-10 w-3/4 mb-4" />
-
-        {/* Meta skeleton */}
-        <div className="flex items-center gap-4 mb-4">
-          <Skeleton className="h-5 w-32" />
-          <Skeleton className="h-5 w-40" />
-          <Skeleton className="h-5 w-24" />
-        </div>
-
-        {/* Topics skeleton */}
-        <div className="flex gap-2 mb-8">
-          <Skeleton className="h-6 w-20" />
-          <Skeleton className="h-6 w-24" />
-          <Skeleton className="h-6 w-16" />
-        </div>
-
-        {/* Executive summary skeleton */}
-        <div className="space-y-3 mb-10">
-          <Skeleton className="h-6 w-full" />
-          <Skeleton className="h-6 w-full" />
-          <Skeleton className="h-6 w-3/4" />
-        </div>
-
-        {/* Key decisions skeleton */}
-        <Skeleton className="h-8 w-40 mb-4" />
-        <div className="space-y-4">
-          <Card>
-            <Skeleton className="h-6 w-3/4 mb-3" />
-            <Skeleton className="h-4 w-full mb-2" />
-            <Skeleton className="h-4 w-2/3" />
-            <div className="mt-4">
-              <Skeleton className="h-3 w-full rounded-full" />
-            </div>
-          </Card>
-          <Card>
-            <Skeleton className="h-6 w-2/3 mb-3" />
-            <Skeleton className="h-4 w-full mb-2" />
-            <Skeleton className="h-4 w-1/2" />
-          </Card>
-        </div>
-      </div>
-    </div>
   )
 }
