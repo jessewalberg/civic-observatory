@@ -1,0 +1,26 @@
+import type { MunicipalityData } from "../types";
+
+export const NEBRASKA: MunicipalityData[] = [
+	{ name: "Omaha", state: "Nebraska", county: "Douglas", population: 486051, timezone: "America/Chicago", websiteUrl: "https://www.omahane.gov", meetingsPageUrl: "https://omaha.legistar.com/Calendar.aspx", platform: "granicus" },
+	{ name: "Lincoln", state: "Nebraska", county: "Lancaster", population: 291082, timezone: "America/Chicago", websiteUrl: "https://www.lincoln.ne.gov", meetingsPageUrl: "https://lincoln.legistar.com/Calendar.aspx", platform: "granicus" },
+	{ name: "Bellevue", state: "Nebraska", county: "Sarpy", population: 64176, timezone: "America/Chicago", websiteUrl: "https://www.bellevue.net", platform: "civicplus" },
+	{ name: "Grand Island", state: "Nebraska", county: "Hall", population: 53131, timezone: "America/Chicago", websiteUrl: "https://www.grand-island.com", platform: "civicplus" },
+	{ name: "Kearney", state: "Nebraska", county: "Buffalo", population: 33464, timezone: "America/Chicago", websiteUrl: "https://www.kearneyne.gov", platform: "civicplus" },
+	{ name: "Fremont", state: "Nebraska", county: "Dodge", population: 26397, timezone: "America/Chicago", websiteUrl: "https://www.fremontne.gov", platform: "civicplus" },
+	{ name: "Hastings", state: "Nebraska", county: "Adams", population: 25029, timezone: "America/Chicago", websiteUrl: "https://www.cityofhastings.org", platform: "civicplus" },
+	{ name: "Norfolk", state: "Nebraska", county: "Madison", population: 24523, timezone: "America/Chicago", websiteUrl: "https://www.ci.norfolk.ne.us", platform: "civicplus" },
+	{ name: "Papillion", state: "Nebraska", county: "Sarpy", population: 24310, timezone: "America/Chicago", websiteUrl: "https://www.papillion.org", platform: "civicplus" },
+	{ name: "North Platte", state: "Nebraska", county: "Lincoln", population: 23756, timezone: "America/Chicago", websiteUrl: "https://www.ci.north-platte.ne.us", platform: "civicplus" },
+	{ name: "Columbus", state: "Nebraska", county: "Platte", population: 23291, timezone: "America/Chicago", websiteUrl: "https://www.columbusne.us", platform: "civicplus" },
+	{ name: "La Vista", state: "Nebraska", county: "Sarpy", population: 18216, timezone: "America/Chicago", websiteUrl: "https://www.cityoflavista.org", platform: "civicplus" },
+	{ name: "Scottsbluff", state: "Nebraska", county: "Scotts Bluff", population: 14630, timezone: "America/Chicago", websiteUrl: "https://www.scottsbluff.org", platform: "manual" },
+	{ name: "South Sioux City", state: "Nebraska", county: "Dakota", population: 13311, timezone: "America/Chicago", websiteUrl: "https://www.southsiouxcity.org", platform: "manual" },
+	{ name: "Beatrice", state: "Nebraska", county: "Gage", population: 12282, timezone: "America/Chicago", websiteUrl: "https://www.beatrice.ne.gov", platform: "manual" },
+	{ name: "Lexington", state: "Nebraska", county: "Dawson", population: 10069, timezone: "America/Chicago", websiteUrl: "https://www.cityoflex.com", platform: "manual" },
+	{ name: "Alliance", state: "Nebraska", county: "Box Butte", population: 8621, timezone: "America/Chicago", websiteUrl: "https://www.cityofalliance.net", platform: "manual" },
+	{ name: "Gering", state: "Nebraska", county: "Scotts Bluff", population: 8179, timezone: "America/Chicago", websiteUrl: "https://www.gering.org", platform: "manual" },
+	{ name: "Blair", state: "Nebraska", county: "Washington", population: 7992, timezone: "America/Chicago", websiteUrl: "https://www.blairnebraska.org", platform: "manual" },
+	{ name: "York", state: "Nebraska", county: "York", population: 7862, timezone: "America/Chicago", websiteUrl: "https://www.cityofyork.net", platform: "manual" },
+	{ name: "McCook", state: "Nebraska", county: "Red Willow", population: 7527, timezone: "America/Chicago", websiteUrl: "https://www.cityofmccook.com", platform: "manual" },
+	{ name: "Ralston", state: "Nebraska", county: "Douglas", population: 7305, timezone: "America/Chicago", websiteUrl: "https://www.cityofralston.com", platform: "manual" },
+];
