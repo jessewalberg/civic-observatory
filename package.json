@@ -8,6 +8,7 @@
     "build": "npx convex codegen && vite build && tsc --noEmit",
     "preview": "vite preview",
     "test": "vitest run",
+    "typecheck": "tsc --noEmit",
     "format": "biome format",
     "lint": "biome lint",
     "check": "biome check",

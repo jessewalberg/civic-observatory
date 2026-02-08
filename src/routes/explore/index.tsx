@@ -249,6 +249,35 @@ function ExplorePage() {
 
 			{/* Results */}
 			<div className="container mx-auto px-4 py-8">
+				{/* State Filter Chips */}
+				{availableStates.length > 0 && !searchQuery.trim() && (
+					<motion.div
+						initial={{ opacity: 0, y: -10 }}
+						animate={{ opacity: 1, y: 0 }}
+						className="flex flex-wrap gap-2 mb-6"
+					>
+						<Button
+							variant={!selectedState ? "default" : "outline"}
+							size="sm"
+							onClick={() => setSelectedState("")}
+							className="h-8"
+						>
+							All States
+						</Button>
+						{availableStates.map((state) => (
+							<Button
+								key={state}
+								variant={selectedState === state ? "default" : "outline"}
+								size="sm"
+								onClick={() => setSelectedState(state === selectedState ? "" : state)}
+								className="h-8"
+							>
+								{state}
+							</Button>
+						))}
+					</motion.div>
+				)}
+
 				{/* Results count */}
 				{!isLoading && (
 					<motion.p

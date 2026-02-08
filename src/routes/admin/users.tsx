@@ -25,6 +25,7 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
 	Select,
 	SelectContent,
@@ -107,15 +108,25 @@ function UsersContent({ workosUserId }: { workosUserId: string }) {
 	const isAdmin = useQuery(api.functions.users.queries.isAdmin, {
 		workosUserId,
 	});
-	const users = useQuery(api.functions.users.queries.listAll, { limit: 500 });
-	const stats = useQuery(api.functions.users.queries.getAdminStats, {});
+	const usersResult = useQuery(api.functions.users.queries.listAll, {
+		requestingWorkosUserId: workosUserId,
+		limit: 500,
+	});
+	const stats = useQuery(api.functions.users.queries.getAdminStats, {
+		requestingWorkosUserId: workosUserId,
+	});
+
+	// Handle the paginated users result
+	const users = Array.isArray(usersResult)
+		? usersResult
+		: usersResult?.users ?? [];
 
 	// Mutations
 	const adminUpdateUser = useMutation(
 		api.functions.users.mutations.adminUpdateUser,
 	);
 
-	const isLoading = isAdmin === undefined || users === undefined;
+	const isLoading = isAdmin === undefined || usersResult === undefined;
 
 	if (isLoading) {
 		return (

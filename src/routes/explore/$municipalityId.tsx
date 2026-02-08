@@ -4,7 +4,9 @@ import { useQuery } from "convex/react";
 import {
 	ArrowLeft,
 	Bell,
+	BellOff,
 	Calendar,
+	Check,
 	ChevronDown,
 	ExternalLink,
 	FileText,
@@ -16,7 +18,9 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
+import { getAuth, getSignInUrl } from "@/authkit/serverFunctions";
 import { MeetingCard, MeetingCardSkeleton } from "@/components/MeetingCard";
+import { SubscriptionModal } from "@/components/SubscriptionModal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,9 +37,11 @@ import type { Id } from "../../../convex/_generated/dataModel";
 export const Route = createFileRoute("/explore/$municipalityId")({
 	component: MunicipalityDetailPage,
 	loader: async ({ params }) => {
+		const [auth, signInUrl] = await Promise.all([getAuth(), getSignInUrl()]);
+
 		const convexUrl = import.meta.env.VITE_CONVEX_URL;
 		if (!convexUrl) {
-			return { municipality: null };
+			return { municipality: null, auth, signInUrl };
 		}
 		try {
 			const convex = new ConvexHttpClient(convexUrl);
@@ -45,9 +51,9 @@ export const Route = createFileRoute("/explore/$municipalityId")({
 					id: params.municipalityId as Id<"municipalities">,
 				},
 			);
-			return { municipality };
+			return { municipality, auth, signInUrl };
 		} catch {
-			return { municipality: null };
+			return { municipality: null, auth, signInUrl };
 		}
 	},
 	head: ({ loaderData }) => {
@@ -149,13 +155,44 @@ const meetingTypeLabels: Record<MeetingType, string> = {
 
 function MunicipalityDetailPage() {
 	const { municipalityId } = Route.useParams();
+	const { auth, signInUrl } = Route.useLoaderData();
 	const [meetingType, setMeetingType] = useState<string>("");
 	const [cursor, setCursor] = useState<string | null>(null);
+	const [showSubscribeModal, setShowSubscribeModal] = useState(false);
 
 	// Fetch municipality details
 	const municipality = useQuery(api.functions.municipalities.queries.get, {
 		id: municipalityId as Id<"municipalities">,
 	});
+
+	// Fetch user if authenticated
+	const user = useQuery(
+		api.functions.users.queries.getByWorkosUserId,
+		auth?.user ? { workosUserId: auth.user.id } : "skip",
+	);
+
+	// Check if user is subscribed to this municipality
+	const existingSubscription = useQuery(
+		api.functions.subscriptions.queries.getForMunicipality,
+		user
+			? {
+					userId: user._id,
+					municipalityId: municipalityId as Id<"municipalities">,
+				}
+			: "skip",
+	);
+
+	// Get subscription count for limit checking
+	const subscriptionCount = useQuery(
+		api.functions.subscriptions.queries.countByUser,
+		user ? { userId: user._id } : "skip",
+	);
+
+	// Subscription limits by tier
+	const subscriptionLimit = user?.tier === "pro" ? Infinity : 5;
+	const canSubscribe =
+		!existingSubscription &&
+		(subscriptionCount?.total ?? 0) < subscriptionLimit;
 
 	// Fetch meeting types available for this municipality
 	const meetingTypes = useQuery(
@@ -312,10 +349,40 @@ function MunicipalityDetailPage() {
 										</Button>
 									</a>
 								)}
-								<Button size="sm">
-									<Bell className="h-4 w-4 mr-2" />
-									Subscribe
-								</Button>
+								{!auth?.user ? (
+									// Not logged in - show sign in button
+									<a href={signInUrl}>
+										<Button size="sm">
+											<Bell className="h-4 w-4 mr-2" />
+											Sign in to Subscribe
+										</Button>
+									</a>
+								) : existingSubscription ? (
+									// Already subscribed - show subscribed badge with edit option
+									<Button
+										size="sm"
+										variant="outline"
+										onClick={() => setShowSubscribeModal(true)}
+										className="border-primary/50 text-primary hover:bg-primary/10"
+									>
+										<Check className="h-4 w-4 mr-2" />
+										Subscribed
+									</Button>
+								) : canSubscribe ? (
+									// Can subscribe - show subscribe button
+									<Button size="sm" onClick={() => setShowSubscribeModal(true)}>
+										<Bell className="h-4 w-4 mr-2" />
+										Subscribe
+									</Button>
+								) : (
+									// At limit - show upgrade prompt
+									<a href="/pricing">
+										<Button size="sm" variant="outline">
+											<BellOff className="h-4 w-4 mr-2" />
+											Upgrade for More
+										</Button>
+									</a>
+								)}
 							</div>
 						</div>
 					</motion.div>
@@ -464,6 +531,18 @@ function MunicipalityDetailPage() {
 					</motion.div>
 				)}
 			</div>
+
+			{/* Subscription Modal */}
+			{user && municipality && (
+				<SubscriptionModal
+					open={showSubscribeModal}
+					onOpenChange={setShowSubscribeModal}
+					municipalityId={municipalityId as Id<"municipalities">}
+					municipalityName={municipality.name}
+					userId={user._id}
+					existingSubscription={existingSubscription ?? null}
+				/>
+			)}
 		</div>
 	);
 }

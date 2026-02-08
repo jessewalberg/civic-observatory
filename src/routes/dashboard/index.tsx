@@ -1,8 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMutation, useQuery } from "convex/react";
-import { Bell, Building2, CheckCheck, Clock, Plus } from "lucide-react";
+import { useAction, useMutation, useQuery } from "convex/react";
+import {
+	Bell,
+	Building2,
+	CheckCheck,
+	Clock,
+	CreditCard,
+	Plus,
+	Sparkles,
+} from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { getAuth, getSignInUrl } from "@/authkit/serverFunctions";
 import { DashboardSkeleton } from "@/components/skeletons";
 import { UsageWidget } from "@/components/UsageWidget";
@@ -189,6 +198,12 @@ function DashboardContent({ workosUserId }: { workosUserId: string }) {
 						<UsageWidget workosUserId={workosUserId} />
 					</div>
 
+					{/* Billing Card */}
+					<BillingCard
+						workosUserId={workosUserId}
+						tier={user.tier}
+					/>
+
 					{/* Feed */}
 					<Card>
 						<div className="p-4 border-b border-border flex items-center justify-between">
@@ -373,6 +388,96 @@ function FeedItem({
 				</div>
 			</div>
 		</a>
+	);
+}
+
+function BillingCard({
+	workosUserId,
+	tier,
+}: {
+	workosUserId: string;
+	tier: string;
+}) {
+	const [isLoading, setIsLoading] = useState(false);
+	const createPortalSession = useAction(
+		api.functions.stripe.actions.createPortalSession,
+	);
+
+	const handleManageBilling = async () => {
+		setIsLoading(true);
+		try {
+			const { url } = await createPortalSession({ workosUserId });
+			if (url) {
+				window.location.href = url;
+			}
+		} catch (error) {
+			console.error("Failed to open billing portal:", error);
+			toast.error("Failed to open billing portal. Please try again.");
+			setIsLoading(false);
+		}
+	};
+
+	if (tier === "pro") {
+		return (
+			<Card className="p-4 mb-8 bg-primary/5 border-primary/20">
+				<div className="flex items-center justify-between">
+					<div className="flex items-center gap-3">
+						<div className="rounded-full bg-primary/10 p-2">
+							<CreditCard className="h-5 w-5 text-primary" />
+						</div>
+						<div>
+							<div className="flex items-center gap-2">
+								<h3 className="font-display font-semibold text-foreground">
+									Pro Plan
+								</h3>
+								<Badge className="bg-primary text-primary-foreground text-xs">
+									Active
+								</Badge>
+							</div>
+							<p className="text-sm text-muted-foreground">
+								Manage your subscription, payment method, and invoices
+							</p>
+						</div>
+					</div>
+					<LoadingButton
+						variant="outline"
+						onClick={handleManageBilling}
+						loading={isLoading}
+						loadingText="Opening..."
+					>
+						<CreditCard className="h-4 w-4 mr-2" />
+						Manage Billing
+					</LoadingButton>
+				</div>
+			</Card>
+		);
+	}
+
+	// Free tier - show upgrade prompt
+	return (
+		<Card className="p-4 mb-8 border-dashed">
+			<div className="flex items-center justify-between">
+				<div className="flex items-center gap-3">
+					<div className="rounded-full bg-muted p-2">
+						<Sparkles className="h-5 w-5 text-muted-foreground" />
+					</div>
+					<div>
+						<h3 className="font-display font-semibold text-foreground">
+							Free Plan
+						</h3>
+						<p className="text-sm text-muted-foreground">
+							Upgrade to Pro for unlimited access and immediate alerts
+						</p>
+					</div>
+				</div>
+				<a href="/pricing">
+					<Button>
+						<Sparkles className="h-4 w-4 mr-2" />
+						Upgrade to Pro
+					</Button>
+				</a>
+			</div>
+		</Card>
 	);
 }
 

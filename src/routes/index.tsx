@@ -21,7 +21,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CompactVoteDisplay } from "@/components/VoteDisplay";
-import { Route as RootRoute } from "./__root";
 
 export const Route = createFileRoute("/")({
 	component: LandingPage,
@@ -166,8 +165,6 @@ const audiences = [
 ];
 
 function LandingPage() {
-	const { auth, signInUrl } = RootRoute.useLoaderData();
-	const user = auth.user;
 
 	return (
 		<div className="min-h-screen bg-background text-foreground overflow-hidden">
@@ -257,32 +254,23 @@ function LandingPage() {
 								animate={{ opacity: 1, y: 0 }}
 								transition={{ delay: 0.4 }}
 							>
-								{user ? (
-									<Button size="lg" className="gap-2 text-base px-8" asChild>
-										<Link to="/">
-											Go to Dashboard
-											<ArrowRight className="h-4 w-4" />
-										</Link>
-									</Button>
-								) : (
-									<Button size="lg" className="gap-2 text-base px-8" asChild>
-										<a href={signInUrl}>
-											Start Free
-											<ArrowRight className="h-4 w-4" />
-										</a>
-									</Button>
-								)}
-								<Button
-									size="lg"
-									variant="outline"
-									className="gap-2 text-base"
-									asChild
-								>
-									<Link to="/">
-										Browse Meetings
-										<ChevronRight className="h-4 w-4" />
-									</Link>
-								</Button>
+								<Button size="lg" className="gap-2 text-base px-8" asChild>
+								<Link to="/explore">
+									Explore Meetings
+									<ArrowRight className="h-4 w-4" />
+								</Link>
+							</Button>
+							<Button
+								size="lg"
+								variant="outline"
+								className="gap-2 text-base"
+								asChild
+							>
+								<Link to="/pricing" search={{ success: false, canceled: false }}>
+									View Pricing
+									<ChevronRight className="h-4 w-4" />
+								</Link>
+							</Button>
 							</motion.div>
 
 							<motion.div
@@ -374,9 +362,12 @@ function LandingPage() {
 											variant="ghost"
 											size="sm"
 											className="text-primary gap-1"
+											asChild
 										>
-											View all meetings
-											<ArrowRight className="h-3 w-3" />
+											<Link to="/explore">
+												View all meetings
+												<ArrowRight className="h-3 w-3" />
+											</Link>
 										</Button>
 									</div>
 								</CardContent>
@@ -416,6 +407,7 @@ function LandingPage() {
 									viewport={{ once: true }}
 									transition={{ delay: index * 0.1 }}
 								>
+									<Link to="/explore" className="block h-full">
 									<Card className="h-full border-border/50 bg-card/80 backdrop-blur hover:bg-card hover:border-border transition-all duration-300 group cursor-pointer">
 										<CardHeader className="pb-3">
 											<div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
@@ -457,6 +449,7 @@ function LandingPage() {
 											/>
 										</CardContent>
 									</Card>
+									</Link>
 								</motion.div>
 							))}
 						</div>
@@ -467,15 +460,17 @@ function LandingPage() {
 							whileInView={{ opacity: 1 }}
 							viewport={{ once: true }}
 						>
-							<Button variant="outline" size="lg" className="gap-2">
-								Explore All Municipalities
-								<ArrowRight className="h-4 w-4" />
+							<Button variant="outline" size="lg" className="gap-2" asChild>
+								<Link to="/explore">
+									Explore All Municipalities
+									<ArrowRight className="h-4 w-4" />
+								</Link>
 							</Button>
 						</motion.div>
 					</div>
 				</section>
 
-				{/* How It Works */}
+				{/* Features Grid */}
 				<section className="mx-auto max-w-7xl px-6 py-24">
 					<motion.div
 						className="text-center mb-16"
@@ -484,8 +479,7 @@ function LandingPage() {
 						viewport={{ once: true }}
 					>
 						<h2 className="text-3xl md:text-4xl font-semibold mb-4">
-							From boring to <span className="text-primary">briefed</span> in
-							three steps
+							Your Local Government, <span className="text-primary">Summarized</span>
 						</h2>
 						<p className="text-muted-foreground text-lg max-w-2xl mx-auto">
 							No more skimming 200-page agendas or watching 4-hour recordings.
@@ -493,55 +487,57 @@ function LandingPage() {
 						</p>
 					</motion.div>
 
-					<div className="grid gap-8 md:grid-cols-3">
+					<div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
 						{[
 							{
-								step: "01",
-								title: "Choose Your Interests",
+								title: "Find",
 								description:
-									"Select municipalities, topics, and meeting types. Follow zoning in your neighborhood or education across your state.",
-								icon: FileText,
+									"Discover municipalities and meeting types that matter to you. From city councils to school boards.",
+								icon: MapPin,
+								color: "text-blue-400",
+								bg: "bg-blue-500/10",
 							},
 							{
-								step: "02",
-								title: "AI Does the Heavy Lifting",
+								title: "Summarize",
 								description:
-									"Our AI reads every agenda, transcript, and minutes. It extracts decisions, votes, public comments, and action items.",
+									"AI reads every agenda, transcript, and minutes. Get key decisions, votes, and action items.",
 								icon: Zap,
+								color: "text-primary",
+								bg: "bg-primary/10",
 							},
 							{
-								step: "03",
-								title: "Stay Informed, Effortlessly",
+								title: "Browse",
 								description:
-									"Get email digests, browse the archive, or set up instant alerts. Democracy made accessible.",
+									"Search by topic, date, or municipality. Filter to find exactly what you're looking for.",
+								icon: FileText,
+								color: "text-emerald-400",
+								bg: "bg-emerald-500/10",
+							},
+							{
+								title: "Alert",
+								description:
+									"Get notified when topics you care about are discussed. Instant or daily digest options.",
 								icon: Bell,
+								color: "text-amber-400",
+								bg: "bg-amber-500/10",
 							},
 						].map((item, index) => (
 							<motion.div
-								key={item.step}
-								className="relative"
+								key={item.title}
 								initial={{ opacity: 0, y: 30 }}
 								whileInView={{ opacity: 1, y: 0 }}
 								viewport={{ once: true }}
-								transition={{ delay: index * 0.15 }}
+								transition={{ delay: index * 0.1 }}
 							>
-								{index < 2 && (
-									<div className="hidden md:block absolute top-16 left-full w-full h-px bg-gradient-to-r from-border via-border to-transparent -translate-x-8 z-0" />
-								)}
-								<Card className="relative z-10 h-full border-border/50 bg-gradient-to-b from-card to-card/50 hover:border-primary/30 transition-colors">
+								<Card className="h-full border-border/50 bg-gradient-to-b from-card to-card/50 hover:border-primary/30 transition-colors">
 									<CardHeader>
-										<div className="flex items-center gap-4 mb-2">
-											<span className="font-mono text-4xl font-bold text-primary/20">
-												{item.step}
-											</span>
-											<div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center">
-												<item.icon className="h-6 w-6 text-primary" />
-											</div>
+										<div className={`h-12 w-12 rounded-xl ${item.bg} flex items-center justify-center mb-3`}>
+											<item.icon className={`h-6 w-6 ${item.color}`} />
 										</div>
 										<CardTitle className="text-xl">{item.title}</CardTitle>
 									</CardHeader>
 									<CardContent>
-										<p className="text-muted-foreground">{item.description}</p>
+										<p className="text-muted-foreground text-sm">{item.description}</p>
 									</CardContent>
 								</Card>
 							</motion.div>
@@ -633,27 +629,21 @@ function LandingPage() {
 									community.
 								</p>
 								<div className="flex flex-wrap justify-center gap-4">
-									{user ? (
-										<Button size="lg" className="gap-2 text-base px-10" asChild>
-											<Link to="/">
-												Go to Dashboard
-												<ArrowRight className="h-4 w-4" />
-											</Link>
-										</Button>
-									) : (
-										<Button size="lg" className="gap-2 text-base px-10" asChild>
-											<a href={signInUrl}>
-												Get Started Free
-												<ArrowRight className="h-4 w-4" />
-											</a>
-										</Button>
-									)}
+									<Button size="lg" className="gap-2 text-base px-10" asChild>
+										<Link to="/explore">
+											Explore Meetings
+											<ArrowRight className="h-4 w-4" />
+										</Link>
+									</Button>
 									<Button
 										size="lg"
 										variant="outline"
 										className="gap-2 text-base"
+										asChild
 									>
-										See Pricing
+										<Link to="/pricing" search={{ success: false, canceled: false }}>
+											View Pricing
+										</Link>
 									</Button>
 								</div>
 								<p className="text-sm text-muted-foreground mt-6">
@@ -674,29 +664,24 @@ function LandingPage() {
 							</div>
 							<div className="flex items-center gap-8 text-sm text-muted-foreground">
 								<Link
-									to="/"
+									to="/explore"
 									className="hover:text-foreground transition-colors"
 								>
-									About
+									Explore
 								</Link>
 								<Link
-									to="/"
+									to="/pricing"
+									search={{ success: false, canceled: false }}
 									className="hover:text-foreground transition-colors"
 								>
 									Pricing
 								</Link>
-								<Link
-									to="/"
-									className="hover:text-foreground transition-colors"
-								>
+								<span className="hover:text-foreground transition-colors cursor-default">
 									Privacy
-								</Link>
-								<Link
-									to="/"
-									className="hover:text-foreground transition-colors"
-								>
+								</span>
+								<span className="hover:text-foreground transition-colors cursor-default">
 									Terms
-								</Link>
+								</span>
 							</div>
 							<p className="text-sm text-muted-foreground">
 								© {new Date().getFullYear()} Civic Pulse. All rights reserved.

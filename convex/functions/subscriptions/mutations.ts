@@ -58,6 +58,13 @@ export const create = mutation({
 			throw new Error("Municipality not found");
 		}
 
+		// Check if user can use immediate alerts (Pro only)
+		if (args.alertFrequency === "immediate" && tier !== "pro") {
+			throw new Error(
+				"Immediate alerts are only available for Pro users. Choose daily or weekly frequency.",
+			);
+		}
+
 		// Create subscription
 		const subscriptionId = await ctx.db.insert("subscriptions", {
 			userId: args.userId,

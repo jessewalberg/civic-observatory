@@ -4,6 +4,7 @@ import { useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import {
 	Dialog,
 	DialogContent,
@@ -65,6 +66,8 @@ interface Subscription {
 	municipalityId: Id<"municipalities">;
 	topicFilters?: string[];
 	meetingTypes?: string[];
+	keywordsInclude?: string[];
+	keywordsExclude?: string[];
 	alertFrequency: "immediate" | "daily" | "weekly";
 	emailEnabled: boolean;
 	isActive: boolean;
@@ -99,6 +102,8 @@ export function SubscriptionModal({
 		"immediate" | "daily" | "weekly"
 	>("daily");
 	const [emailEnabled, setEmailEnabled] = useState(true);
+	const [keywordsInclude, setKeywordsInclude] = useState("");
+	const [keywordsExclude, setKeywordsExclude] = useState("");
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [isDeleting, setIsDeleting] = useState(false);
 
@@ -124,12 +129,16 @@ export function SubscriptionModal({
 			setSelectedMeetingTypes(existingSubscription.meetingTypes ?? []);
 			setAlertFrequency(existingSubscription.alertFrequency);
 			setEmailEnabled(existingSubscription.emailEnabled);
+			setKeywordsInclude(existingSubscription.keywordsInclude?.join(", ") ?? "");
+			setKeywordsExclude(existingSubscription.keywordsExclude?.join(", ") ?? "");
 		} else {
 			// Reset to defaults for new subscription
 			setSelectedTopics([]);
 			setSelectedMeetingTypes([]);
 			setAlertFrequency("daily");
 			setEmailEnabled(true);
+			setKeywordsInclude("");
+			setKeywordsExclude("");
 		}
 	}, [existingSubscription]);
 
@@ -145,9 +154,20 @@ export function SubscriptionModal({
 		);
 	};
 
+	// Parse comma-separated keywords into array
+	const parseKeywords = (input: string): string[] => {
+		return input
+			.split(",")
+			.map((k) => k.trim())
+			.filter((k) => k.length > 0);
+	};
+
 	const handleSave = async () => {
 		setIsSubmitting(true);
 		try {
+			const parsedInclude = parseKeywords(keywordsInclude);
+			const parsedExclude = parseKeywords(keywordsExclude);
+
 			if (existingSubscription) {
 				await updateSubscription({
 					subscriptionId: existingSubscription._id,
@@ -155,6 +175,8 @@ export function SubscriptionModal({
 					topicFilters: selectedTopics.length > 0 ? selectedTopics : undefined,
 					meetingTypes:
 						selectedMeetingTypes.length > 0 ? selectedMeetingTypes : undefined,
+					keywordsInclude: parsedInclude.length > 0 ? parsedInclude : undefined,
+					keywordsExclude: parsedExclude.length > 0 ? parsedExclude : undefined,
 					alertFrequency,
 					emailEnabled,
 				});
@@ -166,6 +188,8 @@ export function SubscriptionModal({
 					topicFilters: selectedTopics.length > 0 ? selectedTopics : undefined,
 					meetingTypes:
 						selectedMeetingTypes.length > 0 ? selectedMeetingTypes : undefined,
+					keywordsInclude: parsedInclude.length > 0 ? parsedInclude : undefined,
+					keywordsExclude: parsedExclude.length > 0 ? parsedExclude : undefined,
 					alertFrequency,
 					emailEnabled,
 				});
@@ -311,8 +335,59 @@ export function SubscriptionModal({
 						</div>
 					</div>
 
+					{/* Keywords */}
+					<div className="space-y-3">
+						<Label className="text-sm font-medium">
+							Keywords
+							<span className="text-muted-foreground font-normal ml-2">
+								(optional)
+							</span>
+						</Label>
+						<div className="space-y-3">
+							<div>
+								<Label
+									htmlFor={`${baseId}-keywords-include`}
+									className="text-xs text-muted-foreground"
+								>
+									Include (comma-separated)
+								</Label>
+								<Input
+									id={`${baseId}-keywords-include`}
+									placeholder="e.g., rezoning, budget, parks"
+									value={keywordsInclude}
+									onChange={(e) => setKeywordsInclude(e.target.value)}
+									className="mt-1"
+								/>
+								<p className="text-xs text-muted-foreground mt-1">
+									Only alert if these words appear in the summary
+								</p>
+							</div>
+							<div>
+								<Label
+									htmlFor={`${baseId}-keywords-exclude`}
+									className="text-xs text-muted-foreground"
+								>
+									Exclude (comma-separated)
+								</Label>
+								<Input
+									id={`${baseId}-keywords-exclude`}
+									placeholder="e.g., routine, administrative"
+									value={keywordsExclude}
+									onChange={(e) => setKeywordsExclude(e.target.value)}
+									className="mt-1"
+								/>
+								<p className="text-xs text-muted-foreground mt-1">
+									Skip alerts if these words appear in the summary
+								</p>
+							</div>
+						</div>
+					</div>
+
 					{/* Email Toggle */}
-					<label htmlFor={`${baseId}-email-notifications`} className="flex items-center justify-between p-3 rounded-md border border-border">
+					<label
+						htmlFor={`${baseId}-email-notifications`}
+						className="flex items-center justify-between p-3 rounded-md border border-border"
+					>
 						<div>
 							<p className="text-sm font-medium">Email Notifications</p>
 							<p className="text-xs text-muted-foreground">

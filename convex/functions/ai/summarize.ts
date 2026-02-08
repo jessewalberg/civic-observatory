@@ -80,13 +80,13 @@ export const summarizeMeeting = internalAction({
 				content: meeting.rawContent,
 			});
 
-			// 4. Call Claude API
-			const apiKey = process.env.ANTHROPIC_API_KEY;
+			// 4. Call OpenRouter API
+			const apiKey = process.env.OPENROUTER_API_KEY;
 			if (!apiKey) {
-				throw new Error("ANTHROPIC_API_KEY is not configured");
+				throw new Error("OPENROUTER_API_KEY is not configured");
 			}
 
-			const response = await callClaudeAPI(apiKey, prompt);
+			const response = await callOpenRouterAPI(apiKey, prompt);
 
 			// 5. Parse and validate the response
 			const summary = parseAndValidateSummary(response);
@@ -98,7 +98,7 @@ export const summarizeMeeting = internalAction({
 				meetingId: args.meetingId,
 				summary: {
 					...summary,
-					modelUsed: "claude-sonnet-4-20250514",
+					modelUsed: "anthropic/claude-sonnet-4",
 					promptVersion: "1.0",
 					processingTimeMs,
 				},
@@ -312,44 +312,51 @@ RULES:
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Helper: Call Claude API
+// Helper: Call OpenRouter API
 // ═══════════════════════════════════════════════════════════════
-async function callClaudeAPI(
+async function callOpenRouterAPI(
 	apiKey: string,
 	prompt: { system: string; user: string },
 ): Promise<string> {
-	const response = await fetch("https://api.anthropic.com/v1/messages", {
-		method: "POST",
-		headers: {
-			"Content-Type": "application/json",
-			"x-api-key": apiKey,
-			"anthropic-version": "2023-06-01",
+	const response = await fetch(
+		"https://openrouter.ai/api/v1/chat/completions",
+		{
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				Authorization: `Bearer ${apiKey}`,
+				"HTTP-Referer": "https://civicpulse.io",
+				"X-Title": "Civic Pulse",
+			},
+			body: JSON.stringify({
+				model: "anthropic/claude-sonnet-4",
+				max_tokens: 4096,
+				messages: [
+					{
+						role: "system",
+						content: prompt.system,
+					},
+					{
+						role: "user",
+						content: prompt.user,
+					},
+				],
+			}),
 		},
-		body: JSON.stringify({
-			model: "claude-sonnet-4-20250514",
-			max_tokens: 4096,
-			system: prompt.system,
-			messages: [
-				{
-					role: "user",
-					content: prompt.user,
-				},
-			],
-		}),
-	});
+	);
 
 	if (!response.ok) {
 		const errorText = await response.text();
-		throw new Error(`Claude API error (${response.status}): ${errorText}`);
+		throw new Error(`OpenRouter API error (${response.status}): ${errorText}`);
 	}
 
 	const data = await response.json();
 
-	if (!data.content || !data.content[0] || data.content[0].type !== "text") {
-		throw new Error("Invalid response from Claude API");
+	if (!data.choices || !data.choices[0] || !data.choices[0].message?.content) {
+		throw new Error("Invalid response from OpenRouter API");
 	}
 
-	return data.content[0].text;
+	return data.choices[0].message.content;
 }
 
 // ═══════════════════════════════════════════════════════════════

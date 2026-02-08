@@ -35,7 +35,11 @@ export const Route = createFileRoute("/api/webhooks/stripe")({
 				}
 
 				try {
-					event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+					event = stripe.webhooks.constructEvent(
+						body,
+						signature,
+						webhookSecret,
+					);
 				} catch (err) {
 					console.error("Webhook signature verification failed:", err);
 					return new Response(JSON.stringify({ error: "Invalid signature" }), {
@@ -128,6 +132,23 @@ export const Route = createFileRoute("/api/webhooks/stripe")({
 							);
 
 							console.log("Subscription deleted:", subscription.id);
+							break;
+						}
+
+						case "invoice.payment_failed": {
+							const invoice = event.data.object as Stripe.Invoice;
+
+							console.error(
+								"Payment failed for customer:",
+								invoice.customer,
+								"Invoice:",
+								invoice.id,
+								"Attempt:",
+								invoice.attempt_count,
+							);
+
+							// The subscription status will be updated via customer.subscription.updated
+							// which handles the transition to past_due or canceled status
 							break;
 						}
 

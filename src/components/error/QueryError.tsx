@@ -36,7 +36,11 @@ export function QueryError({
 				<Icon className="h-4 w-4 text-red-500" />
 				<span>{message}</span>
 				{onRetry && (
-					<button type="button" onClick={onRetry} className="text-primary hover:underline">
+					<button
+						type="button"
+						onClick={onRetry}
+						className="text-primary hover:underline"
+					>
 						Retry
 					</button>
 				)}

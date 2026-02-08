@@ -13,7 +13,7 @@ Civic Pulse is a SaaS platform that automatically scrapes meeting documents from
 | Authentication | WorkOS AuthKit | Hosted UI, social logins, free to 1M MAUs |
 | Hosting | Cloudflare Workers | Edge deployment via Wrangler |
 | UI Components | shadcn/ui + Tailwind v4 | CSS-first config, all components from shadcn |
-| AI | Claude API (Anthropic) | Meeting summarization via Convex actions |
+| AI | OpenRouter (Claude) | Meeting summarization via Convex actions |
 | Scraping | Convex Actions + Cheerio | Serverless, runs in Convex runtime |
 | Payments | Stripe | Subscriptions, webhooks, customer portal |
 | Email | Resend | Alert notification emails |
@@ -179,7 +179,7 @@ This is the sequence of work. Do NOT skip ahead. Each phase corresponds to a pro
 21. Upload page with drag-and-drop file input
 22. File storage via Convex
 23. PDF text extraction action
-24. AI summarization action (Claude API)
+24. AI summarization action (OpenRouter)
 25. Processing status UI (pending → processing → complete/failed)
 26. Usage tracking for upload limits
 
@@ -246,8 +246,8 @@ WORKOS_API_KEY=sk_test_...
 WORKOS_REDIRECT_URI=http://localhost:3000/api/auth/callback
 WORKOS_COOKIE_PASSWORD=32-character-minimum-secret
 
-# Anthropic Claude
-ANTHROPIC_API_KEY=sk-ant-...
+# OpenRouter (AI API routing)
+OPENROUTER_API_KEY=sk-or-...
 
 # Resend
 RESEND_API_KEY=re_...

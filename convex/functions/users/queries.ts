@@ -64,18 +64,56 @@ export const isAdmin = query({
 // Get all users (admin only)
 export const listAll = query({
 	args: {
+		requestingWorkosUserId: v.string(),
 		limit: v.optional(v.number()),
+		offset: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		const limit = args.limit ?? 100;
-		return await ctx.db.query("users").order("desc").take(limit);
+		// Check if requester is admin
+		const caller = await ctx.db
+			.query("users")
+			.withIndex("by_workos_id", (q) =>
+				q.eq("workosUserId", args.requestingWorkosUserId),
+			)
+			.first();
+
+		if (!caller?.isAdmin) {
+			return [];
+		}
+
+		const limit = args.limit ?? 50;
+		const allUsers = await ctx.db.query("users").order("desc").collect();
+
+		// Apply offset and limit for pagination
+		const offset = args.offset ?? 0;
+		const paginatedUsers = allUsers.slice(offset, offset + limit);
+
+		return {
+			users: paginatedUsers,
+			total: allUsers.length,
+			hasMore: offset + limit < allUsers.length,
+		};
 	},
 });
 
-// Get admin stats
+// Get admin stats (admin only)
 export const getAdminStats = query({
-	args: {},
-	handler: async (ctx) => {
+	args: {
+		requestingWorkosUserId: v.string(),
+	},
+	handler: async (ctx, args) => {
+		// Check if requester is admin
+		const caller = await ctx.db
+			.query("users")
+			.withIndex("by_workos_id", (q) =>
+				q.eq("workosUserId", args.requestingWorkosUserId),
+			)
+			.first();
+
+		if (!caller?.isAdmin) {
+			return null;
+		}
+
 		const users = await ctx.db.query("users").collect();
 
 		const totalUsers = users.length;
@@ -90,6 +128,15 @@ export const getAdminStats = query({
 			(u) => u.lastLoginAt > weekAgo,
 		).length;
 
+		// Users in last 30 days
+		const monthAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+		const newUsersThisMonth = users.filter(
+			(u) => u.createdAt > monthAgo,
+		).length;
+		const activeUsersThisMonth = users.filter(
+			(u) => u.lastLoginAt > monthAgo,
+		).length;
+
 		return {
 			totalUsers,
 			freeUsers,
@@ -97,6 +144,8 @@ export const getAdminStats = query({
 			adminUsers,
 			newUsersThisWeek,
 			activeUsersThisWeek,
+			newUsersThisMonth,
+			activeUsersThisMonth,
 		};
 	},
 });

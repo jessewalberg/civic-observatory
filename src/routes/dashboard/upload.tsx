@@ -6,6 +6,7 @@ import {
 	CheckCircle2,
 	FileText,
 	FileUp,
+	Loader2,
 	Upload,
 	X,
 } from "lucide-react";
@@ -19,6 +20,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LoadingButton } from "@/components/ui/loading-button";
+import { Progress } from "@/components/ui/progress";
 import {
 	Select,
 	SelectContent,
@@ -72,6 +74,10 @@ function UploadPage() {
 	const [file, setFile] = useState<File | null>(null);
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [uploadMode, setUploadMode] = useState<"file" | "paste">("file");
+	const [uploadProgress, setUploadProgress] = useState(0);
+	const [uploadStatus, setUploadStatus] = useState<
+		"idle" | "uploading" | "processing" | "complete"
+	>("idle");
 	const fileInputRef = useRef<HTMLInputElement>(null);
 
 	// Queries
@@ -88,7 +94,9 @@ function UploadPage() {
 
 	// Mutations
 	const createMeeting = useMutation(api.functions.meetings.mutations.create);
-	const recordUsage = useMutation(api.functions.usage.mutations.recordUsage);
+	const generateUploadUrl = useMutation(
+		api.functions.storage.mutations.generateUploadUrl,
+	);
 
 	// Auth check
 	if (!auth.user) {
@@ -133,8 +141,8 @@ function UploadPage() {
 		);
 	}
 
-	// File handling
-	const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+	// File handling - validation only, extraction happens server-side
+	const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 		const selectedFile = e.target.files?.[0];
 		if (!selectedFile) return;
 
@@ -157,19 +165,12 @@ function UploadPage() {
 		}
 
 		setFile(selectedFile);
-
-		// Extract text from file
-		try {
-			const text = await extractTextFromFile(selectedFile);
-			setContent(text);
-		} catch (error) {
-			toast.error("Failed to extract text from file");
-			console.error("Text extraction error:", error);
-		}
 	};
 
-	const handleDrop = async (e: React.DragEvent) => {
+	const handleDrop = (e: React.DragEvent) => {
 		e.preventDefault();
+		if (isSubmitting) return;
+
 		const droppedFile = e.dataTransfer.files[0];
 		if (droppedFile) {
 			const input = fileInputRef.current;
@@ -187,50 +188,115 @@ function UploadPage() {
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
 
-		if (!municipalityId || !title || !meetingType || !meetingDate || !content) {
+		if (!municipalityId || !title || !meetingType || !meetingDate) {
 			toast.error("Please fill in all required fields");
 			return;
 		}
 
-		if (content.length < 100) {
-			toast.error("Content is too short. Please provide more text.");
-			return;
-		}
-
-		if (content.length > 50000) {
-			toast.error("Content is too long. Maximum is 50,000 characters.");
+		// For paste mode, we need content; for file mode, we need a file
+		if (uploadMode === "paste") {
+			if (!content) {
+				toast.error("Please paste meeting content");
+				return;
+			}
+			if (content.length < 100) {
+				toast.error("Content is too short. Please provide more text.");
+				return;
+			}
+			if (content.length > 50000) {
+				toast.error("Content is too long. Maximum is 50,000 characters.");
+				return;
+			}
+		} else if (!file) {
+			toast.error("Please select a file to upload");
 			return;
 		}
 
 		setIsSubmitting(true);
+		setUploadProgress(0);
+		setUploadStatus("idle");
 
 		try {
+			let documentStorageId: Id<"_storage"> | undefined;
+
+			// If we have a file, upload it to Convex storage
+			if (file && uploadMode === "file") {
+				setUploadStatus("uploading");
+
+				// Step 1: Get upload URL from Convex
+				const uploadUrl = await generateUploadUrl();
+
+				// Step 2: Upload file with progress tracking
+				documentStorageId = await uploadFileWithProgress(file, uploadUrl);
+				setUploadProgress(100);
+				setUploadStatus("processing");
+			}
+
+			// Step 3: Create the meeting record
 			const meetingId = await createMeeting({
 				municipalityId: municipalityId as Id<"municipalities">,
 				title,
 				meetingType: meetingType as MeetingType,
 				meetingDate: new Date(meetingDate).getTime(),
-				rawContent: content,
-				workosUserId: auth.user?.id,
+				// Use rawContent for paste mode, documentStorageId for file mode
+				rawContent: uploadMode === "paste" ? content : undefined,
+				documentStorageId,
+				workosUserId: auth.user?.id ?? "",
 			});
 
-			// Record usage
-			await recordUsage({
-				workosUserId: auth.user?.id,
-				action: "meeting_upload",
-				windowType: "month",
-			});
-
-			toast.success("Meeting uploaded successfully!");
+			setUploadStatus("complete");
+			toast.success("Meeting uploaded! AI summarization started.");
 			// Use window.location for navigation until route tree is regenerated
 			window.location.href = `/meeting/${meetingId}`;
 		} catch (error) {
 			const message =
 				error instanceof Error ? error.message : "Failed to upload meeting";
 			toast.error(message);
+			setUploadStatus("idle");
 		} finally {
 			setIsSubmitting(false);
 		}
+	};
+
+	// Upload file to Convex storage with progress tracking
+	const uploadFileWithProgress = (
+		file: File,
+		uploadUrl: string,
+	): Promise<Id<"_storage">> => {
+		return new Promise((resolve, reject) => {
+			const xhr = new XMLHttpRequest();
+
+			xhr.upload.addEventListener("progress", (event) => {
+				if (event.lengthComputable) {
+					const percentComplete = Math.round((event.loaded / event.total) * 100);
+					setUploadProgress(percentComplete);
+				}
+			});
+
+			xhr.addEventListener("load", () => {
+				if (xhr.status >= 200 && xhr.status < 300) {
+					try {
+						const response = JSON.parse(xhr.responseText);
+						resolve(response.storageId as Id<"_storage">);
+					} catch {
+						reject(new Error("Invalid response from storage"));
+					}
+				} else {
+					reject(new Error(`Upload failed with status ${xhr.status}`));
+				}
+			});
+
+			xhr.addEventListener("error", () => {
+				reject(new Error("Upload failed"));
+			});
+
+			xhr.addEventListener("abort", () => {
+				reject(new Error("Upload cancelled"));
+			});
+
+			xhr.open("POST", uploadUrl);
+			xhr.send(file);
+		});
 	};
 
 	const clearFile = () => {
@@ -299,7 +365,10 @@ function UploadPage() {
 
 							{/* Title */}
 							<div className="space-y-2">
-								<Label htmlFor={`${formId}-title`} className="flex items-center gap-2">
+								<Label
+									htmlFor={`${formId}-title`}
+									className="flex items-center gap-2"
+								>
 									<FileText className="h-4 w-4" />
 									Meeting Title *
 								</Label>
@@ -315,7 +384,9 @@ function UploadPage() {
 							<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 								{/* Meeting Type */}
 								<div className="space-y-2">
-									<Label htmlFor={`${formId}-meetingType`}>Meeting Type *</Label>
+									<Label htmlFor={`${formId}-meetingType`}>
+										Meeting Type *
+									</Label>
 									<Select
 										value={meetingType}
 										onValueChange={(v) => setMeetingType(v as MeetingType)}
@@ -384,53 +455,100 @@ function UploadPage() {
 								</div>
 
 								{uploadMode === "file" ? (
-									<label
-										htmlFor={`${formId}-file-upload`}
-										onDrop={handleDrop}
-										onDragOver={(e) => e.preventDefault()}
-										className={cn(
-											"border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer block",
-											file
-												? "border-primary bg-primary/5"
-												: "border-border hover:border-primary/50",
-										)}
-									>
-										<input
-											ref={fileInputRef}
-											type="file"
-											accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
-											onChange={handleFileChange}
-											className="hidden"
-											id={`${formId}-file-upload`}
-										/>
+									<div className="space-y-3">
+										<label
+											htmlFor={`${formId}-file-upload`}
+											onDrop={handleDrop}
+											onDragOver={(e) => e.preventDefault()}
+											className={cn(
+												"border-2 border-dashed rounded-lg p-8 text-center transition-colors block",
+												isSubmitting
+													? "cursor-not-allowed opacity-60"
+													: "cursor-pointer",
+												file
+													? "border-primary bg-primary/5"
+													: "border-border hover:border-primary/50",
+											)}
+										>
+											<input
+												ref={fileInputRef}
+												type="file"
+												accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+												onChange={handleFileChange}
+												className="hidden"
+												id={`${formId}-file-upload`}
+												disabled={isSubmitting}
+											/>
 
-										{file ? (
-											<div className="flex items-center justify-center gap-3">
-												<CheckCircle2 className="h-5 w-5 text-primary" />
-												<span className="text-foreground">{file.name}</span>
-												<button
-													type="button"
-													onClick={(e) => {
-														e.preventDefault();
-														clearFile();
-													}}
-													className="p-1 hover:bg-muted rounded"
-												>
-													<X className="h-4 w-4 text-muted-foreground" />
-												</button>
-											</div>
-										) : (
-											<div className="cursor-pointer">
-												<FileUp className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-												<p className="text-foreground mb-1">
-													Drop a file here or click to upload
-												</p>
-												<p className="text-sm text-muted-foreground">
-													PDF, DOCX, or TXT (max 10MB)
-												</p>
-											</div>
+											{file ? (
+												<div className="flex items-center justify-center gap-3">
+													<CheckCircle2 className="h-5 w-5 text-primary" />
+													<span className="text-foreground">{file.name}</span>
+													<span className="text-sm text-muted-foreground">
+														({formatFileSize(file.size)})
+													</span>
+													{!isSubmitting && (
+														<button
+															type="button"
+															onClick={(e) => {
+																e.preventDefault();
+																clearFile();
+															}}
+															className="p-1 hover:bg-muted rounded"
+														>
+															<X className="h-4 w-4 text-muted-foreground" />
+														</button>
+													)}
+												</div>
+											) : (
+												<div className="cursor-pointer">
+													<FileUp className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+													<p className="text-foreground mb-1">
+														Drop a file here or click to upload
+													</p>
+													<p className="text-sm text-muted-foreground">
+														PDF, DOCX, or TXT (max 10MB)
+													</p>
+												</div>
+											)}
+										</label>
+
+										{/* Upload Progress */}
+										{isSubmitting && uploadStatus !== "idle" && (
+											<motion.div
+												initial={{ opacity: 0, height: 0 }}
+												animate={{ opacity: 1, height: "auto" }}
+												className="space-y-2"
+											>
+												<div className="flex items-center justify-between text-sm">
+													<span className="text-muted-foreground flex items-center gap-2">
+														{uploadStatus === "uploading" && (
+															<>
+																<Loader2 className="h-3 w-3 animate-spin" />
+																Uploading file...
+															</>
+														)}
+														{uploadStatus === "processing" && (
+															<>
+																<Loader2 className="h-3 w-3 animate-spin" />
+																Processing...
+															</>
+														)}
+														{uploadStatus === "complete" && (
+															<>
+																<CheckCircle2 className="h-3 w-3 text-primary" />
+																Complete!
+															</>
+														)}
+													</span>
+													<span className="font-mono text-foreground">
+														{uploadProgress}%
+													</span>
+												</div>
+												<Progress value={uploadProgress} className="h-2" />
+											</motion.div>
 										)}
-									</label>
+									</div>
 								) : (
 									<Textarea
 										value={content}
@@ -440,7 +558,7 @@ function UploadPage() {
 									/>
 								)}
 
-								{content && (
+								{uploadMode === "paste" && content && (
 									<p className="text-sm text-muted-foreground">
 										{content.length.toLocaleString()} characters
 										{content.length < 100 && (
@@ -465,13 +583,19 @@ function UploadPage() {
 								size="lg"
 								className="w-full"
 								loading={isSubmitting}
-								loadingText="Uploading..."
+								loadingText={
+									uploadStatus === "uploading"
+										? "Uploading file..."
+										: uploadStatus === "processing"
+											? "Creating meeting..."
+											: "Processing..."
+								}
 								disabled={
 									!municipalityId ||
 									!title ||
 									!meetingType ||
 									!meetingDate ||
-									!content
+									(uploadMode === "paste" ? !content : !file)
 								}
 							>
 								<Upload className="h-4 w-4 mr-2" />
@@ -486,81 +610,12 @@ function UploadPage() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Text extraction utilities
+// Utility functions
 // ═══════════════════════════════════════════════════════════════
-async function extractTextFromFile(file: File): Promise<string> {
-	const type = file.type;
-
-	if (type === "text/plain") {
-		return await file.text();
-	}
-
-	if (type === "application/pdf") {
-		return await extractTextFromPDF(file);
-	}
-
-	if (
-		type ===
-		"application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-	) {
-		return await extractTextFromDOCX(file);
-	}
-
-	throw new Error("Unsupported file type");
-}
-
-async function extractTextFromPDF(file: File): Promise<string> {
-	// Use PDF.js for client-side PDF text extraction
-	// For now, we'll use a simpler approach with FileReader
-	// In production, you'd want to use pdf.js or send to server
-
-	// Try to extract text using the browser's PDF capabilities
-	// This is a placeholder - proper PDF extraction requires pdf.js
-	const text = await file.text();
-
-	// If we get actual text content (some PDFs have embedded text)
-	if (text && text.length > 100 && !text.includes("%PDF")) {
-		return text;
-	}
-
-	// For now, throw an error suggesting text paste
-	throw new Error(
-		"PDF text extraction requires additional setup. Please paste the text content directly or use a TXT file.",
-	);
-}
-
-async function extractTextFromDOCX(file: File): Promise<string> {
-	// DOCX files are ZIP archives containing XML
-	// For proper extraction, you'd use a library like mammoth.js
-	// For now, we'll provide a fallback
-
-	try {
-		// Try using the File System Access API if available
-		const arrayBuffer = await file.arrayBuffer();
-
-		// DOCX is a ZIP file - we can try to extract the XML content
-		// This is a simplified approach that works for basic DOCX files
-		const decoder = new TextDecoder("utf-8");
-		const content = decoder.decode(arrayBuffer);
-
-		// Look for text content in the XML
-		const textMatches = content.match(/<w:t[^>]*>([^<]+)<\/w:t>/g);
-		if (textMatches) {
-			const text = textMatches
-				.map((match) => match.replace(/<[^>]+>/g, ""))
-				.join(" ")
-				.replace(/\s+/g, " ")
-				.trim();
-
-			if (text.length > 100) {
-				return text;
-			}
-		}
-	} catch {
-		// Extraction failed
-	}
-
-	throw new Error(
-		"DOCX text extraction requires additional setup. Please paste the text content directly or use a TXT file.",
-	);
+function formatFileSize(bytes: number): string {
+	if (bytes === 0) return "0 B";
+	const k = 1024;
+	const sizes = ["B", "KB", "MB", "GB"];
+	const i = Math.floor(Math.log(bytes) / Math.log(k));
+	return `${Number.parseFloat((bytes / k ** i).toFixed(1))} ${sizes[i]}`;
 }

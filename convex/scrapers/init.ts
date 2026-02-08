@@ -1,5 +1,6 @@
 "use node";
 
+import { civicplusScraper } from "./civicplus";
 import { genericScraper } from "./generic";
 import { granicusScraper } from "./granicus";
 import { registerScraper } from "./registry";
@@ -17,7 +18,7 @@ export function initializeScrapers(): void {
 
 	// Register platform scrapers
 	registerScraper(granicusScraper);
-	// registerScraper(civicPlusScraper); // TODO: Implement CivicPlus scraper
+	registerScraper(civicplusScraper);
 	registerScraper(genericScraper); // Fallback for custom sites
 
 	initialized = true;

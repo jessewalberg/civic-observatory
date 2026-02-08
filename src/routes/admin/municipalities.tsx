@@ -283,6 +283,7 @@ function MunicipalitiesContent({ workosUserId }: { workosUserId: string }) {
 		setIsSubmitting(true);
 		try {
 			await createMunicipality({
+				requestingWorkosUserId: workosUserId,
 				name: formData.name,
 				state: formData.state,
 				county: formData.county || undefined,
@@ -323,6 +324,7 @@ function MunicipalitiesContent({ workosUserId }: { workosUserId: string }) {
 		setIsSubmitting(true);
 		try {
 			await updateMunicipality({
+				requestingWorkosUserId: workosUserId,
 				id: editingId,
 				name: formData.name,
 				state: formData.state,
@@ -360,7 +362,10 @@ function MunicipalitiesContent({ workosUserId }: { workosUserId: string }) {
 
 		setIsSubmitting(true);
 		try {
-			await deleteMunicipality({ id: deleteConfirmId });
+			await deleteMunicipality({
+				requestingWorkosUserId: workosUserId,
+				id: deleteConfirmId,
+			});
 			toast.success("Municipality deleted");
 			setDeleteConfirmId(null);
 		} catch (error) {
@@ -374,7 +379,7 @@ function MunicipalitiesContent({ workosUserId }: { workosUserId: string }) {
 
 	const handleToggleActive = async (id: Id<"municipalities">) => {
 		try {
-			await toggleActive({ id });
+			await toggleActive({ requestingWorkosUserId: workosUserId, id });
 			toast.success("Status updated");
 		} catch (error) {
 			const message =
@@ -388,7 +393,11 @@ function MunicipalitiesContent({ workosUserId }: { workosUserId: string }) {
 		verified: boolean,
 	) => {
 		try {
-			await verifyMunicipality({ id, verified: !verified });
+			await verifyMunicipality({
+				requestingWorkosUserId: workosUserId,
+				id,
+				verified: !verified,
+			});
 			toast.success("Verification updated");
 		} catch (error) {
 			const message =
@@ -766,7 +775,9 @@ function MunicipalitiesContent({ workosUserId }: { workosUserId: string }) {
 						</div>
 
 						<div className="space-y-2">
-							<Label htmlFor={`${formId}-meetingsPageUrl`}>Meetings Page URL</Label>
+							<Label htmlFor={`${formId}-meetingsPageUrl`}>
+								Meetings Page URL
+							</Label>
 							<Input
 								id={`${formId}-meetingsPageUrl`}
 								type="url"
@@ -783,7 +794,9 @@ function MunicipalitiesContent({ workosUserId }: { workosUserId: string }) {
 
 						{formData.platform !== "manual" && (
 							<div className="space-y-2">
-								<Label htmlFor={`${formId}-frequencyHours`}>Scrape Frequency (hours)</Label>
+								<Label htmlFor={`${formId}-frequencyHours`}>
+									Scrape Frequency (hours)
+								</Label>
 								<Input
 									id={`${formId}-frequencyHours`}
 									type="number"

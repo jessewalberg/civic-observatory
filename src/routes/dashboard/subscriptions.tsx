@@ -404,6 +404,8 @@ interface Subscription {
 	municipalityId: Id<"municipalities">;
 	topicFilters?: string[];
 	meetingTypes?: string[];
+	keywordsInclude?: string[];
+	keywordsExclude?: string[];
 	alertFrequency: "immediate" | "daily" | "weekly";
 	emailEnabled: boolean;
 	isActive: boolean;

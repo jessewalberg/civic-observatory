@@ -69,7 +69,9 @@ function AdminContent({ workosUserId }: { workosUserId: string }) {
 	const isAdmin = useQuery(api.functions.users.queries.isAdmin, {
 		workosUserId,
 	});
-	const userStats = useQuery(api.functions.users.queries.getAdminStats, {});
+	const userStats = useQuery(api.functions.users.queries.getAdminStats, {
+		requestingWorkosUserId: workosUserId,
+	});
 	const scrapeStats = useQuery(api.functions.scrapeJobs.queries.getStats, {});
 	const municipalities = useQuery(
 		api.functions.municipalities.queries.list,

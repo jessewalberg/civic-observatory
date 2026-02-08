@@ -28,11 +28,28 @@ const scrapeStatusValidator = v.union(
 	v.literal("partial"),
 );
 
+// Helper to check admin status
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function requireAdmin(ctx: any, workosUserId: string) {
+	const caller = await ctx.db
+		.query("users")
+		.withIndex("by_workos_id", (q: { eq: (field: string, value: string) => unknown }) =>
+			q.eq("workosUserId", workosUserId),
+		)
+		.first();
+
+	if (!caller?.isAdmin) {
+		throw new Error("Admin access required");
+	}
+	return caller;
+}
+
 // ═══════════════════════════════════════════════════════════════
-// CREATE - Add a new municipality
+// CREATE - Add a new municipality (admin only)
 // ═══════════════════════════════════════════════════════════════
 export const create = mutation({
 	args: {
+		requestingWorkosUserId: v.string(),
 		name: v.string(),
 		state: v.string(),
 		county: v.optional(v.string()),
@@ -46,6 +63,9 @@ export const create = mutation({
 		isVerified: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
+		// Verify admin access
+		await requireAdmin(ctx, args.requestingWorkosUserId);
+
 		const now = Date.now();
 
 		const id = await ctx.db.insert("municipalities", {
@@ -69,10 +89,11 @@ export const create = mutation({
 });
 
 // ═══════════════════════════════════════════════════════════════
-// UPDATE - Modify municipality details
+// UPDATE - Modify municipality details (admin only)
 // ═══════════════════════════════════════════════════════════════
 export const update = mutation({
 	args: {
+		requestingWorkosUserId: v.string(),
 		id: v.id("municipalities"),
 		name: v.optional(v.string()),
 		state: v.optional(v.string()),
@@ -87,7 +108,10 @@ export const update = mutation({
 		isVerified: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
-		const { id, ...updates } = args;
+		// Verify admin access
+		await requireAdmin(ctx, args.requestingWorkosUserId);
+
+		const { id, requestingWorkosUserId: _, ...updates } = args;
 
 		const existing = await ctx.db.get(id);
 		if (!existing) {
@@ -153,9 +177,13 @@ export const updateScrapeStatus = mutation({
 // ═══════════════════════════════════════════════════════════════
 export const remove = mutation({
 	args: {
+		requestingWorkosUserId: v.string(),
 		id: v.id("municipalities"),
 	},
 	handler: async (ctx, args) => {
+		// Verify admin access
+		await requireAdmin(ctx, args.requestingWorkosUserId);
+
 		const existing = await ctx.db.get(args.id);
 		if (!existing) {
 			throw new Error("Municipality not found");
@@ -179,13 +207,17 @@ export const remove = mutation({
 });
 
 // ═══════════════════════════════════════════════════════════════
-// TOGGLE ACTIVE - Enable/disable a municipality
+// TOGGLE ACTIVE - Enable/disable a municipality (admin only)
 // ═══════════════════════════════════════════════════════════════
 export const toggleActive = mutation({
 	args: {
+		requestingWorkosUserId: v.string(),
 		id: v.id("municipalities"),
 	},
 	handler: async (ctx, args) => {
+		// Verify admin access
+		await requireAdmin(ctx, args.requestingWorkosUserId);
+
 		const existing = await ctx.db.get(args.id);
 		if (!existing) {
 			throw new Error("Municipality not found");
@@ -201,14 +233,18 @@ export const toggleActive = mutation({
 });
 
 // ═══════════════════════════════════════════════════════════════
-// VERIFY - Mark a municipality as verified
+// VERIFY - Mark a municipality as verified (admin only)
 // ═══════════════════════════════════════════════════════════════
 export const verify = mutation({
 	args: {
+		requestingWorkosUserId: v.string(),
 		id: v.id("municipalities"),
 		verified: v.boolean(),
 	},
 	handler: async (ctx, args) => {
+		// Verify admin access
+		await requireAdmin(ctx, args.requestingWorkosUserId);
+
 		const existing = await ctx.db.get(args.id);
 		if (!existing) {
 			throw new Error("Municipality not found");

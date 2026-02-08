@@ -42,9 +42,11 @@ export function RootErrorFallback({ error, reset }: RootErrorFallbackProps) {
 								Try Again
 							</Button>
 						)}
-						<Button onClick={() => {
-							window.location.href = "/";
-						}}>
+						<Button
+							onClick={() => {
+								window.location.href = "/";
+							}}
+						>
 							<Home className="h-4 w-4 mr-2" />
 							Go Home
 						</Button>

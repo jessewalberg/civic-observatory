@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import type { User } from "@workos-inc/node";
 import { useQuery } from "convex/react";
-import { Bell, Building2 } from "lucide-react";
+import { Bell, Building2, Shield } from "lucide-react";
 import { api } from "../../convex/_generated/api";
 import { SignInButton } from "./SignInButton";
 import { Button } from "./ui/button";
@@ -26,11 +26,45 @@ export function Header({ user, signInUrl }: HeaderProps) {
 				</Link>
 
 				<nav className="flex items-center gap-6">
+					<Link
+						to="/explore"
+						className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+					>
+						Explore
+					</Link>
+					{user && (
+						<Link
+							to="/dashboard"
+							className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+						>
+							Dashboard
+						</Link>
+					)}
+					{user && <AdminLink workosUserId={user.id} />}
 					{user && <NotificationBadge workosUserId={user.id} />}
 					<SignInButton user={user} signInUrl={signInUrl} />
 				</nav>
 			</div>
 		</header>
+	);
+}
+
+function AdminLink({ workosUserId }: { workosUserId: string }) {
+	const isAdmin = useQuery(api.functions.users.queries.isAdmin, {
+		workosUserId,
+	});
+
+	if (!isAdmin) {
+		return null;
+	}
+
+	return (
+		<Link to="/admin">
+			<Button variant="ghost" size="sm" className="gap-2">
+				<Shield className="h-4 w-4" />
+				Admin
+			</Button>
+		</Link>
 	);
 }
 

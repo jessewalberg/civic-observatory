@@ -1,7 +1,6 @@
 import { v } from "convex/values";
+import { internal } from "../../_generated/api";
 import { internalMutation, mutation } from "../../_generated/server";
-
-// import { internal } from "../../_generated/api"; // Will be used for AI summarization
 
 // Meeting type validator
 const meetingTypeValidator = v.union(
@@ -93,8 +92,39 @@ export const create = mutation({
 			updatedAt: now,
 		});
 
-		// Schedule AI summarization (will be implemented later)
-		// await ctx.scheduler.runAfter(0, internal.ai.summarizeMeeting, { meetingId });
+		// Record usage (monthly window for uploads)
+		const windowStart = getMonthStart();
+		const existingUsage = await ctx.db
+			.query("usageRecords")
+			.withIndex("by_user_action_window", (q) =>
+				q
+					.eq("userId", user._id)
+					.eq("action", "meeting_upload")
+					.eq("windowType", "month")
+					.eq("windowStart", windowStart),
+			)
+			.first();
+
+		if (existingUsage) {
+			await ctx.db.patch(existingUsage._id, {
+				count: existingUsage.count + 1,
+			});
+		} else {
+			await ctx.db.insert("usageRecords", {
+				userId: user._id,
+				action: "meeting_upload",
+				windowType: "month",
+				windowStart,
+				count: 1,
+			});
+		}
+
+		// Schedule AI summarization
+		await ctx.scheduler.runAfter(
+			0,
+			internal.functions.ai.summarize.summarizeMeeting,
+			{ meetingId },
+		);
 
 		return meetingId;
 	},
@@ -304,8 +334,12 @@ export const retryProcessing = mutation({
 			updatedAt: Date.now(),
 		});
 
-		// Schedule AI summarization (will be implemented later)
-		// await ctx.scheduler.runAfter(0, internal.ai.summarizeMeeting, { meetingId: args.meetingId });
+		// Schedule AI summarization
+		await ctx.scheduler.runAfter(
+			0,
+			internal.functions.ai.summarize.summarizeMeeting,
+			{ meetingId: args.meetingId },
+		);
 
 		return { success: true };
 	},
@@ -327,4 +361,12 @@ async function generateContentHash(content: string): Promise<string> {
 	}
 
 	return `hash_${Math.abs(hash).toString(16)}`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Helper: Get start of current month
+// ═══════════════════════════════════════════════════════════════
+function getMonthStart(): number {
+	const now = new Date();
+	return new Date(now.getFullYear(), now.getMonth(), 1).getTime();
 }

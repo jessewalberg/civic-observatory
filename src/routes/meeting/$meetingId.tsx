@@ -8,6 +8,7 @@ import {
 	ChevronRight,
 	ChevronUp,
 	Clock,
+	ExternalLink,
 	FileText,
 	Loader2,
 	MapPin,
@@ -176,6 +177,7 @@ interface MeetingData {
 	meetingType: string;
 	meetingDate: number;
 	status: "pending" | "processing" | "summarized" | "failed" | "skipped";
+	sourceUrl?: string;
 	rawContent?: string;
 	processingError?: string;
 	summary: {
@@ -695,7 +697,7 @@ function MeetingHeader({ meeting, date, typeLabel }: MeetingHeaderProps) {
 				)}
 			</div>
 
-			{/* Topics and share */}
+			{/* Topics and actions */}
 			<div className="flex flex-wrap items-center justify-between gap-4">
 				{meeting.summary?.topics && meeting.summary.topics.length > 0 && (
 					<div className="flex flex-wrap gap-2">
@@ -704,7 +706,21 @@ function MeetingHeader({ meeting, date, typeLabel }: MeetingHeaderProps) {
 						))}
 					</div>
 				)}
-				<ShareButton title={meeting.title} description={shareDescription} />
+				<div className="flex items-center gap-2">
+					{meeting.sourceUrl && (
+						<a
+							href={meeting.sourceUrl}
+							target="_blank"
+							rel="noopener noreferrer"
+						>
+							<Button variant="outline" size="sm">
+								<ExternalLink className="h-4 w-4 mr-2" />
+								Source
+							</Button>
+						</a>
+					)}
+					<ShareButton title={meeting.title} description={shareDescription} />
+				</div>
 			</div>
 		</header>
 	);
