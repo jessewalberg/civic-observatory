@@ -1,6 +1,61 @@
 import type { MeetingType } from "./types";
 
 // ═══════════════════════════════════════════════════════════════
+// HTTP FETCH - Shared fetch with retry and timeout
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Fetch with retry logic and exponential backoff
+ */
+export async function fetchWithRetry(
+	url: string,
+	options?: {
+		retries?: number;
+		timeout?: number;
+		headers?: Record<string, string>;
+	},
+): Promise<Response> {
+	const retries = options?.retries ?? 3;
+	const timeout = options?.timeout ?? 30000;
+	let lastError: Error | null = null;
+
+	for (let i = 0; i < retries; i++) {
+		try {
+			const controller = new AbortController();
+			const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+			const response = await fetch(url, {
+				signal: controller.signal,
+				headers: {
+					"User-Agent":
+						"Mozilla/5.0 (compatible; CivicPulse/1.0; +https://civicpulse.app)",
+					Accept:
+						"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+					...options?.headers,
+				},
+			});
+
+			clearTimeout(timeoutId);
+			return response;
+		} catch (error) {
+			lastError = error instanceof Error ? error : new Error(String(error));
+
+			// Don't retry on abort (timeout)
+			if (lastError.name === "AbortError") {
+				throw new Error(`Request timeout after ${timeout}ms`);
+			}
+
+			// Wait before retry (exponential backoff)
+			if (i < retries - 1) {
+				await new Promise((resolve) => setTimeout(resolve, 1000 * (i + 1)));
+			}
+		}
+	}
+
+	throw lastError || new Error("Failed to fetch after retries");
+}
+
+// ═══════════════════════════════════════════════════════════════
 // DATE PARSING - Parse dates from various formats
 // ═══════════════════════════════════════════════════════════════
 
@@ -12,12 +67,18 @@ const datePatterns = [
 	/(\d{1,2})\/(\d{1,2})\/(\d{4})/,
 	// US format: 01-15-2024
 	/(\d{1,2})-(\d{1,2})-(\d{4})/,
+	// Dot format with 2-digit year: 1.27.26 (M.DD.YY)
+	/(\d{1,2})\.(\d{1,2})\.(\d{2})\b/,
+	// Dot format with 4-digit year: 1.27.2026
+	/(\d{1,2})\.(\d{1,2})\.(\d{4})/,
 	// Long format: January 15, 2024
 	/([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})/,
 	// Medium format: Jan 15, 2024
 	/([A-Za-z]{3})\s+(\d{1,2}),?\s+(\d{4})/,
 	// European format: 15 January 2024
 	/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/,
+	// Short format without year: Feb 9, Jan 15 (infer current year)
+	/([A-Za-z]{3,9})\.?\s+(\d{1,2})(?!\s*,?\s*\d{4})/,
 ];
 
 const monthNames: Record<string, number> = {
@@ -89,8 +150,21 @@ export function parseDate(dateStr: string, _format?: string): number | null {
 				day = parseInt(match[2], 10);
 				year = parseInt(match[3], 10);
 			}
+			// Dot format with 2-digit year: M.DD.YY
+			else if (pattern === datePatterns[3]) {
+				month = parseInt(match[1], 10) - 1;
+				day = parseInt(match[2], 10);
+				const shortYear = parseInt(match[3], 10);
+				year = shortYear >= 90 ? 1900 + shortYear : 2000 + shortYear;
+			}
+			// Dot format with 4-digit year: M.DD.YYYY
+			else if (pattern === datePatterns[4]) {
+				month = parseInt(match[1], 10) - 1;
+				day = parseInt(match[2], 10);
+				year = parseInt(match[3], 10);
+			}
 			// Long/medium format: Month DD, YYYY
-			else if (pattern === datePatterns[3] || pattern === datePatterns[4]) {
+			else if (pattern === datePatterns[5] || pattern === datePatterns[6]) {
 				const monthStr = match[1].toLowerCase();
 				month = monthNames[monthStr] ?? -1;
 				if (month === -1) continue;
@@ -98,12 +172,20 @@ export function parseDate(dateStr: string, _format?: string): number | null {
 				year = parseInt(match[3], 10);
 			}
 			// European format: DD Month YYYY
-			else if (pattern === datePatterns[5]) {
+			else if (pattern === datePatterns[7]) {
 				day = parseInt(match[1], 10);
 				const monthStr = match[2].toLowerCase();
 				month = monthNames[monthStr] ?? -1;
 				if (month === -1) continue;
 				year = parseInt(match[3], 10);
+			}
+			// Short format without year: Mon DD (infer current year)
+			else if (pattern === datePatterns[8]) {
+				const monthStr = match[1].toLowerCase().replace(/\.$/, "");
+				month = monthNames[monthStr] ?? -1;
+				if (month === -1) continue;
+				day = parseInt(match[2], 10);
+				year = new Date().getFullYear();
 			} else {
 				continue;
 			}

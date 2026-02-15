@@ -10,6 +10,12 @@ import type {
 	ScraperResult,
 } from "./types";
 import {
+	extractLegistarSlug,
+	isLegistarUrl,
+	tryLegistarApi,
+} from "./legistarApi";
+import {
+	fetchWithRetry,
 	hashContent,
 	htmlToText,
 	inferMeetingType,
@@ -57,6 +63,21 @@ export const granicusScraper: Scraper = {
 	},
 
 	async scrape(url: string, config?: ScraperConfig): Promise<ScraperResult> {
+		// Try Legistar REST API first for legistar.com URLs
+		if (isLegistarUrl(url)) {
+			const slug = extractLegistarSlug(url);
+			if (slug) {
+				try {
+					const apiResult = await tryLegistarApi(slug);
+					if (apiResult && apiResult.meetings.length > 0) {
+						return apiResult;
+					}
+				} catch {
+					// Fall through to HTML scraping
+				}
+			}
+		}
+
 		const meetings: ScrapedMeeting[] = [];
 		const errors: ScraperError[] = [];
 		const stats = { found: 0, new: 0, skipped: 0, failed: 0 };
@@ -364,51 +385,6 @@ function findNextPage(
 	}
 
 	return null;
-}
-
-/**
- * Fetch with retry logic
- */
-async function fetchWithRetry(
-	url: string,
-	retries = 3,
-	timeout = 30000,
-): Promise<Response> {
-	let lastError: Error | null = null;
-
-	for (let i = 0; i < retries; i++) {
-		try {
-			const controller = new AbortController();
-			const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-			const response = await fetch(url, {
-				signal: controller.signal,
-				headers: {
-					"User-Agent":
-						"Mozilla/5.0 (compatible; CivicPulse/1.0; +https://civicpulse.app)",
-					Accept:
-						"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-				},
-			});
-
-			clearTimeout(timeoutId);
-			return response;
-		} catch (error) {
-			lastError = error instanceof Error ? error : new Error(String(error));
-
-			// Don't retry on abort (timeout)
-			if (lastError.name === "AbortError") {
-				throw new Error(`Request timeout after ${timeout}ms`);
-			}
-
-			// Wait before retry (exponential backoff)
-			if (i < retries - 1) {
-				await new Promise((resolve) => setTimeout(resolve, 1000 * (i + 1)));
-			}
-		}
-	}
-
-	throw lastError || new Error("Failed to fetch after retries");
 }
 
 export default granicusScraper;

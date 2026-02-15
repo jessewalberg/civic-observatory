@@ -10,6 +10,7 @@ import type {
 	ScraperResult,
 } from "./types";
 import {
+	fetchWithRetry,
 	hashContent,
 	htmlToText,
 	inferMeetingType,
@@ -39,6 +40,20 @@ const DEFAULT_SELECTORS = {
 		// Generic list items
 		"ul.meetings li",
 		"article.meeting",
+		// Drupal patterns
+		".view-content .views-row",
+		".field-items .field-item",
+		// WordPress patterns
+		".entry-content table tbody tr",
+		".wp-block-table tbody tr",
+		// Broader content-scoped tables
+		"main table tbody tr",
+		"#content table tbody tr",
+		".content table tbody tr",
+		"#main-content table tbody tr",
+		// Generic repeated elements in content
+		"main li",
+		"#content li",
 	],
 	meetingTitle: [
 		".meeting-title",
@@ -107,6 +122,22 @@ export const genericScraper: Scraper = {
 			const selectors = getSelectors($, config);
 
 			if (!selectors.meetingList) {
+				// Try heuristic detection before giving up
+				const heuristicMeetings = findMeetingsByHeuristic($, url);
+				if (heuristicMeetings.length > 0) {
+					return {
+						success: true,
+						meetings: heuristicMeetings,
+						errors: [],
+						stats: {
+							found: heuristicMeetings.length,
+							new: heuristicMeetings.length,
+							skipped: 0,
+							failed: 0,
+						},
+					};
+				}
+
 				return {
 					success: false,
 					meetings: [],
@@ -452,49 +483,273 @@ function cleanTitle(title: string): string {
 		.trim();
 }
 
+// ═══════════════════════════════════════════════════════════════
+// HEURISTIC DETECTION - Find meetings by pattern matching
+// ═══════════════════════════════════════════════════════════════
+
+/** Date patterns to look for in text */
+const DATE_REGEX =
+	/\d{1,2}\/\d{1,2}\/\d{2,4}|\d{4}-\d{2}-\d{2}|\d{1,2}-\d{1,2}-\d{4}|\d{1,2}\.\d{1,2}\.\d{2,4}|\w+\s+\d{1,2},?\s+\d{4}|\d{1,2}\s+\w+\s+\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\.?\s+\d{1,2}/;
+
 /**
- * Fetch with retry logic
+ * Heuristic: find meetings by looking for tables/lists with date-like content
+ * within content areas (excluding nav, header, footer, aside)
  */
-async function fetchWithRetry(
-	url: string,
-	retries = 3,
-	timeout = 30000,
-): Promise<Response> {
-	let lastError: Error | null = null;
+function findMeetingsByHeuristic(
+	$: cheerio.CheerioAPI,
+	baseUrl: string,
+): ScrapedMeeting[] {
+	const meetings: ScrapedMeeting[] = [];
 
-	for (let i = 0; i < retries; i++) {
-		try {
-			const controller = new AbortController();
-			const timeoutId = setTimeout(() => controller.abort(), timeout);
+	// Remove non-content elements to avoid false positives
+	const $content = cheerio.load($.html() || "");
+	$content(
+		"header, footer, nav, aside, .sidebar, .menu, .navigation, #sidebar, #nav, #footer, #header",
+	).remove();
 
-			const response = await fetch(url, {
-				signal: controller.signal,
-				headers: {
-					"User-Agent":
-						"Mozilla/5.0 (compatible; CivicPulse/1.0; +https://civicpulse.app)",
-					Accept:
-						"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-				},
+	// Strategy 1: Find tables where rows contain dates
+	$content("table").each((_, table) => {
+		const rows = $content(table).find("tr");
+		let rowsWithDates = 0;
+
+		rows.each((__, row) => {
+			if (DATE_REGEX.test($content(row).text())) rowsWithDates++;
+		});
+
+		// Need at least 3 rows with dates to consider it a meeting table
+		if (rowsWithDates >= 3 && meetings.length === 0) {
+			rows.each((__, row) => {
+				if (!isElement(row)) return;
+				const $row = $content(row);
+				const rowText = $row.text();
+
+				const dateMatch = rowText.match(DATE_REGEX);
+				if (!dateMatch) return;
+
+				const meetingDate = parseDate(dateMatch[0]);
+				if (!meetingDate) return;
+
+				// Get title: first link text, or first cell text
+				const link = $row.find("a").first();
+				let title = link.text().trim();
+				if (!title || title.length < 3) {
+					title = $row.find("td").first().text().trim();
+				}
+				if (!title || title.length < 3) return;
+
+				// Clean the date out of the title if it's embedded
+				title = title.replace(DATE_REGEX, "").trim();
+				if (title.length < 3) {
+					title = $row
+						.find("td")
+						.eq(1)
+						.text()
+						.trim()
+						.replace(DATE_REGEX, "")
+						.trim();
+				}
+				if (!title || title.length < 3) return;
+
+				let documentUrl: string | undefined;
+				$row.find('a[href*=".pdf"], a[href*="agenda"], a[href*="minutes"]').each(
+					(_, a) => {
+						const href = $content(a).attr("href");
+						if (href) documentUrl = resolveUrl(baseUrl, href);
+					},
+				);
+
+				const sourceUrl = link.attr("href")
+					? resolveUrl(baseUrl, link.attr("href")!)
+					: baseUrl;
+
+				meetings.push({
+					title: cleanTitle(title),
+					meetingDate,
+					meetingType: inferMeetingType(title),
+					sourceUrl,
+					documentUrl,
+					contentHash: hashContent(`${title}-${meetingDate}`),
+				});
+			});
+		}
+	});
+
+	if (meetings.length > 0) return meetings;
+
+	// Strategy 2: Find lists where items contain links + dates
+	$content("ul, ol").each((_, list) => {
+		const items = $content(list).find("li");
+		let itemsWithDates = 0;
+
+		items.each((__, li) => {
+			const text = $content(li).text();
+			if (DATE_REGEX.test(text) && $content(li).find("a").length > 0) {
+				itemsWithDates++;
+			}
+		});
+
+		if (itemsWithDates >= 2 && meetings.length === 0) {
+			items.each((__, li) => {
+				if (!isElement(li)) return;
+				const $li = $content(li);
+				const text = $li.text();
+
+				const dateMatch = text.match(DATE_REGEX);
+				if (!dateMatch) return;
+
+				const meetingDate = parseDate(dateMatch[0]);
+				if (!meetingDate) return;
+
+				const link = $li.find("a").first();
+				const title = link.text().trim() || text.replace(DATE_REGEX, "").trim();
+				if (!title || title.length < 3) return;
+
+				const sourceUrl = link.attr("href")
+					? resolveUrl(baseUrl, link.attr("href")!)
+					: baseUrl;
+
+				meetings.push({
+					title: cleanTitle(title),
+					meetingDate,
+					meetingType: inferMeetingType(title),
+					sourceUrl,
+					contentHash: hashContent(`${title}-${meetingDate}`),
+				});
+			});
+		}
+	});
+
+	if (meetings.length > 0) return meetings;
+
+	// Strategy 3: Find repeated div/article/section elements with dates + links
+	// Covers WordPress download managers, Drupal views, custom CMS layouts
+	const containerSelectors = [
+		".wpdm-download-link",
+		".wpdm-package",
+		".widgetItem",
+		".views-row",
+		".field-item",
+		"article",
+		".post",
+		".entry",
+		".item",
+		".event",
+		".meeting",
+		".agenda",
+		".calendar-item",
+		".list-group-item",
+	];
+
+	for (const containerSel of containerSelectors) {
+		const containers = $content(containerSel);
+		if (containers.length < 2) continue;
+
+		let containersWithDates = 0;
+		containers.each((__, el) => {
+			if (DATE_REGEX.test($content(el).text())) containersWithDates++;
+		});
+
+		if (containersWithDates >= 2 && meetings.length === 0) {
+			containers.each((__, el) => {
+				if (!isElement(el)) return;
+				const $el = $content(el);
+				const text = $el.text();
+
+				const dateMatch = text.match(DATE_REGEX);
+				if (!dateMatch) return;
+
+				const meetingDate = parseDate(dateMatch[0]);
+				if (!meetingDate) return;
+
+				// Get title from heading, link, or strong element
+				const link = $el.find("a").first();
+				let title =
+					$el.find("h1, h2, h3, h4, h5, h6, strong").first().text().trim() ||
+					link.text().trim() ||
+					text.replace(DATE_REGEX, "").trim().split("\n")[0]?.trim() ||
+					"";
+
+				// Clean date out of title
+				title = title.replace(DATE_REGEX, "").trim();
+				if (!title || title.length < 3) return;
+
+				let documentUrl: string | undefined;
+				$el.find('a[href*=".pdf"], a[href*="agenda"], a[href*="minutes"], a[href*="download"]').each(
+					(___, a) => {
+						const href = $content(a).attr("href");
+						if (href) documentUrl = resolveUrl(baseUrl, href);
+					},
+				);
+
+				const sourceUrl = link.attr("href")
+					? resolveUrl(baseUrl, link.attr("href")!)
+					: baseUrl;
+
+				meetings.push({
+					title: cleanTitle(title),
+					meetingDate,
+					meetingType: inferMeetingType(title),
+					sourceUrl,
+					documentUrl,
+					contentHash: hashContent(`${title}-${meetingDate}`),
+				});
 			});
 
-			clearTimeout(timeoutId);
-			return response;
-		} catch (error) {
-			lastError = error instanceof Error ? error : new Error(String(error));
-
-			// Don't retry on abort (timeout)
-			if (lastError.name === "AbortError") {
-				throw new Error(`Request timeout after ${timeout}ms`);
-			}
-
-			// Wait before retry (exponential backoff)
-			if (i < retries - 1) {
-				await new Promise((resolve) => setTimeout(resolve, 1000 * (i + 1)));
-			}
+			if (meetings.length > 0) break;
 		}
 	}
 
-	throw lastError || new Error("Failed to fetch after retries");
+	if (meetings.length > 0) return meetings;
+
+	// Strategy 4: Broadest fallback — find ANY links with dates in their text or nearby text
+	const allLinks = $content("main a, #content a, .content a, article a, .page-content a");
+	const linkMeetings: ScrapedMeeting[] = [];
+
+	allLinks.each((_, a) => {
+		const $a = $content(a);
+		const href = $a.attr("href");
+		if (!href || href === "#" || href.startsWith("javascript:")) return;
+
+		// Check link text and parent text for dates
+		const linkText = $a.text().trim();
+		const parentText = $a.parent().text().trim();
+		const searchText = `${linkText} ${parentText}`;
+
+		const dateMatch = searchText.match(DATE_REGEX);
+		if (!dateMatch) return;
+
+		const meetingDate = parseDate(dateMatch[0]);
+		if (!meetingDate) return;
+
+		// Filter out navigation/utility links
+		const lowerText = linkText.toLowerCase();
+		if (
+			lowerText.includes("read more") ||
+			lowerText.includes("click here") ||
+			lowerText.includes("back to") ||
+			lowerText.length < 5 ||
+			lowerText.length > 200
+		)
+			return;
+
+		let title = linkText.replace(DATE_REGEX, "").trim();
+		if (!title || title.length < 3) return;
+
+		linkMeetings.push({
+			title: cleanTitle(title),
+			meetingDate,
+			meetingType: inferMeetingType(title),
+			sourceUrl: resolveUrl(baseUrl, href),
+			contentHash: hashContent(`${title}-${meetingDate}`),
+		});
+	});
+
+	// Only use link-based results if we found a reasonable number
+	if (linkMeetings.length >= 3 && linkMeetings.length <= 200) {
+		return linkMeetings;
+	}
+
+	return meetings;
 }
 
 export default genericScraper;

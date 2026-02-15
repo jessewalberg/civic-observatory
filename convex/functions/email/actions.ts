@@ -84,7 +84,7 @@ export const sendImmediateAlert = internalAction({
 		);
 
 		// Find our specific alert
-		const alertInfo = alertData.find((a) => a.alert._id === args.alertId);
+		const alertInfo = alertData.find((a: any) => a.alert._id === args.alertId);
 
 		if (!alertInfo) {
 			return { success: false, error: "Alert not found or not ready" };
@@ -194,7 +194,7 @@ export const sendDailyDigest = internalAction({
 
 			// Build meeting data for all alerts
 			const meetings: MeetingData[] = userAlerts.map(
-				({ alert, meeting, municipality, summary }) => ({
+				({ alert, meeting, municipality, summary }: any) => ({
 					title: meeting.title,
 					meetingType: meeting.meetingType,
 					meetingDate: meeting.meetingDate,
@@ -229,7 +229,7 @@ export const sendDailyDigest = internalAction({
 			);
 
 			// Update alert statuses
-			const alertIds = userAlerts.map(({ alert }) => alert._id);
+			const alertIds = userAlerts.map(({ alert }: any) => alert._id);
 
 			if (result.success) {
 				await ctx.runMutation(
@@ -301,7 +301,7 @@ export const sendWeeklyDigest = internalAction({
 
 			// Build meeting data for all alerts
 			const meetings: MeetingData[] = userAlerts.map(
-				({ alert, meeting, municipality, summary }) => ({
+				({ alert, meeting, municipality, summary }: any) => ({
 					title: meeting.title,
 					meetingType: meeting.meetingType,
 					meetingDate: meeting.meetingDate,
@@ -347,7 +347,7 @@ export const sendWeeklyDigest = internalAction({
 			);
 
 			// Update alert statuses
-			const alertIds = userAlerts.map(({ alert }) => alert._id);
+			const alertIds = userAlerts.map(({ alert }: any) => alert._id);
 
 			if (result.success) {
 				await ctx.runMutation(

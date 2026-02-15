@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation } from "../../_generated/server";
+import { internalMutation, mutation } from "../../_generated/server";
 
 // Platform type for validation
 const platformValidator = v.union(
@@ -256,5 +256,58 @@ export const verify = mutation({
 		});
 
 		return { isVerified: args.verified };
+	},
+});
+
+// ═══════════════════════════════════════════════════════════════
+// INTERNAL: Save discovery result (used by discovery actions)
+// ═══════════════════════════════════════════════════════════════
+export const saveDiscoveryResult = internalMutation({
+	args: {
+		municipalityId: v.id("municipalities"),
+		meetingsPageUrl: v.string(),
+		platform: v.union(
+			v.literal("granicus"),
+			v.literal("civicplus"),
+			v.literal("generic"),
+		),
+	},
+	handler: async (ctx, args) => {
+		await ctx.db.patch(args.municipalityId, {
+			meetingsPageUrl: args.meetingsPageUrl,
+			platform: args.platform,
+			updatedAt: Date.now(),
+		});
+	},
+});
+
+// ═══════════════════════════════════════════════════════════════
+// INTERNAL: Save probe result (used by probe actions)
+// ═══════════════════════════════════════════════════════════════
+export const saveProbeResult = internalMutation({
+	args: {
+		municipalityId: v.id("municipalities"),
+		success: v.boolean(),
+		meetingsFound: v.number(),
+		activate: v.boolean(),
+		error: v.optional(v.string()),
+	},
+	handler: async (ctx, args) => {
+		const updates: Record<string, unknown> = {
+			lastScrapeStatus: args.success ? "success" : "failed",
+			lastScrapedAt: Date.now(),
+			updatedAt: Date.now(),
+		};
+
+		if (!args.success && args.error) {
+			updates.lastScrapeError = args.error;
+		}
+
+		// Activate municipality if probe found meetings
+		if (args.activate && args.success && args.meetingsFound > 0) {
+			updates.isActive = true;
+		}
+
+		await ctx.db.patch(args.municipalityId, updates);
 	},
 });
