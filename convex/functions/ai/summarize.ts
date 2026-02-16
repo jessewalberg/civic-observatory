@@ -1,7 +1,15 @@
+"use node";
+
 import { v } from "convex/values";
 import { internal } from "../../_generated/api";
 import { internalAction } from "../../_generated/server";
+import { htmlToText, normalizeUrl } from "../../scrapers/utils";
+import { extractTextFromPdfData } from "./pdfParseCompat";
+
 // Id type used in inline type annotations
+
+const MAX_CONTENT_LENGTH = 45000;
+const MIN_EXTRACTED_CONTENT_LENGTH = 100;
 
 // ═══════════════════════════════════════════════════════════════
 // SUMMARIZE MEETING - Main action to process a meeting
@@ -58,6 +66,35 @@ export const summarizeMeeting = internalAction({
 
 				if (!meeting) {
 					throw new Error("Meeting not found after extraction");
+				}
+			}
+
+			// 2b. If still no content, try hydrating from the stored source URL.
+			if (!meeting.rawContent) {
+				const hydratedContent = await hydrateContentFromSourceUrl({
+					sourceUrl: meeting.sourceUrl,
+					meetingsPageUrl: meeting.municipality?.meetingsPageUrl,
+				});
+
+				if (hydratedContent) {
+					await ctx.runMutation(
+						internal.functions.ai.mutations.updateMeetingContent,
+						{
+							meetingId: args.meetingId,
+							rawContent: hydratedContent,
+						},
+					);
+
+					meeting = await ctx.runQuery(
+						internal.functions.ai.queries.getMeetingForProcessing,
+						{
+							meetingId: args.meetingId,
+						},
+					);
+
+					if (!meeting) {
+						throw new Error("Meeting not found after source URL hydration");
+					}
 				}
 			}
 
@@ -266,7 +303,7 @@ TYPE: ${meetingTypeLabels[params.meetingType] ?? params.meetingType}
 DATE: ${params.date}
 
 DOCUMENT:
-${params.content.slice(0, 45000)}
+${params.content.slice(0, MAX_CONTENT_LENGTH)}
 
 ---
 
@@ -309,6 +346,108 @@ RULES:
 - Be concise but informative`;
 
 	return { system, user };
+}
+
+async function hydrateContentFromSourceUrl(args: {
+	sourceUrl?: string;
+	meetingsPageUrl?: string;
+}): Promise<string | null> {
+	if (!args.sourceUrl) return null;
+
+	// Skip obvious listing pages. Those pages are not meeting-specific content.
+	if (
+		args.meetingsPageUrl &&
+		normalizeUrl(args.sourceUrl) === normalizeUrl(args.meetingsPageUrl) &&
+		!isLikelyDocumentUrl(args.sourceUrl)
+	) {
+		return null;
+	}
+
+	const response = await fetch(args.sourceUrl, {
+		headers: {
+			"User-Agent":
+				"Mozilla/5.0 (compatible; CivicPulse/1.0; +https://civicpulse.app)",
+			Accept:
+				"text/html,application/xhtml+xml,application/xml;q=0.9,application/pdf,*/*;q=0.8",
+		},
+	});
+
+	if (!response.ok) {
+		throw new Error(
+			`Failed to load source URL for summarization (${response.status})`,
+		);
+	}
+
+	const contentType = response.headers.get("content-type") ?? "";
+	const maybePdfFromUrl = isPdfResource(args.sourceUrl, contentType);
+	const arrayBuffer = await response.arrayBuffer();
+	const bytes = new Uint8Array(arrayBuffer);
+	const isPdf = isPdfContent(bytes, contentType, maybePdfFromUrl);
+
+	if (isPdf) {
+		const extracted = await extractTextFromPdf(arrayBuffer);
+		return finalizeExtractedContent(extracted);
+	}
+
+	const html = new TextDecoder("utf-8").decode(bytes);
+	return finalizeExtractedContent(htmlToText(html));
+}
+
+function isLikelyDocumentUrl(url: string): boolean {
+	return (
+		/\.pdf(\?|#|$)/i.test(url) ||
+		/\/ViewFile/i.test(url) ||
+		/\/View\.ashx/i.test(url)
+	);
+}
+
+function isPdfResource(url: string, contentType: string): boolean {
+	return (
+		contentType.toLowerCase().includes("application/pdf") ||
+		url.toLowerCase().includes(".pdf") ||
+		url.includes("ViewFile") ||
+		url.includes("View.ashx")
+	);
+}
+
+function isPdfContent(
+	bytes: Uint8Array,
+	contentType: string,
+	maybePdfFromUrl: boolean,
+): boolean {
+	const hasPdfContentType = contentType
+		.toLowerCase()
+		.includes("application/pdf");
+	const hasPdfMagicBytes =
+		bytes.length >= 4 &&
+		bytes[0] === 0x25 &&
+		bytes[1] === 0x50 &&
+		bytes[2] === 0x44 &&
+		bytes[3] === 0x46; // %PDF
+
+	// URL hints are useful, but only trust them when bytes also look like PDF.
+	return (
+		hasPdfContentType ||
+		hasPdfMagicBytes ||
+		(maybePdfFromUrl && hasPdfMagicBytes)
+	);
+}
+
+async function extractTextFromPdf(arrayBuffer: ArrayBuffer): Promise<string> {
+	return extractTextFromPdfData(new Uint8Array(arrayBuffer));
+}
+
+function finalizeExtractedContent(content: string): string | null {
+	const trimmed = content.trim();
+	if (trimmed.length < MIN_EXTRACTED_CONTENT_LENGTH) {
+		return null;
+	}
+
+	if (trimmed.length > MAX_CONTENT_LENGTH) {
+		return `${trimmed.slice(0, MAX_CONTENT_LENGTH)}\n\n[Content truncated due to length...]`;
+	}
+
+	return trimmed;
 }
 
 // ═══════════════════════════════════════════════════════════════

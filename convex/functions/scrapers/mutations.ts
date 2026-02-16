@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internalMutation } from "../../_generated/server";
+import { normalizeUrl } from "../../scrapers/utils";
 
 // ═══════════════════════════════════════════════════════════════
 // CREATE SCRAPE JOB - Create a new scrape job record
@@ -123,6 +124,20 @@ export const createMeetingFromScrape = internalMutation({
 		scrapeJobId: v.id("scrapeJobs"),
 	},
 	handler: async (ctx, args) => {
+		const municipality = await ctx.db.get(args.municipalityId);
+		const sourceIsListingPage =
+			municipality?.meetingsPageUrl !== undefined &&
+			normalizeUrl(args.sourceUrl) ===
+				normalizeUrl(municipality.meetingsPageUrl);
+
+		const hasInlineContent = Boolean(
+			args.rawContent && args.rawContent.trim().length > 0,
+		);
+		const shouldProcess =
+			hasInlineContent ||
+			isLikelyDocumentUrl(args.sourceUrl) ||
+			!sourceIsListingPage;
+
 		const meetingId = await ctx.db.insert("meetings", {
 			municipalityId: args.municipalityId,
 			title: args.title,
@@ -132,7 +147,7 @@ export const createMeetingFromScrape = internalMutation({
 			sourceType: "scraped",
 			rawContent: args.rawContent,
 			contentHash: args.contentHash,
-			status: args.rawContent ? "pending" : "skipped",
+			status: shouldProcess ? "pending" : "skipped",
 			scrapeJobId: args.scrapeJobId,
 			createdAt: Date.now(),
 			updatedAt: Date.now(),
@@ -141,6 +156,14 @@ export const createMeetingFromScrape = internalMutation({
 		return meetingId;
 	},
 });
+
+function isLikelyDocumentUrl(url: string): boolean {
+	return (
+		/\.pdf(\?|#|$)/i.test(url) ||
+		/\/ViewFile/i.test(url) ||
+		/\/View\.ashx/i.test(url)
+	);
+}
 
 // ═══════════════════════════════════════════════════════════════
 // ADD SCRAPE JOB ERROR - Append error to job's error list

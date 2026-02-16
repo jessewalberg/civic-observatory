@@ -37,9 +37,13 @@ export const getPendingMeetings = internalQuery({
 			.order("asc")
 			.take(limit);
 
-		// Include meetings with rawContent OR documentStorageId (PDF to extract)
+		// Include meetings with rawContent, uploaded documents, OR source URLs
+		// that summarizeMeeting can hydrate on demand.
 		return meetings.filter(
-			(m) => (m.rawContent && m.rawContent.length > 0) || m.documentStorageId,
+			(m) =>
+				(m.rawContent && m.rawContent.length > 0) ||
+				m.documentStorageId ||
+				(m.sourceUrl && m.sourceUrl.trim().length > 0),
 		);
 	},
 });

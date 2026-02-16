@@ -1,6 +1,9 @@
+"use node";
+
 import { v } from "convex/values";
 import { internal } from "../../_generated/api";
 import { internalAction } from "../../_generated/server";
+import { extractTextFromPdfData } from "./pdfParseCompat";
 
 // Maximum content length (roughly 45k chars for ~15k tokens)
 const MAX_CONTENT_LENGTH = 45000;
@@ -124,31 +127,5 @@ export const extractPdf = internalAction({
 // Helper: Extract text from PDF buffer
 // ═══════════════════════════════════════════════════════════════
 async function extractFromPdf(buffer: Buffer): Promise<string> {
-	// Dynamic import to avoid bundling issues
-	const { PDFParse } = await import("pdf-parse");
-
-	// Convert Buffer to Uint8Array for pdf-parse
-	const data = new Uint8Array(buffer);
-	const parser = new PDFParse({ data });
-
-	try {
-		const textResult = await parser.getText({ first: 100 });
-		return textResult.text.trim();
-	} catch (error) {
-		// Handle specific PDF parsing errors
-		if (error instanceof Error) {
-			if (error.message.includes("password")) {
-				throw new Error("PDF is password protected");
-			}
-			if (
-				error.message.includes("corrupt") ||
-				error.message.includes("invalid")
-			) {
-				throw new Error("PDF appears to be corrupted or invalid");
-			}
-		}
-		throw error;
-	} finally {
-		await parser.destroy();
-	}
+	return extractTextFromPdfData(new Uint8Array(buffer));
 }

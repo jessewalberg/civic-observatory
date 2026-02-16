@@ -78,6 +78,41 @@ export const setAdminStatus = mutation({
 	},
 });
 
+// Claim initial admin if the system currently has zero admins.
+export const claimInitialAdmin = mutation({
+	args: {
+		requestingWorkosUserId: v.string(),
+	},
+	handler: async (ctx, args) => {
+		const requester = await ctx.db
+			.query("users")
+			.withIndex("by_workos_id", (q) =>
+				q.eq("workosUserId", args.requestingWorkosUserId),
+			)
+			.first();
+
+		if (!requester) {
+			throw new Error("User not found. Please sign in first.");
+		}
+
+		const existingAdmin = await ctx.db
+			.query("users")
+			.filter((q) => q.eq(q.field("isAdmin"), true))
+			.first();
+
+		if (existingAdmin) {
+			throw new Error("An admin already exists. Ask an admin to grant access.");
+		}
+
+		await ctx.db.patch(requester._id, { isAdmin: true });
+
+		return {
+			success: true,
+			userId: requester._id,
+		};
+	},
+});
+
 // Update user tier (admin only)
 export const adminUpdateUser = mutation({
 	args: {

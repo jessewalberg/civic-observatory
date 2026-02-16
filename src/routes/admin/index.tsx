@@ -1,17 +1,20 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import {
 	BarChart3,
 	Building2,
 	Clock,
 	Crown,
 	Loader2,
+	Search,
 	Server,
 	Shield,
 	TrendingUp,
 	Users,
 } from "lucide-react";
 import { motion } from "motion/react";
+import { useState } from "react";
+import { toast } from "sonner";
 import { getAuth, getSignInUrl } from "@/authkit/serverFunctions";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -65,10 +68,18 @@ function AdminIndexPage() {
 }
 
 function AdminContent({ workosUserId }: { workosUserId: string }) {
+	const [isClaimingAdmin, setIsClaimingAdmin] = useState(false);
+
 	// Queries
 	const isAdmin = useQuery(api.functions.users.queries.isAdmin, {
 		workosUserId,
 	});
+	const bootstrapStatus = useQuery(
+		api.functions.users.queries.getAdminBootstrapStatus,
+		{
+			workosUserId,
+		},
+	);
 	const userStats = useQuery(api.functions.users.queries.getAdminStats, {
 		requestingWorkosUserId: workosUserId,
 	});
@@ -77,9 +88,13 @@ function AdminContent({ workosUserId }: { workosUserId: string }) {
 		api.functions.municipalities.queries.list,
 		{},
 	);
+	const claimInitialAdmin = useMutation(
+		api.functions.users.mutations.claimInitialAdmin,
+	);
 
 	const isLoading =
 		isAdmin === undefined ||
+		bootstrapStatus === undefined ||
 		userStats === undefined ||
 		municipalities === undefined;
 
@@ -90,6 +105,20 @@ function AdminContent({ workosUserId }: { workosUserId: string }) {
 			</div>
 		);
 	}
+
+	const handleClaimInitialAdmin = async () => {
+		setIsClaimingAdmin(true);
+		try {
+			await claimInitialAdmin({ requestingWorkosUserId: workosUserId });
+			toast.success("Admin access granted");
+		} catch (error) {
+			const message =
+				error instanceof Error ? error.message : "Failed to claim admin";
+			toast.error(message);
+		} finally {
+			setIsClaimingAdmin(false);
+		}
+	};
 
 	if (!isAdmin) {
 		return (
@@ -108,6 +137,28 @@ function AdminContent({ workosUserId }: { workosUserId: string }) {
 					<p className="text-muted-foreground mb-6">
 						You do not have admin privileges to access this page.
 					</p>
+					{bootstrapStatus?.canClaimInitialAdmin && (
+						<div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 mb-4 text-left">
+							<p className="text-sm text-amber-100">
+								No admin users exist yet. You can claim initial admin access for
+								this environment.
+							</p>
+							<Button
+								className="mt-3"
+								onClick={handleClaimInitialAdmin}
+								disabled={isClaimingAdmin}
+							>
+								{isClaimingAdmin ? (
+									<>
+										<Loader2 className="h-4 w-4 mr-2 animate-spin" />
+										Claiming...
+									</>
+								) : (
+									"Claim Initial Admin"
+								)}
+							</Button>
+						</div>
+					)}
 					<Link to="/">
 						<Button variant="outline">Return Home</Button>
 					</Link>
@@ -147,7 +198,7 @@ function AdminContent({ workosUserId }: { workosUserId: string }) {
 					</div>
 
 					{/* Quick Links */}
-					<div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+					<div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
 						<QuickLink
 							to="/admin/municipalities"
 							icon={Building2}
@@ -165,6 +216,12 @@ function AdminContent({ workosUserId }: { workosUserId: string }) {
 							icon={Server}
 							label="Scrapers"
 							description="Scraper status"
+						/>
+						<QuickLink
+							to="/admin/investigations"
+							icon={Search}
+							label="Investigate"
+							description="Requeue + audit"
 						/>
 						<QuickLink
 							to="/explore"

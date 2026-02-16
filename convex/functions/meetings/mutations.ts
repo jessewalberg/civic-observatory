@@ -1,6 +1,11 @@
 import { v } from "convex/values";
 import { internal } from "../../_generated/api";
-import { internalMutation, mutation } from "../../_generated/server";
+import type { Id } from "../../_generated/dataModel";
+import {
+	internalMutation,
+	type MutationCtx,
+	mutation,
+} from "../../_generated/server";
 
 // Meeting type validator
 const meetingTypeValidator = v.union(
@@ -160,6 +165,17 @@ export const updateStatus = mutation({
 		}
 
 		await ctx.db.patch(args.meetingId, updates);
+
+		// Re-queue processing when a meeting is moved back to pending.
+		if (args.status === "pending") {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.functions.ai.summarize.summarizeMeeting,
+				{
+					meetingId: args.meetingId,
+				},
+			);
+		}
 	},
 });
 
@@ -346,6 +362,265 @@ export const retryProcessing = mutation({
 });
 
 // ═══════════════════════════════════════════════════════════════
+// ADMIN REQUEUE MEETING - Requeue one meeting for summarization
+// ═══════════════════════════════════════════════════════════════
+export const adminRequeueMeeting = mutation({
+	args: {
+		meetingId: v.id("meetings"),
+		requestingWorkosUserId: v.string(),
+	},
+	handler: async (ctx, args) => {
+		await requireAdminUser(ctx, args.requestingWorkosUserId);
+
+		const meeting = await ctx.db.get(args.meetingId);
+		if (!meeting) {
+			throw new Error("Meeting not found");
+		}
+
+		const existingSummary = await ctx.db
+			.query("summaries")
+			.withIndex("by_meeting", (q) => q.eq("meetingId", args.meetingId))
+			.first();
+		if (existingSummary) {
+			throw new Error("Meeting already has a summary");
+		}
+
+		if (
+			(!meeting.rawContent || meeting.rawContent.trim().length === 0) &&
+			(!meeting.sourceUrl || meeting.sourceUrl.trim().length === 0) &&
+			!meeting.documentStorageId
+		) {
+			throw new Error("Meeting has no available content source");
+		}
+
+		await ctx.db.patch(args.meetingId, {
+			status: "pending",
+			processingError: undefined,
+			updatedAt: Date.now(),
+		});
+
+		await ctx.scheduler.runAfter(
+			0,
+			internal.functions.ai.summarize.summarizeMeeting,
+			{ meetingId: args.meetingId },
+		);
+
+		return { success: true };
+	},
+});
+
+// ═══════════════════════════════════════════════════════════════
+// ADMIN REQUEUE MUNICIPALITY CANDIDATES - Bulk requeue
+// ═══════════════════════════════════════════════════════════════
+export const adminRequeueMunicipalityCandidates = mutation({
+	args: {
+		municipalityId: v.id("municipalities"),
+		requestingWorkosUserId: v.string(),
+		limit: v.optional(v.number()),
+		dryRun: v.optional(v.boolean()),
+	},
+	handler: async (ctx, args) => {
+		await requireAdminUser(ctx, args.requestingWorkosUserId);
+
+		const municipality = await ctx.db.get(args.municipalityId);
+		if (!municipality) {
+			throw new Error("Municipality not found");
+		}
+
+		const limit = Math.max(1, Math.min(args.limit ?? 100, 500));
+		const dryRun = args.dryRun === true;
+
+		const meetings = await ctx.db
+			.query("meetings")
+			.withIndex("by_municipality_date", (q) =>
+				q.eq("municipalityId", args.municipalityId),
+			)
+			.order("desc")
+			.collect();
+
+		const candidates: Array<(typeof meetings)[number]> = [];
+
+		for (const meeting of meetings) {
+			if (!isRequeueStatus(meeting.status)) {
+				continue;
+			}
+
+			if (!meeting.sourceUrl || meeting.sourceUrl.trim().length === 0) {
+				continue;
+			}
+
+			const meetingsPageUrl = municipality.meetingsPageUrl;
+			const sourceEqualsMeetingsPage = meetingsPageUrl
+				? normalizeUrl(meeting.sourceUrl) === normalizeUrl(meetingsPageUrl)
+				: false;
+
+			if (!isLikelyDocumentUrl(meeting.sourceUrl) && sourceEqualsMeetingsPage) {
+				continue;
+			}
+
+			const existingSummary = await ctx.db
+				.query("summaries")
+				.withIndex("by_meeting", (q) => q.eq("meetingId", meeting._id))
+				.first();
+			if (existingSummary) {
+				continue;
+			}
+
+			candidates.push(meeting);
+		}
+
+		const selected = candidates.slice(0, limit);
+		const failures: Array<{
+			id: Id<"meetings">;
+			title: string;
+			error: string;
+		}> = [];
+		let requeuedCount = 0;
+
+		if (!dryRun) {
+			for (const meeting of selected) {
+				try {
+					await ctx.db.patch(meeting._id, {
+						status: "pending",
+						processingError: undefined,
+						updatedAt: Date.now(),
+					});
+
+					await ctx.scheduler.runAfter(
+						0,
+						internal.functions.ai.summarize.summarizeMeeting,
+						{ meetingId: meeting._id },
+					);
+
+					requeuedCount++;
+				} catch (error) {
+					const message =
+						error instanceof Error ? error.message : "Unknown requeue error";
+					failures.push({
+						id: meeting._id,
+						title: meeting.title,
+						error: message,
+					});
+				}
+			}
+		}
+
+		return {
+			dryRun,
+			scannedMeetings: meetings.length,
+			totalCandidates: candidates.length,
+			selectedCount: selected.length,
+			requeuedCount: dryRun ? 0 : requeuedCount,
+			failedCount: dryRun ? 0 : failures.length,
+			partial: !dryRun && failures.length > 0,
+			failures: failures.slice(0, 25),
+			preview: selected.slice(0, 25).map((meeting) => ({
+				id: meeting._id,
+				title: meeting.title,
+				status: meeting.status,
+				meetingDate: meeting.meetingDate,
+				sourceUrl: meeting.sourceUrl ?? null,
+				processingError: meeting.processingError ?? null,
+			})),
+		};
+	},
+});
+
+// ═══════════════════════════════════════════════════════════════
+// ADMIN UNSTICK MUNICIPALITY PROCESSING - Reset stuck processing rows
+// ═══════════════════════════════════════════════════════════════
+export const adminUnstickMunicipalityProcessing = mutation({
+	args: {
+		municipalityId: v.id("municipalities"),
+		requestingWorkosUserId: v.string(),
+		olderThanMinutes: v.optional(v.number()),
+		limit: v.optional(v.number()),
+	},
+	handler: async (ctx, args) => {
+		await requireAdminUser(ctx, args.requestingWorkosUserId);
+
+		const municipality = await ctx.db.get(args.municipalityId);
+		if (!municipality) {
+			throw new Error("Municipality not found");
+		}
+
+		const limit = Math.max(1, Math.min(args.limit ?? 500, 1000));
+		const olderThanMinutes = Math.max(
+			0,
+			Math.min(args.olderThanMinutes ?? 10, 7 * 24 * 60),
+		);
+		const cutoff = Date.now() - olderThanMinutes * 60 * 1000;
+
+		const meetings = await ctx.db
+			.query("meetings")
+			.withIndex("by_municipality_date", (q) =>
+				q.eq("municipalityId", args.municipalityId),
+			)
+			.order("desc")
+			.collect();
+
+		const processing = meetings.filter((m) => m.status === "processing");
+		const selected = processing
+			.filter((m) => (m.updatedAt ?? m.createdAt) <= cutoff)
+			.slice(0, limit);
+
+		let requeued = 0;
+		const failures: Array<{
+			id: Id<"meetings">;
+			title: string;
+			error: string;
+		}> = [];
+
+		for (const meeting of selected) {
+			try {
+				const existingSummary = await ctx.db
+					.query("summaries")
+					.withIndex("by_meeting", (q) => q.eq("meetingId", meeting._id))
+					.first();
+				if (existingSummary) {
+					continue;
+				}
+
+				await ctx.db.patch(meeting._id, {
+					status: "pending",
+					processingError: undefined,
+					updatedAt: Date.now(),
+				});
+
+				await ctx.scheduler.runAfter(
+					0,
+					internal.functions.ai.summarize.summarizeMeeting,
+					{ meetingId: meeting._id },
+				);
+				requeued++;
+			} catch (error) {
+				failures.push({
+					id: meeting._id,
+					title: meeting.title,
+					error: error instanceof Error ? error.message : "Unknown error",
+				});
+			}
+		}
+
+		return {
+			processingCount: processing.length,
+			selectedCount: selected.length,
+			requeuedCount: requeued,
+			failedCount: failures.length,
+			olderThanMinutes,
+			preview: selected.slice(0, 25).map((m) => ({
+				id: m._id,
+				title: m.title,
+				status: m.status,
+				updatedAt: m.updatedAt ?? m.createdAt,
+				processingError: m.processingError ?? null,
+			})),
+			failures: failures.slice(0, 25),
+		};
+	},
+});
+
+// ═══════════════════════════════════════════════════════════════
 // Helper: Generate content hash
 // ═══════════════════════════════════════════════════════════════
 async function generateContentHash(content: string): Promise<string> {
@@ -369,4 +644,41 @@ async function generateContentHash(content: string): Promise<string> {
 function getMonthStart(): number {
 	const now = new Date();
 	return new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+}
+
+async function requireAdminUser(ctx: MutationCtx, workosUserId: string) {
+	const user = await ctx.db
+		.query("users")
+		.withIndex("by_workos_id", (q) => q.eq("workosUserId", workosUserId))
+		.first();
+
+	if (!user?.isAdmin) {
+		throw new Error("Admin access required");
+	}
+
+	return user;
+}
+
+function isRequeueStatus(
+	status: "pending" | "processing" | "summarized" | "failed" | "skipped",
+) {
+	return status === "failed" || status === "skipped";
+}
+
+function normalizeUrl(url: string): string {
+	try {
+		const parsed = new URL(url);
+		const path = parsed.pathname.replace(/\/+$/, "") || "/";
+		return `${parsed.protocol}//${parsed.host.toLowerCase()}${path}${parsed.search}`;
+	} catch {
+		return url.toLowerCase().trim();
+	}
+}
+
+function isLikelyDocumentUrl(url: string): boolean {
+	return (
+		/\.pdf(\?|#|$)/i.test(url) ||
+		/\/ViewFile/i.test(url) ||
+		/\/View\.ashx/i.test(url)
+	);
 }

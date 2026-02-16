@@ -61,6 +61,41 @@ export const isAdmin = query({
 	},
 });
 
+// Admin bootstrap status
+export const getAdminBootstrapStatus = query({
+	args: {
+		workosUserId: v.optional(v.string()),
+	},
+	handler: async (ctx, args) => {
+		const users = await ctx.db.query("users").collect();
+		const adminCount = users.filter((u) => u.isAdmin === true).length;
+		const hasAnyAdmin = adminCount > 0;
+
+		let requesterExists = false;
+		let requesterIsAdmin = false;
+
+		if (args.workosUserId) {
+			const requester = await ctx.db
+				.query("users")
+				.withIndex("by_workos_id", (q) =>
+					q.eq("workosUserId", args.workosUserId as string),
+				)
+				.first();
+			requesterExists = Boolean(requester);
+			requesterIsAdmin = requester?.isAdmin === true;
+		}
+
+		return {
+			totalUsers: users.length,
+			adminCount,
+			hasAnyAdmin,
+			requesterExists,
+			requesterIsAdmin,
+			canClaimInitialAdmin: requesterExists && !hasAnyAdmin,
+		};
+	},
+});
+
 // Get all users (admin only)
 export const listAll = query({
 	args: {

@@ -9,6 +9,7 @@ import "../../scrapers/init";
 import type { Id } from "../../_generated/dataModel";
 import { findScraperForUrl, getScraper } from "../../scrapers/registry";
 import type { ScraperConfig, ScraperError } from "../../scrapers/types";
+import { normalizeUrl } from "../../scrapers/utils";
 
 // Result types for actions
 interface RunScraperResult {
@@ -141,13 +142,15 @@ export const runScraper = internalAction({
 
 			for (const meeting of result.meetings) {
 				try {
+					const sourceUrlForMeeting = meeting.documentUrl ?? meeting.sourceUrl;
+
 					// Check for duplicates
 					const existing = await ctx.runQuery(
 						internal.functions.scrapers.queries.checkMeetingExists,
 						{
 							municipalityId: args.municipalityId,
 							contentHash: meeting.contentHash,
-							sourceUrl: meeting.sourceUrl,
+							sourceUrl: sourceUrlForMeeting,
 						},
 					);
 
@@ -161,13 +164,27 @@ export const runScraper = internalAction({
 					if (!rawContent && meeting.documentUrl) {
 						// For PDFs, we'll handle extraction during summarization
 						// For HTML pages, try to extract now
-						if (!meeting.documentUrl.toLowerCase().includes(".pdf")) {
+						if (!isLikelyDocumentUrl(meeting.documentUrl)) {
 							rawContent =
 								(await scraper.extractContent(
 									meeting.documentUrl,
 									scraperConfig,
 								)) ?? undefined;
 						}
+					}
+
+					// If we still have no content, try the source URL when it isn't the listing page.
+					if (
+						!rawContent &&
+						sourceUrlForMeeting &&
+						!isLikelyDocumentUrl(sourceUrlForMeeting) &&
+						!urlsMatch(sourceUrlForMeeting, municipality.meetingsPageUrl)
+					) {
+						rawContent =
+							(await scraper.extractContent(
+								sourceUrlForMeeting,
+								scraperConfig,
+							)) ?? undefined;
 					}
 
 					// Create meeting record
@@ -178,15 +195,21 @@ export const runScraper = internalAction({
 							title: meeting.title,
 							meetingType: meeting.meetingType,
 							meetingDate: meeting.meetingDate,
-							sourceUrl: meeting.sourceUrl,
+							sourceUrl: sourceUrlForMeeting,
 							rawContent,
 							contentHash: meeting.contentHash,
 							scrapeJobId: jobId,
 						},
 					);
 
-					// Schedule summarization if we have content
-					if (rawContent) {
+					// Schedule summarization when there is content now or a source we can hydrate later.
+					if (
+						shouldQueueSummarization({
+							rawContent,
+							sourceUrl: sourceUrlForMeeting,
+							meetingsPageUrl: municipality.meetingsPageUrl,
+						})
+					) {
 						await ctx.scheduler.runAfter(
 							0,
 							internal.functions.ai.summarize.summarizeMeeting,
@@ -299,6 +322,35 @@ export const runScraper = internalAction({
 		}
 	},
 });
+
+function isLikelyDocumentUrl(url: string): boolean {
+	return (
+		/\.pdf(\?|#|$)/i.test(url) ||
+		/\/ViewFile/i.test(url) ||
+		/\/View\.ashx/i.test(url)
+	);
+}
+
+function urlsMatch(a: string, b?: string): boolean {
+	if (!b) return false;
+	return normalizeUrl(a) === normalizeUrl(b);
+}
+
+function shouldQueueSummarization(args: {
+	rawContent?: string;
+	sourceUrl: string;
+	meetingsPageUrl?: string;
+}): boolean {
+	if (args.rawContent && args.rawContent.trim().length > 0) {
+		return true;
+	}
+
+	if (isLikelyDocumentUrl(args.sourceUrl)) {
+		return true;
+	}
+
+	return !urlsMatch(args.sourceUrl, args.meetingsPageUrl);
+}
 
 // ═══════════════════════════════════════════════════════════════
 // SCRAPE ALL DUE - Find and scrape all municipalities due

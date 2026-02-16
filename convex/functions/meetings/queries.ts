@@ -291,3 +291,250 @@ export const listPending = query({
 		return meetings;
 	},
 });
+
+// ═══════════════════════════════════════════════════════════════
+// ADMIN INVESTIGATE MUNICIPALITY - Coverage + requeue diagnostics
+// ═══════════════════════════════════════════════════════════════
+export const adminInvestigateMunicipality = query({
+	args: {
+		requestingWorkosUserId: v.string(),
+		municipalityId: v.id("municipalities"),
+		sampleLimit: v.optional(v.number()),
+		staleProcessingMinutes: v.optional(v.number()),
+	},
+	handler: async (ctx, args) => {
+		const staleMinutes = Math.max(
+			1,
+			Math.min(args.staleProcessingMinutes ?? 10, 24 * 60),
+		);
+		const staleProcessingCutoffMs = Date.now() - staleMinutes * 60 * 1000;
+
+		const caller = await ctx.db
+			.query("users")
+			.withIndex("by_workos_id", (q) =>
+				q.eq("workosUserId", args.requestingWorkosUserId),
+			)
+			.first();
+
+		if (!caller?.isAdmin) {
+			return null;
+		}
+
+		const municipality = await ctx.db.get(args.municipalityId);
+		if (!municipality) {
+			return null;
+		}
+
+		const sampleLimit = Math.max(1, Math.min(args.sampleLimit ?? 30, 200));
+		const latestScrapeJob = await ctx.db
+			.query("scrapeJobs")
+			.withIndex("by_municipality", (q) =>
+				q.eq("municipalityId", args.municipalityId),
+			)
+			.order("desc")
+			.first();
+		const meetings = await ctx.db
+			.query("meetings")
+			.withIndex("by_municipality_date", (q) =>
+				q.eq("municipalityId", args.municipalityId),
+			)
+			.order("desc")
+			.collect();
+
+		const enriched = await Promise.all(
+			meetings.map(async (meeting) => {
+				const summary = await ctx.db
+					.query("summaries")
+					.withIndex("by_meeting", (q) => q.eq("meetingId", meeting._id))
+					.first();
+
+				const hasSummary = Boolean(summary);
+				const hasRawContent = Boolean(
+					meeting.rawContent && meeting.rawContent.trim().length > 0,
+				);
+				const sourceUrl = meeting.sourceUrl ?? "";
+				const meetingsPageUrl = municipality.meetingsPageUrl;
+				const sourceEqualsMeetingsPage =
+					Boolean(sourceUrl) && meetingsPageUrl
+						? normalizeUrl(sourceUrl) === normalizeUrl(meetingsPageUrl)
+						: false;
+				const documentLikeSource = isLikelyDocumentUrl(sourceUrl);
+				const isStaleProcessing =
+					meeting.status === "processing" &&
+					(meeting.updatedAt ?? meeting.createdAt) < staleProcessingCutoffMs;
+
+				const isRequeueCandidate =
+					!hasSummary &&
+					(meeting.status === "failed" ||
+						meeting.status === "skipped" ||
+						isStaleProcessing) &&
+					Boolean(sourceUrl) &&
+					(documentLikeSource || !sourceEqualsMeetingsPage);
+
+				return {
+					meeting,
+					hasSummary,
+					hasRawContent,
+					sourceEqualsMeetingsPage,
+					documentLikeSource,
+					isStaleProcessing,
+					isRequeueCandidate,
+				};
+			}),
+		);
+
+		const statusCounts = {
+			pending: 0,
+			processing: 0,
+			summarized: 0,
+			failed: 0,
+			skipped: 0,
+			staleProcessing: 0,
+			activeProcessing: 0,
+		};
+
+		for (const item of enriched) {
+			statusCounts[item.meeting.status]++;
+			if (item.isStaleProcessing) {
+				statusCounts.staleProcessing++;
+			}
+		}
+		statusCounts.activeProcessing =
+			statusCounts.processing - statusCounts.staleProcessing;
+
+		const noSummary = enriched.filter((item) => !item.hasSummary);
+		const failed = enriched.filter((item) => item.meeting.status === "failed");
+		const skipped = enriched.filter(
+			(item) => item.meeting.status === "skipped",
+		);
+		const requeueCandidates = enriched.filter(
+			(item) => item.isRequeueCandidate,
+		);
+		const staleProcessing = enriched.filter((item) => item.isStaleProcessing);
+		const sourceEqualsMeetingsPage = enriched.filter(
+			(item) => item.sourceEqualsMeetingsPage,
+		);
+		const docLikeSource = enriched.filter((item) => item.documentLikeSource);
+		const withRawContent = enriched.filter((item) => item.hasRawContent);
+		const withSummary = enriched.filter((item) => item.hasSummary);
+
+		const sample = (items: typeof enriched) =>
+			items.slice(0, sampleLimit).map((item) => ({
+				id: item.meeting._id,
+				title: item.meeting.title,
+				status: item.meeting.status,
+				meetingDate: item.meeting.meetingDate,
+				sourceUrl: item.meeting.sourceUrl ?? null,
+				processingError: item.meeting.processingError ?? null,
+				hasSummary: item.hasSummary,
+				hasRawContent: item.hasRawContent,
+				isStaleProcessing: item.isStaleProcessing,
+			}));
+
+		const scrapeStatusFromJob = latestScrapeJob
+			? mapJobStatusToScrapeStatus(latestScrapeJob.status)
+			: null;
+		const latestScrapeAt =
+			latestScrapeJob?.completedAt ??
+			latestScrapeJob?.startedAt ??
+			latestScrapeJob?.createdAt ??
+			municipality.lastScrapedAt ??
+			null;
+		const scrapeStatus =
+			scrapeStatusFromJob ?? municipality.lastScrapeStatus ?? null;
+		const scrapeStatusSource = latestScrapeJob ? "job" : "municipality";
+
+		const healthStatus =
+			withSummary.length === 0 && meetings.length > 0
+				? "no_summaries"
+				: statusCounts.staleProcessing > 0
+					? "stale_processing"
+					: statusCounts.failed > 0
+						? "failing"
+						: "healthy";
+
+		return {
+			municipality: {
+				id: municipality._id,
+				name: municipality.name,
+				state: municipality.state,
+				platform: municipality.platform,
+				meetingsPageUrl: municipality.meetingsPageUrl ?? null,
+				lastScrapedAt: latestScrapeAt,
+				lastScrapeStatus: scrapeStatus,
+				lastScrapeStatusSource: scrapeStatusSource,
+				lastScrapeError: municipality.lastScrapeError ?? null,
+				latestScrapeJob: latestScrapeJob
+					? {
+							id: latestScrapeJob._id,
+							status: latestScrapeJob.status,
+							startedAt: latestScrapeJob.startedAt ?? null,
+							completedAt: latestScrapeJob.completedAt ?? null,
+							meetingsFound: latestScrapeJob.meetingsFound ?? 0,
+							meetingsCreated: latestScrapeJob.meetingsCreated ?? 0,
+							meetingsFailed: latestScrapeJob.meetingsFailed ?? 0,
+						}
+					: null,
+			},
+			totals: {
+				meetings: meetings.length,
+				summaries: withSummary.length,
+				withRawContent: withRawContent.length,
+				documentLikeSource: docLikeSource.length,
+				sourceEqualsMeetingsPage: sourceEqualsMeetingsPage.length,
+				requeueCandidates: requeueCandidates.length,
+			},
+			statuses: statusCounts,
+			health: {
+				status: healthStatus,
+				staleMinutes,
+			},
+			coverage: {
+				summaryPct: percent(withSummary.length, meetings.length),
+				rawContentPct: percent(withRawContent.length, meetings.length),
+				documentLikeSourcePct: percent(docLikeSource.length, meetings.length),
+				noSummaryPct: percent(noSummary.length, meetings.length),
+			},
+			samples: {
+				requeueCandidates: sample(requeueCandidates),
+				noSummary: sample(noSummary),
+				failed: sample(failed),
+				skipped: sample(skipped),
+				staleProcessing: sample(staleProcessing),
+				sourceEqualsMeetingsPage: sample(sourceEqualsMeetingsPage),
+			},
+		};
+	},
+});
+
+function mapJobStatusToScrapeStatus(
+	status: "pending" | "running" | "completed" | "failed" | "partial",
+) {
+	if (status === "completed") return "success";
+	if (status === "failed") return "failed";
+	if (status === "partial") return "partial";
+	return null;
+}
+
+function percent(part: number, total: number): number {
+	if (total === 0) return 0;
+	return Math.round((part / total) * 1000) / 10;
+}
+
+function normalizeUrl(url: string): string {
+	try {
+		const parsed = new URL(url);
+		const path = parsed.pathname.replace(/\/+$/, "") || "/";
+		return `${parsed.protocol}//${parsed.host.toLowerCase()}${path}${parsed.search}`;
+	} catch {
+		return url.toLowerCase().trim();
+	}
+}
+
+function isLikelyDocumentUrl(url: string): boolean {
+	return (
+		/\.pdf(\?|#|$)/i.test(url) ||
+		/\/ViewFile/i.test(url) ||
+		/\/View\.ashx/i.test(url)
+	);
+}

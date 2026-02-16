@@ -14,17 +14,12 @@ import {
 	XCircle,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { toast } from "sonner";
 import { getAuth, getSignInUrl } from "@/authkit/serverFunctions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import {
-	Collapsible,
-	CollapsibleContent,
-	CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import {
 	Table,
 	TableBody,
@@ -293,31 +288,25 @@ function ScrapersContent({ workosUserId }: { workosUserId: string }) {
 												const isScraping = scrapingIds.has(muni._id);
 
 												return (
-													<Collapsible
-														key={muni._id}
-														open={isExpanded}
-														onOpenChange={(open) =>
-															setExpandedId(open ? muni._id : null)
-														}
-														asChild
-													>
+													<Fragment key={muni._id}>
 														<TableRow
 															className={cn(
 																"cursor-pointer",
 																isExpanded && "bg-muted/30",
 															)}
+															onClick={() =>
+																setExpandedId(isExpanded ? null : muni._id)
+															}
 														>
 															<TableCell>
-																<CollapsibleTrigger asChild>
-																	<div className="flex flex-col">
-																		<span className="font-medium text-foreground">
-																			{muni.name}
-																		</span>
-																		<span className="text-xs text-muted-foreground">
-																			{muni.state}
-																		</span>
-																	</div>
-																</CollapsibleTrigger>
+																<div className="flex flex-col">
+																	<span className="font-medium text-foreground">
+																		{muni.name}
+																	</span>
+																	<span className="text-xs text-muted-foreground">
+																		{muni.state}
+																	</span>
+																</div>
 															</TableCell>
 															<TableCell>
 																<Badge variant="outline" className="text-xs">
@@ -367,9 +356,10 @@ function ScrapersContent({ workosUserId }: { workosUserId: string }) {
 																)}
 															</TableCell>
 														</TableRow>
-														<CollapsibleContent asChild>
-															<tr>
-																<td colSpan={5} className="p-0">
+
+														{isExpanded && (
+															<TableRow>
+																<TableCell colSpan={5} className="p-0">
 																	<div className="bg-muted/20 border-t border-border p-4">
 																		<div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
 																			<div>
@@ -437,10 +427,10 @@ function ScrapersContent({ workosUserId }: { workosUserId: string }) {
 																			)}
 																		</div>
 																	</div>
-																</td>
-															</tr>
-														</CollapsibleContent>
-													</Collapsible>
+																</TableCell>
+															</TableRow>
+														)}
+													</Fragment>
 												);
 											})}
 											{(!municipalities || municipalities.length === 0) && (
