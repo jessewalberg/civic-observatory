@@ -1,10 +1,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import {
 	Building2,
 	Edit,
 	ExternalLink,
 	Loader2,
+	Play,
 	Plus,
 	Search,
 	Shield,
@@ -189,6 +190,8 @@ function MunicipalitiesContent({ workosUserId }: { workosUserId: string }) {
 	const [searchQuery, setSearchQuery] = useState("");
 	const [filterPlatform, setFilterPlatform] = useState<string>("all");
 	const [filterStatus, setFilterStatus] = useState<string>("all");
+	const [filterScrapeStatus, setFilterScrapeStatus] = useState<string>("all");
+	const [scrapingIds, setScrapingIds] = useState<Set<string>>(new Set());
 	const [editingId, setEditingId] = useState<Id<"municipalities"> | null>(null);
 	const [isCreateOpen, setIsCreateOpen] = useState(false);
 	const [deleteConfirmId, setDeleteConfirmId] =
@@ -222,6 +225,32 @@ function MunicipalitiesContent({ workosUserId }: { workosUserId: string }) {
 	const verifyMunicipality = useMutation(
 		api.functions.municipalities.mutations.verify,
 	);
+
+	// Actions
+	const triggerScrape = useAction(
+		api.functions.scrapeJobs.mutations.triggerScrape,
+	);
+
+	const handleScrapeNow = async (
+		municipalityId: Id<"municipalities">,
+		name: string,
+	) => {
+		setScrapingIds((prev) => new Set(prev).add(municipalityId));
+		try {
+			await triggerScrape({ municipalityId, workosUserId });
+			toast.success(`Scrape started for ${name}`);
+		} catch (error) {
+			const message =
+				error instanceof Error ? error.message : "Failed to trigger scrape";
+			toast.error(message);
+		} finally {
+			setScrapingIds((prev) => {
+				const next = new Set(prev);
+				next.delete(municipalityId);
+				return next;
+			});
+		}
+	};
 
 	const isLoading = isAdmin === undefined || municipalities === undefined;
 
@@ -271,7 +300,13 @@ function MunicipalitiesContent({ workosUserId }: { workosUserId: string }) {
 			(filterStatus === "active" && m.isActive) ||
 			(filterStatus === "inactive" && !m.isActive) ||
 			(filterStatus === "verified" && m.isVerified);
-		return matchesSearch && matchesPlatform && matchesStatus;
+		const matchesScrapeStatus =
+			filterScrapeStatus === "all" ||
+			(filterScrapeStatus === "success" && m.lastScrapeStatus === "success") ||
+			(filterScrapeStatus === "failed" && m.lastScrapeStatus === "failed") ||
+			(filterScrapeStatus === "partial" && m.lastScrapeStatus === "partial") ||
+			(filterScrapeStatus === "never" && !m.lastScrapedAt);
+		return matchesSearch && matchesPlatform && matchesStatus && matchesScrapeStatus;
 	});
 
 	const handleCreate = async () => {
@@ -493,6 +528,18 @@ function MunicipalitiesContent({ workosUserId }: { workosUserId: string }) {
 									<SelectItem value="verified">Verified</SelectItem>
 								</SelectContent>
 							</Select>
+							<Select value={filterScrapeStatus} onValueChange={setFilterScrapeStatus}>
+								<SelectTrigger className="w-[150px]">
+									<SelectValue placeholder="Scrape Status" />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="all">All Scrapes</SelectItem>
+									<SelectItem value="success">Success</SelectItem>
+									<SelectItem value="failed">Failed</SelectItem>
+									<SelectItem value="partial">Partial</SelectItem>
+									<SelectItem value="never">Never Scraped</SelectItem>
+								</SelectContent>
+							</Select>
 						</div>
 					</Card>
 
@@ -581,13 +628,39 @@ function MunicipalitiesContent({ workosUserId }: { workosUserId: string }) {
 													)}
 												</div>
 											</TableCell>
-											<TableCell className="text-sm text-muted-foreground">
-												{muni.lastScrapedAt
-													? formatRelativeTime(muni.lastScrapedAt)
-													: "Never"}
+											<TableCell className="text-sm">
+												<div className="flex flex-col gap-0.5">
+													<span className="text-muted-foreground">
+														{muni.lastScrapedAt
+															? formatRelativeTime(muni.lastScrapedAt)
+															: "Never"}
+													</span>
+													{muni.lastScrapeStatus && (
+														<ScrapeStatusBadge status={muni.lastScrapeStatus} />
+													)}
+												</div>
 											</TableCell>
 											<TableCell className="text-right">
-												<div className="flex items-center justify-end gap-2">
+												<div className="flex items-center justify-end gap-1">
+													{muni.isActive &&
+														muni.platform !== "manual" &&
+														muni.meetingsPageUrl && (
+															<Button
+																variant="ghost"
+																size="sm"
+																onClick={() =>
+																	handleScrapeNow(muni._id, muni.name)
+																}
+																disabled={scrapingIds.has(muni._id)}
+																title="Scrape now"
+															>
+																{scrapingIds.has(muni._id) ? (
+																	<Loader2 className="h-4 w-4 animate-spin" />
+																) : (
+																	<Play className="h-4 w-4" />
+																)}
+															</Button>
+														)}
 													{muni.websiteUrl && (
 														<a
 															href={muni.websiteUrl}
@@ -894,6 +967,23 @@ function MunicipalitiesContent({ workosUserId }: { workosUserId: string }) {
 				</DialogContent>
 			</Dialog>
 		</div>
+	);
+}
+
+function ScrapeStatusBadge({ status }: { status: string }) {
+	const variants: Record<
+		string,
+		"success" | "destructive" | "warning" | "secondary"
+	> = {
+		success: "success",
+		failed: "destructive",
+		partial: "warning",
+	};
+
+	return (
+		<Badge variant={variants[status] ?? "secondary"} className="text-xs w-fit">
+			{status}
+		</Badge>
 	);
 }
 

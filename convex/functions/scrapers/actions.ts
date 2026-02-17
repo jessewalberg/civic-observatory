@@ -2,7 +2,7 @@
 
 import { v } from "convex/values";
 import { internal } from "../../_generated/api";
-import { internalAction } from "../../_generated/server";
+import { action, internalAction } from "../../_generated/server";
 
 // Initialize scrapers when this module loads
 import "../../scrapers/init";
@@ -187,6 +187,16 @@ export const runScraper = internalAction({
 							)) ?? undefined;
 					}
 
+					// Skip meetings where we have no content and the source URL
+					// is just the listings page — these can never be summarized.
+					if (
+						!rawContent &&
+						urlsMatch(sourceUrlForMeeting, municipality.meetingsPageUrl)
+					) {
+						meetingsSkipped++;
+						continue;
+					}
+
 					// Create meeting record
 					const meetingId = await ctx.runMutation(
 						internal.functions.scrapers.mutations.createMeetingFromScrape,
@@ -202,8 +212,11 @@ export const runScraper = internalAction({
 						},
 					);
 
-					// Schedule summarization when there is content now or a source we can hydrate later.
+					// Schedule summarization for past meetings only.
+					// Future meetings are stored as agenda previews and summarized after the meeting date.
+					const isFutureMeeting = meeting.meetingDate > Date.now();
 					if (
+						!isFutureMeeting &&
 						shouldQueueSummarization({
 							rawContent,
 							sourceUrl: sourceUrlForMeeting,
@@ -415,5 +428,104 @@ export const scrapeSingle = internalAction({
 			triggeredBy: "manual",
 			triggeredByUserId: args.userId,
 		});
+	},
+});
+
+// ═══════════════════════════════════════════════════════════════
+// BATCH RESCRAPE - Re-scrape municipalities matching filters
+// ═══════════════════════════════════════════════════════════════
+interface BatchRescrapeResult {
+	scheduled: number;
+	municipalities: Array<{ municipalityId: string; name: string }>;
+}
+
+export const batchRescrape = action({
+	args: {
+		workosUserId: v.string(),
+		platform: v.optional(
+			v.union(
+				v.literal("granicus"),
+				v.literal("civicplus"),
+				v.literal("generic"),
+			),
+		),
+		state: v.optional(v.string()),
+		failedOnly: v.optional(v.boolean()),
+		limit: v.optional(v.number()),
+	},
+	handler: async (ctx, args): Promise<BatchRescrapeResult> => {
+		// Verify admin
+		const user = await ctx.runQuery(
+			internal.functions.users.queries.getByWorkosUserIdInternal,
+			{ workosUserId: args.workosUserId },
+		);
+		if (!user?.isAdmin) {
+			throw new Error("Unauthorized: Admin access required");
+		}
+
+		// Get matching municipalities
+		const municipalities = await ctx.runQuery(
+			internal.functions.scrapers.queries.getFilteredMunicipalities,
+			{
+				platform: args.platform,
+				state: args.state,
+				failedOnly: args.failedOnly,
+				limit: args.limit ?? 50,
+			},
+		);
+
+		if (municipalities.length === 0) {
+			return { scheduled: 0, municipalities: [] };
+		}
+
+		// Schedule scrapes staggered 30 seconds apart
+		const scheduled: Array<{ municipalityId: string; name: string }> = [];
+
+		for (let i = 0; i < municipalities.length; i++) {
+			const muni = municipalities[i];
+			const delayMs = i * 30 * 1000;
+
+			await ctx.scheduler.runAfter(
+				delayMs,
+				internal.functions.scrapers.actions.runScraper,
+				{
+					municipalityId: muni._id,
+					triggeredBy: "manual" as const,
+					triggeredByUserId: user._id,
+				},
+			);
+
+			scheduled.push({
+				municipalityId: muni._id,
+				name: muni.name,
+			});
+		}
+
+		return { scheduled: scheduled.length, municipalities: scheduled };
+	},
+});
+
+// ═══════════════════════════════════════════════════════════════
+// TRIGGER SCRAPE ALL DUE - Admin wrapper for scrapeAllDue
+// ═══════════════════════════════════════════════════════════════
+export const triggerScrapeAllDue = action({
+	args: {
+		workosUserId: v.string(),
+		limit: v.optional(v.number()),
+	},
+	handler: async (ctx, args): Promise<ScrapeAllDueResult> => {
+		// Verify admin
+		const user = await ctx.runQuery(
+			internal.functions.users.queries.getByWorkosUserIdInternal,
+			{ workosUserId: args.workosUserId },
+		);
+		if (!user?.isAdmin) {
+			throw new Error("Unauthorized: Admin access required");
+		}
+
+		return await ctx.runAction(
+			internal.functions.scrapers.actions.scrapeAllDue,
+			{ limit: args.limit ?? 20 },
+		);
 	},
 });

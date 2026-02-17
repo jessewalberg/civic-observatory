@@ -124,12 +124,15 @@ export const create = mutation({
 			});
 		}
 
-		// Schedule AI summarization
-		await ctx.scheduler.runAfter(
-			0,
-			internal.functions.ai.summarize.summarizeMeeting,
-			{ meetingId },
-		);
+		// Schedule AI summarization for past meetings only.
+		// Future meetings are stored as agenda previews until the meeting date.
+		if (args.meetingDate <= Date.now()) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.functions.ai.summarize.summarizeMeeting,
+				{ meetingId },
+			);
+		}
 
 		return meetingId;
 	},
@@ -166,8 +169,8 @@ export const updateStatus = mutation({
 
 		await ctx.db.patch(args.meetingId, updates);
 
-		// Re-queue processing when a meeting is moved back to pending.
-		if (args.status === "pending") {
+		// Re-queue processing when a meeting is moved back to pending (past meetings only).
+		if (args.status === "pending" && meeting.meetingDate <= Date.now()) {
 			await ctx.scheduler.runAfter(
 				0,
 				internal.functions.ai.summarize.summarizeMeeting,
@@ -615,6 +618,171 @@ export const adminUnstickMunicipalityProcessing = mutation({
 				updatedAt: m.updatedAt ?? m.createdAt,
 				processingError: m.processingError ?? null,
 			})),
+			failures: failures.slice(0, 25),
+		};
+	},
+});
+
+// ═══════════════════════════════════════════════════════════════
+// ADMIN REPAIR MUNICIPALITY DATA - Normalize statuses + requeue
+// ═══════════════════════════════════════════════════════════════
+export const adminRepairMunicipalityData = mutation({
+	args: {
+		municipalityId: v.id("municipalities"),
+		requestingWorkosUserId: v.string(),
+		staleProcessingMinutes: v.optional(v.number()),
+		limit: v.optional(v.number()),
+	},
+	handler: async (ctx, args) => {
+		await requireAdminUser(ctx, args.requestingWorkosUserId);
+
+		const municipality = await ctx.db.get(args.municipalityId);
+		if (!municipality) {
+			throw new Error("Municipality not found");
+		}
+
+		const limit = Math.max(1, Math.min(args.limit ?? 1000, 2000));
+		const staleMinutes = Math.max(
+			0,
+			Math.min(args.staleProcessingMinutes ?? 10, 7 * 24 * 60),
+		);
+		const cutoff = Date.now() - staleMinutes * 60 * 1000;
+
+		const meetings = await ctx.db
+			.query("meetings")
+			.withIndex("by_municipality_date", (q) =>
+				q.eq("municipalityId", args.municipalityId),
+			)
+			.order("desc")
+			.take(limit);
+
+		let normalizedToSummarized = 0;
+		let resetStaleProcessing = 0;
+		let repairedInvalidSummarized = 0;
+		let requeuedFailedOrSkipped = 0;
+		let ensuredPendingQueued = 0;
+		let skippedNoSource = 0;
+		const failures: Array<{
+			id: Id<"meetings">;
+			title: string;
+			error: string;
+		}> = [];
+
+		for (const meeting of meetings) {
+			try {
+				const summary = await ctx.db
+					.query("summaries")
+					.withIndex("by_meeting", (q) => q.eq("meetingId", meeting._id))
+					.first();
+
+				const hasSummary = Boolean(summary);
+				const hasAnySource =
+					(meeting.rawContent?.trim().length ?? 0) > 0 ||
+					(meeting.sourceUrl?.trim().length ?? 0) > 0 ||
+					Boolean(meeting.documentStorageId);
+				const isStaleProcessing =
+					meeting.status === "processing" &&
+					(meeting.updatedAt ?? meeting.createdAt) <= cutoff;
+
+				if (hasSummary) {
+					if (meeting.status !== "summarized") {
+						await ctx.db.patch(meeting._id, {
+							status: "summarized",
+							processingError: undefined,
+							updatedAt: Date.now(),
+						});
+						normalizedToSummarized++;
+					}
+					continue;
+				}
+
+				// Status says summarized but summary row is missing: repair and retry.
+				if (meeting.status === "summarized") {
+					if (!hasAnySource) {
+						skippedNoSource++;
+						continue;
+					}
+					await ctx.db.patch(meeting._id, {
+						status: "pending",
+						processingError: undefined,
+						updatedAt: Date.now(),
+					});
+					await ctx.scheduler.runAfter(
+						0,
+						internal.functions.ai.summarize.summarizeMeeting,
+						{ meetingId: meeting._id },
+					);
+					repairedInvalidSummarized++;
+					continue;
+				}
+
+				if (isStaleProcessing) {
+					if (!hasAnySource) {
+						skippedNoSource++;
+						continue;
+					}
+					await ctx.db.patch(meeting._id, {
+						status: "pending",
+						processingError: undefined,
+						updatedAt: Date.now(),
+					});
+					await ctx.scheduler.runAfter(
+						0,
+						internal.functions.ai.summarize.summarizeMeeting,
+						{ meetingId: meeting._id },
+					);
+					resetStaleProcessing++;
+					continue;
+				}
+
+				if (meeting.status === "failed" || meeting.status === "skipped") {
+					if (!hasAnySource) {
+						skippedNoSource++;
+						continue;
+					}
+					await ctx.db.patch(meeting._id, {
+						status: "pending",
+						processingError: undefined,
+						updatedAt: Date.now(),
+					});
+					await ctx.scheduler.runAfter(
+						0,
+						internal.functions.ai.summarize.summarizeMeeting,
+						{ meetingId: meeting._id },
+					);
+					requeuedFailedOrSkipped++;
+					continue;
+				}
+
+				// Ensure pending items are actually queued at least once.
+				if (meeting.status === "pending" && hasAnySource) {
+					await ctx.scheduler.runAfter(
+						0,
+						internal.functions.ai.summarize.summarizeMeeting,
+						{ meetingId: meeting._id },
+					);
+					ensuredPendingQueued++;
+				}
+			} catch (error) {
+				failures.push({
+					id: meeting._id,
+					title: meeting.title,
+					error: error instanceof Error ? error.message : "Unknown error",
+				});
+			}
+		}
+
+		return {
+			municipalityId: args.municipalityId,
+			scanned: meetings.length,
+			staleProcessingMinutes: staleMinutes,
+			normalizedToSummarized,
+			repairedInvalidSummarized,
+			resetStaleProcessing,
+			requeuedFailedOrSkipped,
+			ensuredPendingQueued,
+			skippedNoSource,
+			failedCount: failures.length,
 			failures: failures.slice(0, 25),
 		};
 	},

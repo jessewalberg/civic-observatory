@@ -1,4 +1,5 @@
 import { cronJobs } from "convex/server";
+import { internal } from "./_generated/api";
 
 const crons = cronJobs();
 
@@ -25,6 +26,15 @@ const crons = cronJobs();
 //   internal.functions.scrapeJobs.mutations.clearStuck,
 //   {}
 // );
+
+// Process meetings whose date has now passed (were stored as agenda previews)
+// Runs at 7am UTC daily
+crons.daily(
+	"process-newly-past-meetings",
+	{ hourUTC: 7, minuteUTC: 0 },
+	internal.functions.ai.summarize.processNewlyPastMeetings,
+	{ limit: 20 },
+);
 
 // ═══════════════════════════════════════════════════════════════
 // ALERT CRONS

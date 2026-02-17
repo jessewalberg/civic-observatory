@@ -1,6 +1,6 @@
 import { ChevronRight, FileText } from "lucide-react";
 import { motion } from "motion/react";
-import { type Topic, TopicBadge } from "@/components/TopicBadge";
+import { type Topic, TopicBadge, normalizeTopics } from "@/components/TopicBadge";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -78,13 +78,18 @@ export function MeetingCard({
 	summaryPreview,
 	className,
 }: MeetingCardProps) {
-	const statusInfo = statusConfig[status];
 	const typeLabel = meetingTypeLabels[meetingType];
 	const date = new Date(meetingDate);
+	const isFutureMeeting = meetingDate > Date.now();
 
-	// Only show first 3 topics
-	const displayTopics = topics.slice(0, 3);
-	const hasMoreTopics = topics.length > 3;
+	const statusInfo = isFutureMeeting
+		? { label: "Upcoming", className: "bg-blue-500/10 text-blue-400 border-blue-500/30" }
+		: statusConfig[status];
+
+	// Normalize and deduplicate topics, then show first 3
+	const normalized = normalizeTopics(topics);
+	const displayTopics = normalized.slice(0, 3);
+	const hasMoreTopics = normalized.length > 3;
 
 	return (
 		<a href={`/meeting/${id}`} className="block">
@@ -120,9 +125,11 @@ export function MeetingCard({
 									<h3 className="font-medium text-foreground truncate group-hover:text-primary transition-colors">
 										{title}
 									</h3>
+									{meetingType !== "other" && (
 									<div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
 										<span>{typeLabel}</span>
 									</div>
+								)}
 								</div>
 								<Badge
 									variant="outline"
@@ -151,7 +158,7 @@ export function MeetingCard({
 									))}
 									{hasMoreTopics && (
 										<span className="text-xs text-muted-foreground">
-											+{topics.length - 3} more
+											+{normalized.length - 3} more
 										</span>
 									)}
 								</div>

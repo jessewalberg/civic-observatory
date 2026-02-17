@@ -54,6 +54,53 @@ export const getDueMunicipalities = internalQuery({
 });
 
 // ═══════════════════════════════════════════════════════════════
+// GET FILTERED MUNICIPALITIES - For batch re-scrape operations
+// ═══════════════════════════════════════════════════════════════
+export const getFilteredMunicipalities = internalQuery({
+	args: {
+		platform: v.optional(v.string()),
+		state: v.optional(v.string()),
+		failedOnly: v.optional(v.boolean()),
+		limit: v.optional(v.number()),
+	},
+	handler: async (ctx, args) => {
+		const limit = args.limit ?? 50;
+
+		// Get active municipalities
+		const municipalities = await ctx.db
+			.query("municipalities")
+			.withIndex("by_active", (q) => q.eq("isActive", true))
+			.collect();
+
+		const filtered = municipalities.filter((m) => {
+			if (m.platform === "manual") return false;
+			if (!m.meetingsPageUrl) return false;
+			if (args.platform && m.platform !== args.platform) return false;
+			if (args.state && m.state !== args.state) return false;
+			if (args.failedOnly && m.lastScrapeStatus !== "failed") return false;
+			return true;
+		});
+
+		// Sort by last scraped (oldest first)
+		return filtered
+			.sort((a, b) => (a.lastScrapedAt ?? 0) - (b.lastScrapedAt ?? 0))
+			.slice(0, limit);
+	},
+});
+
+// ═══════════════════════════════════════════════════════════════
+// GET JOB - Get a scrape job by ID (internal, for actions)
+// ═══════════════════════════════════════════════════════════════
+export const getJob = internalQuery({
+	args: {
+		jobId: v.id("scrapeJobs"),
+	},
+	handler: async (ctx, args) => {
+		return await ctx.db.get(args.jobId);
+	},
+});
+
+// ═══════════════════════════════════════════════════════════════
 // CHECK MEETING EXISTS - Check if meeting already exists (dedup)
 // ═══════════════════════════════════════════════════════════════
 export const checkMeetingExists = internalQuery({

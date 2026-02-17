@@ -20,7 +20,7 @@ import { getAuth, getSignInUrl } from "@/authkit/serverFunctions";
 import { useWorkOSUser } from "@/components/ConvexClientProvider";
 import { ShareButton } from "@/components/ShareButton";
 import { MeetingDetailSkeleton } from "@/components/skeletons";
-import { type Topic, TopicBadge } from "@/components/TopicBadge";
+import { type Topic, TopicBadge, normalizeTopics } from "@/components/TopicBadge";
 import { UsageLimitExceeded } from "@/components/UsageLimitExceeded";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -384,32 +384,78 @@ function MeetingDetailPage() {
 
 	// Show pending state
 	if (meeting.status === "pending") {
+		const isFuture = meeting.meetingDate > Date.now();
 		return (
 			<div className="min-h-screen bg-background">
 				<div className="container mx-auto px-4 py-8 max-w-4xl">
 					<Breadcrumb meeting={meeting} />
 					<MeetingHeader meeting={meeting} date={date} typeLabel={typeLabel} />
 
-					<motion.div
-						initial={{ opacity: 0, y: 20 }}
-						animate={{ opacity: 1, y: 0 }}
-						className="flex flex-col items-center justify-center py-16 text-center"
-					>
-						<div className="rounded-full bg-amber-500/10 p-4 mb-4">
-							<Clock className="h-8 w-8 text-amber-500" />
-						</div>
-						<h2 className="font-display text-xl font-semibold text-foreground mb-2">
-							Queued for Processing
-						</h2>
-						<p className="text-muted-foreground max-w-md">
-							This meeting is in the processing queue. We'll start as soon as
-							capacity opens up.
-						</p>
-						<div className="mt-6 inline-flex items-center gap-2 rounded-full border border-amber-500/20 bg-amber-500/10 px-4 py-2 text-sm text-amber-500">
-							<span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
-							Waiting in line
-						</div>
-					</motion.div>
+					{isFuture && meeting.rawContent ? (
+						<motion.div
+							initial={{ opacity: 0, y: 20 }}
+							animate={{ opacity: 1, y: 0 }}
+						>
+							<Card className="bg-blue-500/5 border-blue-500/20 p-6 mb-6">
+								<div className="flex items-center gap-2 mb-3">
+									<Clock className="h-5 w-5 text-blue-400" />
+									<h2 className="font-display text-lg font-semibold text-blue-400">
+										Agenda Preview
+									</h2>
+								</div>
+								<p className="text-muted-foreground text-sm mb-4">
+									This meeting hasn't taken place yet. Below is the published agenda.
+									A full AI summary will be generated after the meeting date.
+								</p>
+								<div className="prose prose-invert prose-sm max-w-none whitespace-pre-wrap text-muted-foreground">
+									{meeting.rawContent}
+								</div>
+							</Card>
+						</motion.div>
+					) : isFuture ? (
+						<motion.div
+							initial={{ opacity: 0, y: 20 }}
+							animate={{ opacity: 1, y: 0 }}
+							className="flex flex-col items-center justify-center py-16 text-center"
+						>
+							<div className="rounded-full bg-blue-500/10 p-4 mb-4">
+								<Clock className="h-8 w-8 text-blue-400" />
+							</div>
+							<h2 className="font-display text-xl font-semibold text-foreground mb-2">
+								Upcoming Meeting
+							</h2>
+							<p className="text-muted-foreground max-w-md">
+								This meeting is scheduled for{" "}
+								{date.toLocaleDateString("en-US", {
+									weekday: "long",
+									month: "long",
+									day: "numeric",
+								})}
+								. A summary will be generated after it takes place.
+							</p>
+						</motion.div>
+					) : (
+						<motion.div
+							initial={{ opacity: 0, y: 20 }}
+							animate={{ opacity: 1, y: 0 }}
+							className="flex flex-col items-center justify-center py-16 text-center"
+						>
+							<div className="rounded-full bg-amber-500/10 p-4 mb-4">
+								<Clock className="h-8 w-8 text-amber-500" />
+							</div>
+							<h2 className="font-display text-xl font-semibold text-foreground mb-2">
+								Queued for Processing
+							</h2>
+							<p className="text-muted-foreground max-w-md">
+								This meeting is in the processing queue. We'll start as soon as
+								capacity opens up.
+							</p>
+							<div className="mt-6 inline-flex items-center gap-2 rounded-full border border-amber-500/20 bg-amber-500/10 px-4 py-2 text-sm text-amber-500">
+								<span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+								Waiting in line
+							</div>
+						</motion.div>
+					)}
 				</div>
 			</div>
 		);
@@ -656,6 +702,7 @@ interface MeetingHeaderProps {
 function MeetingHeader({ meeting, date, typeLabel }: MeetingHeaderProps) {
 	const sentiment = meeting.summary?.sentiment;
 	const sentimentInfo = sentiment ? sentimentConfig[sentiment] : null;
+	const isFutureMeeting = meeting.meetingDate > Date.now();
 
 	const shareDescription = meeting.summary?.executiveSummary
 		? `${meeting.summary.executiveSummary.slice(0, 150)}...`
@@ -681,6 +728,7 @@ function MeetingHeader({ meeting, date, typeLabel }: MeetingHeaderProps) {
 				<div className="flex items-center gap-1.5 text-muted-foreground">
 					<Calendar className="h-4 w-4" />
 					<span>
+						{isFutureMeeting ? "Scheduled for " : ""}
 						{date.toLocaleDateString("en-US", {
 							weekday: "long",
 							year: "numeric",
@@ -689,8 +737,15 @@ function MeetingHeader({ meeting, date, typeLabel }: MeetingHeaderProps) {
 						})}
 					</span>
 				</div>
-				<Badge variant="secondary">{typeLabel}</Badge>
-				{sentimentInfo && (
+				{meeting.meetingType !== "other" && (
+					<Badge variant="secondary">{typeLabel}</Badge>
+				)}
+				{isFutureMeeting && (
+					<Badge className="bg-blue-500/15 text-blue-400 border-blue-500/30">
+						Upcoming — Agenda Preview
+					</Badge>
+				)}
+				{!isFutureMeeting && sentimentInfo && sentiment !== "routine" && (
 					<Badge className={sentimentInfo.className}>
 						{sentimentInfo.label}
 					</Badge>
@@ -701,8 +756,8 @@ function MeetingHeader({ meeting, date, typeLabel }: MeetingHeaderProps) {
 			<div className="flex flex-wrap items-center justify-between gap-4">
 				{meeting.summary?.topics && meeting.summary.topics.length > 0 && (
 					<div className="flex flex-wrap gap-2">
-						{meeting.summary.topics.map((topic) => (
-							<TopicBadge key={topic} topic={topic as Topic} />
+						{normalizeTopics(meeting.summary.topics).map((topic) => (
+							<TopicBadge key={topic} topic={topic} />
 						))}
 					</div>
 				)}
@@ -783,10 +838,10 @@ function DecisionCard({ decision }: DecisionCardProps) {
 
 				{decision.topics.length > 0 && (
 					<div className="flex flex-wrap gap-1.5 pt-2">
-						{decision.topics.map((topic) => (
+						{normalizeTopics(decision.topics).map((topic) => (
 							<TopicBadge
 								key={topic}
-								topic={topic as Topic}
+								topic={topic}
 								className="text-xs"
 							/>
 						))}

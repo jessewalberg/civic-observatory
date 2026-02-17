@@ -3,8 +3,9 @@
 import { v } from "convex/values";
 import { internal } from "../../_generated/api";
 import { internalAction } from "../../_generated/server";
+import { extractText } from "unpdf";
 import { htmlToText, normalizeUrl } from "../../scrapers/utils";
-import { extractTextFromPdfData } from "./pdfParseCompat";
+import { ocrPdf } from "./ocrPdf";
 
 // Id type used in inline type annotations
 
@@ -70,7 +71,7 @@ export const summarizeMeeting = internalAction({
 			}
 
 			// 2b. If still no content, try hydrating from the stored source URL.
-			if (!meeting.rawContent) {
+			if (!meeting.rawContent && meeting.sourceUrl) {
 				const hydratedContent = await hydrateContentFromSourceUrl({
 					sourceUrl: meeting.sourceUrl,
 					meetingsPageUrl: meeting.municipality?.meetingsPageUrl,
@@ -93,12 +94,14 @@ export const summarizeMeeting = internalAction({
 					);
 
 					if (!meeting) {
-						throw new Error("Meeting not found after source URL hydration");
+						throw new Error(
+							"Meeting not found after source URL hydration",
+						);
 					}
 				}
 			}
 
-			if (!meeting.rawContent) {
+			if (!meeting || !meeting.rawContent) {
 				throw new Error("Meeting has no content to summarize");
 			}
 
@@ -114,6 +117,7 @@ export const summarizeMeeting = internalAction({
 					month: "long",
 					day: "numeric",
 				}),
+				meetingDateMs: meeting.meetingDate,
 				content: meeting.rawContent,
 			});
 
@@ -269,6 +273,62 @@ export const retryFailedMeeting = internalAction({
 });
 
 // ═══════════════════════════════════════════════════════════════
+// PROCESS NEWLY-PAST MEETINGS - Summarize meetings whose date has now passed
+// ═══════════════════════════════════════════════════════════════
+export const processNewlyPastMeetings = internalAction({
+	args: {
+		limit: v.optional(v.number()),
+	},
+	handler: async (
+		ctx,
+		args,
+	): Promise<{
+		found: number;
+		processed: number;
+		succeeded: number;
+		failed: number;
+	}> => {
+		const limit = args.limit ?? 20;
+		const now = Date.now();
+
+		// Get pending meetings whose date has passed
+		const pendingMeetings = await ctx.runQuery(
+			internal.functions.ai.queries.getPendingMeetings,
+			{ limit: limit * 2 },
+		);
+
+		// Filter to only past meetings
+		const pastPending = pendingMeetings.filter(
+			(m: { meetingDate: number }) => m.meetingDate <= now,
+		);
+
+		const toProcess = pastPending.slice(0, limit);
+
+		const results = {
+			found: pastPending.length as number,
+			processed: 0,
+			succeeded: 0,
+			failed: 0,
+		};
+
+		for (const meeting of toProcess) {
+			results.processed++;
+			const result = await ctx.runAction(
+				internal.functions.ai.summarize.summarizeMeeting,
+				{ meetingId: meeting._id },
+			);
+			if (result.success) {
+				results.succeeded++;
+			} else {
+				results.failed++;
+			}
+		}
+
+		return results;
+	},
+});
+
+// ═══════════════════════════════════════════════════════════════
 // Helper: Build the prompt
 // ═══════════════════════════════════════════════════════════════
 interface PromptParams {
@@ -277,6 +337,7 @@ interface PromptParams {
 	state: string;
 	meetingType: string;
 	date: string;
+	meetingDateMs: number;
 	content: string;
 }
 
@@ -290,17 +351,23 @@ function buildPrompt(params: PromptParams): { system: string; user: string } {
 		other: "Other",
 	};
 
+	const isFutureMeeting = params.meetingDateMs > Date.now();
+	const docType = isFutureMeeting
+		? "AGENDA (meeting has not yet occurred)"
+		: "MINUTES/POST-MEETING DOCUMENT";
+
 	const system = `You are an expert analyst of local government proceedings. Analyze meeting documents and produce structured JSON summaries that help citizens understand what happened.
 
 Be: Accurate, neutral, accessible, actionable.
 Output: Valid JSON only.`;
 
-	const user = `Analyze this municipal meeting and return a JSON summary.
+	const user = `Analyze this municipal meeting ${isFutureMeeting ? "agenda" : "document"} and return a JSON summary.
 
 MEETING: ${params.title}
 MUNICIPALITY: ${params.municipalityName}, ${params.state}
 TYPE: ${meetingTypeLabels[params.meetingType] ?? params.meetingType}
 DATE: ${params.date}
+DOCUMENT TYPE: ${docType}
 
 DOCUMENT:
 ${params.content.slice(0, MAX_CONTENT_LENGTH)}
@@ -324,7 +391,7 @@ Return ONLY valid JSON:
     {
       "topic": "Topic name",
       "summary": "What was discussed",
-      "category": "housing|public_safety|education|environment|transportation|budget|utilities|parks|zoning|economic_dev|infrastructure|healthcare|elections|other"
+      "category": "budget|zoning|infrastructure|safety|education|environment|housing|transportation|other"
     }
   ],
   "publicComments": {
@@ -336,14 +403,15 @@ Return ONLY valid JSON:
   "upcomingItems": [
     {"title": "Future item", "expectedDate": "date if known"}
   ],
-  "topics": ["all", "unique", "tags"],
+  "topics": ["budget", "safety"],
   "sentiment": "routine|contentious|celebratory|urgent"
 }
 
 RULES:
 - Only include voteResult if explicit counts mentioned
 - publicComments can be null if none
-- Be concise but informative`;
+- Be concise but informative
+- "topics" and "category" MUST only use these values: budget, zoning, infrastructure, safety, education, environment, housing, transportation, other`;
 
 	return { system, user };
 }
@@ -434,7 +502,22 @@ function isPdfContent(
 }
 
 async function extractTextFromPdf(arrayBuffer: ArrayBuffer): Promise<string> {
-	return extractTextFromPdfData(new Uint8Array(arrayBuffer));
+	// Copy the buffer because unpdf/pdfjs may detach the ArrayBuffer
+	// (transferring it to a worker), leaving the original empty.
+	const original = new Uint8Array(arrayBuffer);
+	const copy = new Uint8Array(original);
+	const { text } = await extractText(copy, { mergePages: true });
+
+	// If direct extraction returned enough text, use it
+	if (text.trim().length >= MIN_EXTRACTED_CONTENT_LENGTH) {
+		return text;
+	}
+
+	// Fall back to OCR for scanned/image-only PDFs
+	console.log(
+		`[extractTextFromPdf] Direct: ${text.trim().length} chars → OCR fallback (${original.length}b)`,
+	);
+	return ocrPdf(original);
 }
 
 function finalizeExtractedContent(content: string): string | null {
@@ -534,6 +617,46 @@ interface ParsedSummary {
 	sentiment?: "routine" | "contentious" | "celebratory" | "urgent";
 }
 
+const VALID_TOPICS = new Set([
+	"budget",
+	"zoning",
+	"infrastructure",
+	"safety",
+	"education",
+	"environment",
+	"housing",
+	"transportation",
+	"other",
+]);
+
+// Map common AI-generated category names to our valid topics
+const TOPIC_ALIASES: Record<string, string> = {
+	public_safety: "safety",
+	utilities: "infrastructure",
+	parks: "environment",
+	economic_dev: "budget",
+	healthcare: "safety",
+	elections: "other",
+	finance: "budget",
+	planning: "zoning",
+	development: "zoning",
+	transit: "transportation",
+	traffic: "transportation",
+	water: "infrastructure",
+	sewer: "infrastructure",
+	police: "safety",
+	fire: "safety",
+	schools: "education",
+	recreation: "environment",
+};
+
+function normalizeTopic(topic: string): string {
+	const lower = topic.toLowerCase().trim();
+	if (VALID_TOPICS.has(lower)) return lower;
+	if (TOPIC_ALIASES[lower]) return TOPIC_ALIASES[lower];
+	return "other";
+}
+
 function parseAndValidateSummary(response: string): ParsedSummary {
 	// Extract JSON from response (handle markdown code blocks)
 	let jsonStr = response.trim();
@@ -598,7 +721,7 @@ function parseAndValidateSummary(response: string): ParsedSummary {
 		const result: ParsedSummary["keyDecisions"][0] = {
 			title: String(d.title ?? "Untitled Decision"),
 			description: String(d.description ?? ""),
-			topics: Array.isArray(d.topics) ? d.topics.map(String) : [],
+			topics: Array.isArray(d.topics) ? d.topics.map((t: unknown) => normalizeTopic(String(t))) : [],
 		};
 
 		if (d.voteResult && typeof d.voteResult === "object") {
@@ -632,7 +755,7 @@ function parseAndValidateSummary(response: string): ParsedSummary {
 		return {
 			topic: String(t.topic ?? "Untitled Topic"),
 			summary: String(t.summary ?? ""),
-			category: String(t.category ?? "other"),
+			category: normalizeTopic(String(t.category ?? "other")),
 		};
 	});
 
@@ -696,7 +819,7 @@ function parseAndValidateSummary(response: string): ParsedSummary {
 		discussionTopics,
 		publicComments,
 		upcomingItems,
-		topics: (obj.topics as unknown[]).map(String),
+		topics: [...new Set((obj.topics as unknown[]).map((t) => normalizeTopic(String(t))))],
 		sentiment,
 	};
 }

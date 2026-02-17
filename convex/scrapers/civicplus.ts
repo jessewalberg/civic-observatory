@@ -37,8 +37,8 @@ const CIVICPLUS_PATTERNS = [
 /** Default selectors for CivicPlus AgendaCenter pages */
 const AGENDA_CENTER_SELECTORS = {
 	meetingList: ".agendaRow, .minutesRow, .agenda-item, tr.catAgendaRow",
-	meetingTitle: ".agendaTitle, .title, td:first-child a, h4",
-	meetingDate: ".agendaDate, .date, td:nth-child(2)",
+	meetingTitle: "p a[href*='ViewFile'], p a[href*='View.ashx'], .agendaTitle, .title, h4",
+	meetingDate: "h3 strong, .agendaDate, .date",
 	documentLink:
 		"a[href*='.pdf'], a[href*='ViewFile'], a[href*='View.ashx'], a.pdf-link",
 };

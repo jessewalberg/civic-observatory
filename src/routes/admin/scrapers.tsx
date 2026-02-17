@@ -9,6 +9,9 @@ import {
 	ExternalLink,
 	Loader2,
 	Play,
+	RefreshCw,
+	RotateCcw,
+	Search,
 	Server,
 	Shield,
 	XCircle,
@@ -20,6 +23,14 @@ import { getAuth, getSignInUrl } from "@/authkit/serverFunctions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import {
 	Table,
 	TableBody,
@@ -82,6 +93,12 @@ function ScrapersAdminPage() {
 function ScrapersContent({ workosUserId }: { workosUserId: string }) {
 	const [expandedId, setExpandedId] = useState<string | null>(null);
 	const [scrapingIds, setScrapingIds] = useState<Set<string>>(new Set());
+	const [batchRunning, setBatchRunning] = useState<string | null>(null);
+	const [retryingIds, setRetryingIds] = useState<Set<string>>(new Set());
+	const [platformFilter, setPlatformFilter] = useState<string>("all");
+	const [tableSearch, setTableSearch] = useState("");
+	const [tablePlatform, setTablePlatform] = useState<string>("all");
+	const [tableScrapeStatus, setTableScrapeStatus] = useState<string>("all");
 
 	// Queries
 	const isAdmin = useQuery(api.functions.users.queries.isAdmin, {
@@ -104,6 +121,13 @@ function ScrapersContent({ workosUserId }: { workosUserId: string }) {
 	const triggerScrape = useAction(
 		api.functions.scrapeJobs.mutations.triggerScrape,
 	);
+	const batchRescrape = useAction(
+		api.functions.scrapers.actions.batchRescrape,
+	);
+	const triggerScrapeAllDue = useAction(
+		api.functions.scrapers.actions.triggerScrapeAllDue,
+	);
+	const retryJob = useAction(api.functions.scrapeJobs.mutations.retry);
 
 	const handleScrapeNow = async (
 		municipalityId: Id<"municipalities">,
@@ -121,6 +145,81 @@ function ScrapersContent({ workosUserId }: { workosUserId: string }) {
 			setScrapingIds((prev) => {
 				const next = new Set(prev);
 				next.delete(municipalityId);
+				return next;
+			});
+		}
+	};
+
+	const handleBatchRescrape = async (
+		label: string,
+		opts: {
+			platform?: "granicus" | "civicplus" | "generic";
+			failedOnly?: boolean;
+		},
+	) => {
+		setBatchRunning(label);
+		try {
+			const result = await batchRescrape({
+				workosUserId,
+				...opts,
+				limit: 50,
+			});
+			if (result.scheduled === 0) {
+				toast.info(`No municipalities matched for "${label}"`);
+			} else {
+				toast.success(
+					`Scheduled ${result.scheduled} scrapes (${label}). Running staggered over ~${Math.ceil((result.scheduled * 30) / 60)} min.`,
+				);
+			}
+		} catch (error) {
+			const message =
+				error instanceof Error ? error.message : "Batch scrape failed";
+			toast.error(message);
+		} finally {
+			setBatchRunning(null);
+		}
+	};
+
+	const handleScrapeAllDue = async () => {
+		setBatchRunning("all-due");
+		try {
+			const result = await triggerScrapeAllDue({
+				workosUserId,
+				limit: 50,
+			});
+			if (result.scheduled === 0) {
+				toast.info("No municipalities are due for scraping");
+			} else {
+				toast.success(
+					`Scheduled ${result.scheduled} due scrapes. Running staggered over ~${Math.ceil((result.scheduled * 30) / 60)} min.`,
+				);
+			}
+		} catch (error) {
+			const message =
+				error instanceof Error ? error.message : "Failed to trigger scrapes";
+			toast.error(message);
+		} finally {
+			setBatchRunning(null);
+		}
+	};
+
+	const handleRetryJob = async (jobId: Id<"scrapeJobs">, muniName: string) => {
+		setRetryingIds((prev) => new Set(prev).add(jobId));
+		try {
+			const result = await retryJob({ jobId, workosUserId });
+			if (result.scheduled) {
+				toast.success(`Retry scheduled for ${muniName}`);
+			} else {
+				toast.error(result.error ?? "Failed to retry");
+			}
+		} catch (error) {
+			const message =
+				error instanceof Error ? error.message : "Failed to retry job";
+			toast.error(message);
+		} finally {
+			setRetryingIds((prev) => {
+				const next = new Set(prev);
+				next.delete(jobId);
 				return next;
 			});
 		}
@@ -163,6 +262,23 @@ function ScrapersContent({ workosUserId }: { workosUserId: string }) {
 			</div>
 		);
 	}
+
+	// Filter municipalities for table
+	const filteredMunicipalities = municipalities?.filter((m) => {
+		const matchesSearch =
+			!tableSearch ||
+			m.name.toLowerCase().includes(tableSearch.toLowerCase()) ||
+			m.state.toLowerCase().includes(tableSearch.toLowerCase());
+		const matchesPlatform =
+			tablePlatform === "all" || m.platform === tablePlatform;
+		const matchesScrapeStatus =
+			tableScrapeStatus === "all" ||
+			(tableScrapeStatus === "success" && m.lastScrapeStatus === "success") ||
+			(tableScrapeStatus === "failed" && m.lastScrapeStatus === "failed") ||
+			(tableScrapeStatus === "partial" && m.lastScrapeStatus === "partial") ||
+			(tableScrapeStatus === "never" && !m.lastScrapedAt);
+		return matchesSearch && matchesPlatform && matchesScrapeStatus;
+	});
 
 	// Calculate derived stats
 	const totalMunicipalities = municipalities?.length ?? 0;
@@ -259,14 +375,147 @@ function ScrapersContent({ workosUserId }: { workosUserId: string }) {
 						/>
 					</div>
 
+					{/* Batch Controls */}
+					<Card className="mb-8">
+						<div className="p-4 border-b border-border">
+							<h2 className="font-display text-lg font-semibold text-foreground">
+								Batch Operations
+							</h2>
+						</div>
+						<div className="p-4 flex flex-wrap items-center gap-3">
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={handleScrapeAllDue}
+								disabled={batchRunning !== null}
+							>
+								{batchRunning === "all-due" ? (
+									<Loader2 className="h-3 w-3 animate-spin mr-1.5" />
+								) : (
+									<Play className="h-3 w-3 mr-1.5" />
+								)}
+								Scrape All Due
+							</Button>
+
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={() =>
+									handleBatchRescrape("failed", { failedOnly: true })
+								}
+								disabled={batchRunning !== null}
+							>
+								{batchRunning === "failed" ? (
+									<Loader2 className="h-3 w-3 animate-spin mr-1.5" />
+								) : (
+									<RotateCcw className="h-3 w-3 mr-1.5" />
+								)}
+								Re-scrape Failed
+							</Button>
+
+							<div className="h-6 w-px bg-border" />
+
+							<Select
+								value={platformFilter}
+								onValueChange={setPlatformFilter}
+							>
+								<SelectTrigger className="w-[140px] h-8 text-xs">
+									<SelectValue placeholder="Platform" />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="all">All Platforms</SelectItem>
+									<SelectItem value="civicplus">CivicPlus</SelectItem>
+									<SelectItem value="granicus">Granicus</SelectItem>
+									<SelectItem value="generic">Generic</SelectItem>
+								</SelectContent>
+							</Select>
+
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={() => {
+									if (platformFilter === "all") {
+										handleBatchRescrape("all platforms", {});
+									} else {
+										handleBatchRescrape(platformFilter, {
+											platform: platformFilter as
+												| "granicus"
+												| "civicplus"
+												| "generic",
+										});
+									}
+								}}
+								disabled={batchRunning !== null}
+							>
+								{batchRunning !== null &&
+								batchRunning !== "all-due" &&
+								batchRunning !== "failed" ? (
+									<Loader2 className="h-3 w-3 animate-spin mr-1.5" />
+								) : (
+									<RefreshCw className="h-3 w-3 mr-1.5" />
+								)}
+								Re-scrape{" "}
+								{platformFilter === "all"
+									? "All"
+									: platformFilter.charAt(0).toUpperCase() +
+										platformFilter.slice(1)}
+							</Button>
+
+							{batchRunning && (
+								<span className="text-xs text-muted-foreground animate-pulse">
+									Scheduling batch...
+								</span>
+							)}
+						</div>
+					</Card>
+
 					<div className="grid lg:grid-cols-3 gap-8">
 						{/* Municipality Table */}
 						<div className="lg:col-span-2">
 							<Card>
-								<div className="p-6 border-b border-border">
-									<h2 className="font-display text-xl font-semibold text-foreground">
-										Municipalities
-									</h2>
+								<div className="p-4 border-b border-border space-y-3">
+									<div className="flex items-center justify-between">
+										<h2 className="font-display text-xl font-semibold text-foreground">
+											Municipalities
+										</h2>
+										<span className="text-xs text-muted-foreground">
+											{filteredMunicipalities?.length ?? 0} of {totalMunicipalities}
+										</span>
+									</div>
+									<div className="flex flex-wrap gap-2">
+										<div className="relative flex-1 min-w-[160px]">
+											<Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+											<Input
+												placeholder="Search name or state..."
+												value={tableSearch}
+												onChange={(e) => setTableSearch(e.target.value)}
+												className="pl-8 h-8 text-xs"
+											/>
+										</div>
+										<Select value={tablePlatform} onValueChange={setTablePlatform}>
+											<SelectTrigger className="w-[120px] h-8 text-xs">
+												<SelectValue placeholder="Platform" />
+											</SelectTrigger>
+											<SelectContent>
+												<SelectItem value="all">All Platforms</SelectItem>
+												<SelectItem value="civicplus">CivicPlus</SelectItem>
+												<SelectItem value="granicus">Granicus</SelectItem>
+												<SelectItem value="generic">Generic</SelectItem>
+											</SelectContent>
+										</Select>
+										<Select value={tableScrapeStatus} onValueChange={setTableScrapeStatus}>
+											<SelectTrigger className="w-[130px] h-8 text-xs">
+												<SelectValue placeholder="Scrape Status" />
+											</SelectTrigger>
+											<SelectContent>
+												<SelectItem value="all">All Scrapes</SelectItem>
+												<SelectItem value="success">Success</SelectItem>
+												<SelectItem value="failed">Failed</SelectItem>
+												<SelectItem value="partial">Partial</SelectItem>
+												<SelectItem value="never">Never Scraped</SelectItem>
+											</SelectContent>
+										</Select>
+									</div>
 								</div>
 								<div className="max-h-[600px] overflow-y-auto">
 									<Table>
@@ -280,7 +529,7 @@ function ScrapersContent({ workosUserId }: { workosUserId: string }) {
 											</TableRow>
 										</TableHeader>
 										<TableBody>
-											{municipalities?.map((muni) => {
+											{filteredMunicipalities?.map((muni) => {
 												const isManual = muni.platform === "manual";
 												const canScrape =
 													muni.isActive && !isManual && muni.meetingsPageUrl;
@@ -433,7 +682,7 @@ function ScrapersContent({ workosUserId }: { workosUserId: string }) {
 													</Fragment>
 												);
 											})}
-											{(!municipalities || municipalities.length === 0) && (
+											{(!filteredMunicipalities || filteredMunicipalities.length === 0) && (
 												<TableRow>
 													<TableCell
 														colSpan={5}
@@ -459,6 +708,9 @@ function ScrapersContent({ workosUserId }: { workosUserId: string }) {
 										<h2 className="font-display text-lg font-semibold text-foreground">
 											Running Jobs
 										</h2>
+										<Badge variant="info" className="text-xs ml-auto">
+											{runningJobs.length}
+										</Badge>
 									</div>
 									<Table>
 										<TableHeader>
@@ -505,28 +757,54 @@ function ScrapersContent({ workosUserId }: { workosUserId: string }) {
 										<TableHeader>
 											<TableRow>
 												<TableHead>Municipality</TableHead>
-												<TableHead>Time</TableHead>
 												<TableHead>Error</TableHead>
+												<TableHead className="text-right">Retry</TableHead>
 											</TableRow>
 										</TableHeader>
 										<TableBody>
-											{failedJobs.slice(0, 5).map((job) => (
-												<TableRow key={job._id} className="bg-red-500/5">
-													<TableCell>
-														<span className="font-medium text-foreground text-sm">
-															{job.municipality?.name ?? "Unknown"}
-														</span>
-													</TableCell>
-													<TableCell className="text-muted-foreground text-sm">
-														{formatRelativeTime(job.createdAt)}
-													</TableCell>
-													<TableCell className="max-w-[200px]">
-														<p className="text-red-400 text-xs font-mono truncate">
-															{job.firstError ?? "Unknown error"}
-														</p>
-													</TableCell>
-												</TableRow>
-											))}
+											{failedJobs.slice(0, 5).map((job) => {
+												const isRetrying = retryingIds.has(job._id);
+												return (
+													<TableRow key={job._id} className="bg-red-500/5">
+														<TableCell>
+															<div className="flex flex-col">
+																<span className="font-medium text-foreground text-sm">
+																	{job.municipality?.name ?? "Unknown"}
+																</span>
+																<span className="text-muted-foreground text-xs">
+																	{formatRelativeTime(job.createdAt)}
+																</span>
+															</div>
+														</TableCell>
+														<TableCell className="max-w-[140px]">
+															<p className="text-red-400 text-xs font-mono truncate">
+																{job.firstError ?? "Unknown error"}
+															</p>
+														</TableCell>
+														<TableCell className="text-right">
+															<Button
+																size="sm"
+																variant="ghost"
+																className="h-7 w-7 p-0"
+																onClick={() =>
+																	handleRetryJob(
+																		job._id,
+																		job.municipality?.name ?? "Unknown",
+																	)
+																}
+																disabled={isRetrying}
+																title="Retry this scrape"
+															>
+																{isRetrying ? (
+																	<Loader2 className="h-3 w-3 animate-spin" />
+																) : (
+																	<RotateCcw className="h-3 w-3" />
+																)}
+															</Button>
+														</TableCell>
+													</TableRow>
+												);
+											})}
 										</TableBody>
 									</Table>
 								</Card>

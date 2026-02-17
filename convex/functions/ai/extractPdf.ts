@@ -1,9 +1,10 @@
 "use node";
 
 import { v } from "convex/values";
+import { extractText } from "unpdf";
 import { internal } from "../../_generated/api";
 import { internalAction } from "../../_generated/server";
-import { extractTextFromPdfData } from "./pdfParseCompat";
+import { ocrPdf } from "./ocrPdf";
 
 // Maximum content length (roughly 45k chars for ~15k tokens)
 const MAX_CONTENT_LENGTH = 45000;
@@ -55,30 +56,27 @@ export const extractPdf = internalAction({
 			}
 
 			const arrayBuffer = await response.arrayBuffer();
-			const buffer = Buffer.from(arrayBuffer);
+			const buffer = new Uint8Array(arrayBuffer);
 
 			// 3. Extract text based on file type
-			let extractedText: string;
-
-			// Determine file type from content (magic bytes)
 			const isPdf =
 				buffer[0] === 0x25 &&
 				buffer[1] === 0x50 &&
 				buffer[2] === 0x44 &&
-				buffer[3] === 0x46; // %PDF
+				buffer[3] === 0x46;
+
+			let extractedText: string;
 
 			if (isPdf) {
-				extractedText = await extractFromPdf(buffer);
+				extractedText = await extractPdfText(buffer);
 			} else {
-				// Try to read as plain text
-				extractedText = buffer.toString("utf-8");
+				extractedText = new TextDecoder().decode(buffer);
 			}
 
 			// 4. Validate extraction
 			const trimmedText = extractedText.trim();
 
 			if (trimmedText.length < MIN_TEXT_LENGTH) {
-				// Mark as failed - likely an image-only PDF or corrupted
 				await ctx.runMutation(
 					internal.functions.ai.mutations.updateMeetingStatus,
 					{
@@ -97,8 +95,7 @@ export const extractPdf = internalAction({
 			// 5. Truncate if too long
 			const finalContent =
 				trimmedText.length > MAX_CONTENT_LENGTH
-					? trimmedText.slice(0, MAX_CONTENT_LENGTH) +
-						"\n\n[Content truncated due to length...]"
+					? `${trimmedText.slice(0, MAX_CONTENT_LENGTH)}\n\n[Content truncated due to length...]`
 					: trimmedText;
 
 			// 6. Update meeting with extracted content
@@ -124,8 +121,21 @@ export const extractPdf = internalAction({
 });
 
 // ═══════════════════════════════════════════════════════════════
-// Helper: Extract text from PDF buffer
+// Helper: Extract text from PDF, with OCR fallback for scanned docs
 // ═══════════════════════════════════════════════════════════════
-async function extractFromPdf(buffer: Buffer): Promise<string> {
-	return extractTextFromPdfData(new Uint8Array(buffer));
+async function extractPdfText(buffer: Uint8Array): Promise<string> {
+	// Copy because extractText may detach the underlying ArrayBuffer
+	const original = new Uint8Array(buffer);
+	const copy = new Uint8Array(original);
+	const { text } = await extractText(copy, { mergePages: true });
+
+	if (text.trim().length >= MIN_TEXT_LENGTH) {
+		return text;
+	}
+
+	// Scanned PDF — fall back to Vision OCR
+	console.log(
+		`Direct extraction: ${text.trim().length} chars → OCR fallback (${original.length}b)`,
+	);
+	return ocrPdf(original);
 }

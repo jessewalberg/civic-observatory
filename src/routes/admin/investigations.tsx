@@ -3,6 +3,8 @@ import { useMutation, useQuery } from "convex/react";
 import {
 	AlertTriangle,
 	CheckCircle2,
+	ChevronDown,
+	ChevronRight,
 	ExternalLink,
 	Loader2,
 	RefreshCw,
@@ -11,7 +13,7 @@ import {
 	XCircle,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { getAuth, getSignInUrl } from "@/authkit/serverFunctions";
 import { Badge } from "@/components/ui/badge";
@@ -599,30 +601,76 @@ function MetricCard({
 	);
 }
 
+interface DiagnosisInfo {
+	code: string;
+	label: string;
+	severity: "requeue" | "investigate" | "needs_feature";
+	featureNeeded: string | null;
+	description: string;
+	investigationSteps: string[];
+	investigationUrls: Array<{ label: string; url: string }>;
+}
+
+interface MeetingRow {
+	id: Id<"meetings">;
+	title: string;
+	status: "pending" | "processing" | "summarized" | "failed" | "skipped";
+	meetingDate: number;
+	sourceUrl: string | null;
+	processingError: string | null;
+	hasSummary: boolean;
+	hasRawContent: boolean;
+	isStaleProcessing?: boolean;
+	diagnosis?: DiagnosisInfo | null;
+}
+
+const SEVERITY_STYLES: Record<
+	string,
+	{ badge: string; border: string; icon: string }
+> = {
+	requeue: {
+		badge: "border-emerald-500/40 text-emerald-400 bg-emerald-500/10",
+		border: "border-emerald-500/20 bg-emerald-500/5",
+		icon: "text-emerald-400",
+	},
+	investigate: {
+		badge: "border-amber-500/40 text-amber-400 bg-amber-500/10",
+		border: "border-amber-500/20 bg-amber-500/5",
+		icon: "text-amber-400",
+	},
+	needs_feature: {
+		badge: "border-violet-500/40 text-violet-400 bg-violet-500/10",
+		border: "border-violet-500/20 bg-violet-500/5",
+		icon: "text-violet-400",
+	},
+};
+
 function MeetingTable({
 	rows,
 	onRequeue,
 	busyMeetingIds,
 }: {
-	rows: Array<{
-		id: Id<"meetings">;
-		title: string;
-		status: "pending" | "processing" | "summarized" | "failed" | "skipped";
-		meetingDate: number;
-		sourceUrl: string | null;
-		processingError: string | null;
-		hasSummary: boolean;
-		hasRawContent: boolean;
-		isStaleProcessing?: boolean;
-	}>;
+	rows: MeetingRow[];
 	onRequeue?: (meetingId: Id<"meetings">) => void | Promise<void>;
 	busyMeetingIds?: Set<string>;
 }) {
+	const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+	const toggleExpand = (id: string) => {
+		setExpandedIds((prev) => {
+			const next = new Set(prev);
+			if (next.has(id)) next.delete(id);
+			else next.add(id);
+			return next;
+		});
+	};
+
 	return (
-		<div className="max-h-[500px] overflow-auto">
+		<div className="max-h-[600px] overflow-auto">
 			<Table>
 				<TableHeader>
 					<TableRow>
+						<TableHead className="w-8" />
 						<TableHead>Meeting</TableHead>
 						<TableHead>Status</TableHead>
 						<TableHead>Date</TableHead>
@@ -634,7 +682,7 @@ function MeetingTable({
 					{rows.length === 0 ? (
 						<TableRow>
 							<TableCell
-								colSpan={5}
+								colSpan={6}
 								className="text-center text-muted-foreground"
 							>
 								No rows
@@ -644,69 +692,158 @@ function MeetingTable({
 						rows.map((row) => {
 							const isBusy = busyMeetingIds?.has(row.id) === true;
 							const isInProgress = row.status === "pending";
+							const isExpanded = expandedIds.has(row.id);
+							const diag = row.diagnosis;
+							const severityStyle = diag
+								? SEVERITY_STYLES[diag.severity] ?? SEVERITY_STYLES.investigate
+								: null;
+
 							return (
-								<TableRow key={row.id}>
-									<TableCell>
-										<div className="space-y-1">
-											<div className="font-medium text-foreground">
-												{row.title}
-											</div>
-											{row.processingError && (
-												<div className="text-xs text-red-300 line-clamp-2">
-													{row.processingError}
-												</div>
-											)}
-										</div>
-									</TableCell>
-									<TableCell>
-										<Badge variant="outline">{row.status}</Badge>
-									</TableCell>
-									<TableCell className="text-sm text-muted-foreground">
-										{formatDate(row.meetingDate)}
-									</TableCell>
-									<TableCell>
-										{row.sourceUrl ? (
-											<a
-												href={row.sourceUrl}
-												target="_blank"
-												rel="noopener noreferrer"
-												className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-											>
-												Open
-												<ExternalLink className="h-3 w-3" />
-											</a>
-										) : (
-											<span className="text-xs text-muted-foreground">
-												None
-											</span>
-										)}
-									</TableCell>
-									<TableCell className="text-right">
-										{onRequeue ? (
-											<Button
-												size="sm"
-												variant="outline"
-												onClick={() => onRequeue(row.id)}
-												disabled={isBusy || row.hasSummary || isInProgress}
-											>
-												{isBusy ? (
-													<Loader2 className="h-4 w-4 animate-spin" />
-												) : row.status === "processing" &&
-													row.isStaleProcessing ? (
-													"Requeue stale"
-												) : row.status === "processing" ? (
-													"Force requeue"
-												) : row.status === "pending" ? (
-													"Queued"
+								<Fragment key={row.id}>
+									<TableRow
+										className={diag ? "cursor-pointer" : ""}
+										onClick={() => diag && toggleExpand(row.id)}
+									>
+										<TableCell className="w-8 px-2">
+											{diag ? (
+												isExpanded ? (
+													<ChevronDown className="h-4 w-4 text-muted-foreground" />
 												) : (
-													"Requeue"
+													<ChevronRight className="h-4 w-4 text-muted-foreground" />
+												)
+											) : null}
+										</TableCell>
+										<TableCell>
+											<div className="space-y-1">
+												<div className="font-medium text-foreground">
+													{row.title}
+												</div>
+												{diag && severityStyle && (
+													<span
+														className={`inline-block text-[10px] font-medium px-1.5 py-0.5 rounded border ${severityStyle.badge}`}
+													>
+														{diag.label}
+													</span>
 												)}
-											</Button>
-										) : (
-											<span className="text-xs text-muted-foreground">-</span>
-										)}
-									</TableCell>
-								</TableRow>
+												{row.processingError && !diag && (
+													<div className="text-xs text-red-300 line-clamp-2">
+														{row.processingError}
+													</div>
+												)}
+											</div>
+										</TableCell>
+										<TableCell>
+											<Badge variant="outline">{row.status}</Badge>
+										</TableCell>
+										<TableCell className="text-sm text-muted-foreground">
+											{formatDate(row.meetingDate)}
+										</TableCell>
+										<TableCell>
+											{row.sourceUrl ? (
+												<a
+													href={row.sourceUrl}
+													target="_blank"
+													rel="noopener noreferrer"
+													className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+													onClick={(e) => e.stopPropagation()}
+												>
+													Open
+													<ExternalLink className="h-3 w-3" />
+												</a>
+											) : (
+												<span className="text-xs text-muted-foreground">
+													None
+												</span>
+											)}
+										</TableCell>
+										<TableCell className="text-right">
+											{onRequeue ? (
+												<Button
+													size="sm"
+													variant="outline"
+													onClick={(e) => {
+														e.stopPropagation();
+														onRequeue(row.id);
+													}}
+													disabled={isBusy || row.hasSummary || isInProgress}
+												>
+													{isBusy ? (
+														<Loader2 className="h-4 w-4 animate-spin" />
+													) : row.status === "processing" &&
+														row.isStaleProcessing ? (
+														"Requeue stale"
+													) : row.status === "processing" ? (
+														"Force requeue"
+													) : row.status === "pending" ? (
+														"Queued"
+													) : (
+														"Requeue"
+													)}
+												</Button>
+											) : (
+												<span className="text-xs text-muted-foreground">
+													-
+												</span>
+											)}
+										</TableCell>
+									</TableRow>
+									{isExpanded && diag && severityStyle && (
+										<TableRow key={`${row.id}-diag`}>
+											<TableCell colSpan={6} className="p-0">
+												<div
+													className={`mx-4 mb-3 rounded-lg border p-4 ${severityStyle.border}`}
+												>
+													{diag.featureNeeded && (
+														<div className="mb-2">
+															<span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full border border-violet-500/30 text-violet-300 bg-violet-500/10 uppercase tracking-wider">
+																Needs: {diag.featureNeeded}
+															</span>
+														</div>
+													)}
+													<p className="text-sm text-foreground mb-3">
+														{diag.description}
+													</p>
+
+													{diag.investigationSteps.length > 0 && (
+														<div className="mb-3">
+															<p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
+																Investigation Steps
+															</p>
+															<ol className="list-decimal list-inside space-y-1 text-sm text-muted-foreground">
+																{diag.investigationSteps.map((step) => (
+																	<li key={step}>{step}</li>
+																))}
+															</ol>
+														</div>
+													)}
+
+													{diag.investigationUrls.length > 0 && (
+														<div className="flex flex-wrap gap-2">
+															{diag.investigationUrls.map((link) => (
+																<a
+																	key={link.url}
+																	href={link.url}
+																	target="_blank"
+																	rel="noopener noreferrer"
+																	className="inline-flex items-center gap-1 text-xs text-primary hover:underline border border-primary/20 rounded px-2 py-1"
+																>
+																	{link.label}
+																	<ExternalLink className="h-3 w-3" />
+																</a>
+															))}
+														</div>
+													)}
+
+													{row.processingError && (
+														<div className="mt-3 text-xs text-red-300 font-mono bg-red-500/5 rounded p-2 border border-red-500/10">
+															{row.processingError}
+														</div>
+													)}
+												</div>
+											</TableCell>
+										</TableRow>
+									)}
+								</Fragment>
 							);
 						})
 					)}

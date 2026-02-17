@@ -429,6 +429,16 @@ export const adminInvestigateMunicipality = query({
 				hasSummary: item.hasSummary,
 				hasRawContent: item.hasRawContent,
 				isStaleProcessing: item.isStaleProcessing,
+				diagnosis: diagnoseMeeting({
+					sourceUrl: item.meeting.sourceUrl ?? null,
+					meetingsPageUrl: municipality.meetingsPageUrl ?? null,
+					processingError: item.meeting.processingError ?? null,
+					hasRawContent: item.hasRawContent,
+					hasSummary: item.hasSummary,
+					status: item.meeting.status,
+					sourceEqualsMeetingsPage: item.sourceEqualsMeetingsPage,
+					documentLikeSource: item.documentLikeSource,
+				}),
 			}));
 
 		const scrapeStatusFromJob = latestScrapeJob
@@ -537,4 +547,237 @@ function isLikelyDocumentUrl(url: string): boolean {
 		/\/ViewFile/i.test(url) ||
 		/\/View\.ashx/i.test(url)
 	);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DIAGNOSIS - Classify why a meeting failed and what to build next
+// ═══════════════════════════════════════════════════════════════
+
+// Severity describes what's needed to fix — not whether it's possible.
+//   requeue      → just retry, should work now
+//   investigate  → human needs to check the URL to determine next step
+//   needs_feature → we know what capability to build (OCR, headless, etc.)
+
+interface Diagnosis {
+	code: string;
+	label: string;
+	severity: "requeue" | "investigate" | "needs_feature";
+	featureNeeded: string | null;
+	description: string;
+	investigationSteps: string[];
+	investigationUrls: Array<{ label: string; url: string }>;
+}
+
+function diagnoseMeeting(args: {
+	sourceUrl: string | null;
+	meetingsPageUrl: string | null;
+	processingError: string | null;
+	hasRawContent: boolean;
+	hasSummary: boolean;
+	status: string;
+	sourceEqualsMeetingsPage: boolean;
+	documentLikeSource: boolean;
+}): Diagnosis | null {
+	// Already summarized — no diagnosis needed
+	if (args.hasSummary && args.status === "summarized") return null;
+
+	// Still pending/processing — not a failure yet
+	if (args.status === "pending" || args.status === "processing") return null;
+
+	const err = args.processingError ?? "";
+
+	// No source URL at all
+	if (!args.sourceUrl) {
+		return {
+			code: "no_source",
+			label: "No Source",
+			severity: "needs_feature",
+			featureNeeded: "URL Discovery",
+			description:
+				"Meeting was created without a source URL or document. We need to find the specific meeting link on the municipality's website.",
+			investigationSteps: [
+				"Open the meetings page and search for this meeting by title/date.",
+				"Once found, copy the meeting-specific URL (detail page or PDF link).",
+				"Update the sourceUrl in the database, then requeue.",
+			],
+			investigationUrls: args.meetingsPageUrl
+				? [{ label: "Meetings page", url: args.meetingsPageUrl }]
+				: [],
+		};
+	}
+
+	// Source URL = listings page
+	if (args.sourceEqualsMeetingsPage) {
+		return {
+			code: "listing_page",
+			label: "Needs Deep Scrape",
+			severity: "needs_feature",
+			featureNeeded: "Deep Link Extraction",
+			description:
+				"Source URL points to the listings page, not a specific meeting. The scraper found the title/date but couldn't extract a detail link. We need to improve link extraction for this site's layout.",
+			investigationSteps: [
+				"Open the meetings page below and identify how individual meeting links work.",
+				"Check: Are links visible in the HTML source? Or do they require JavaScript (click-to-expand, AJAX load)?",
+				"If links are in the HTML, the scraper selectors need updating for this site's DOM structure.",
+				"If content is loaded via JS, this site needs the headless browser scraper.",
+			],
+			investigationUrls: [
+				{ label: "Meetings page", url: args.sourceUrl },
+			],
+		};
+	}
+
+	// Password-protected PDF
+	if (err.includes("password")) {
+		return {
+			code: "password_protected",
+			label: "Needs Password",
+			severity: "needs_feature",
+			featureNeeded: "PDF Password Handling",
+			description:
+				"The PDF is password-protected. Some municipalities use a publicly posted or default password. We need to add password support to the PDF extractor.",
+			investigationSteps: [
+				"Open the PDF below and confirm it requires a password.",
+				"Search the municipality website for a posted password (often in an FAQ or meetings instructions page).",
+				"If a password is found, we can add it to the municipality's scrape config.",
+				"Check if there's an unprotected alternative (HTML minutes, separate Word doc).",
+			],
+			investigationUrls: [{ label: "PDF document", url: args.sourceUrl }],
+		};
+	}
+
+	// Image-only PDF
+	if (err.includes("image-only") || err.includes("insufficient text")) {
+		return {
+			code: "image_pdf",
+			label: "Needs OCR",
+			severity: "needs_feature",
+			featureNeeded: "OCR Pipeline",
+			description:
+				"The PDF is scanned/image-only with no selectable text. Adding an OCR step (e.g., Tesseract or a cloud OCR service) to the pipeline would handle these.",
+			investigationSteps: [
+				"Open the PDF below to confirm it's a scanned image (text not selectable).",
+				"Check if the municipality also publishes text-based minutes (HTML page, Word doc) as an alternative source.",
+				"If this pattern is common for this municipality, flag it for the OCR feature build.",
+			],
+			investigationUrls: [{ label: "PDF document", url: args.sourceUrl }],
+		};
+	}
+
+	// Fetch failure
+	if (
+		err.includes("Failed to load source URL") ||
+		err.includes("Failed to download") ||
+		err.includes("fetch") ||
+		err.includes("ECONNREFUSED") ||
+		err.includes("ENOTFOUND")
+	) {
+		const statusMatch = err.match(/\((\d{3})\)/);
+		const statusCode = statusMatch ? Number(statusMatch[1]) : 0;
+		const statusHint = statusCode ? ` (HTTP ${statusCode})` : "";
+
+		// 403/401 specifically suggest bot blocking or auth
+		if (statusCode === 403 || statusCode === 401) {
+			return {
+				code: "fetch_blocked",
+				label: "Blocked",
+				severity: "needs_feature",
+				featureNeeded: "Request Bypass / Auth",
+				description: `Source URL returned ${statusCode}. The site is blocking automated requests or requires authentication. We need to add request rotation, browser-like headers, or session handling.`,
+				investigationSteps: [
+					"Open the URL below in a browser to confirm it loads for humans.",
+					"Check if it requires a login or CAPTCHA.",
+					"If it loads fine, the site likely blocks server-side User-Agents — try with browser-like headers or a headless browser.",
+				],
+				investigationUrls: [{ label: "Source URL", url: args.sourceUrl }],
+			};
+		}
+
+		return {
+			code: "fetch_failed",
+			label: `Fetch Failed${statusHint}`,
+			severity: "investigate",
+			featureNeeded: null,
+			description: `Could not download content from the source URL${statusHint}. The page may be down, moved, or temporarily unavailable.`,
+			investigationSteps: [
+				"Open the URL below in a browser to check if it loads.",
+				"If it returns 404, the URL may be stale — check if the municipality moved their content.",
+				"If it's temporarily down, requeue later.",
+				"If the site loads fine, it may be blocking server requests — check response headers.",
+			],
+			investigationUrls: [{ label: "Source URL", url: args.sourceUrl }],
+		};
+	}
+
+	// PDF source that hasn't been extracted yet
+	if (args.documentLikeSource && !args.hasRawContent) {
+		return {
+			code: "pdf_pending",
+			label: "PDF - Requeue",
+			severity: "requeue",
+			featureNeeded: null,
+			description:
+				"Source is a PDF document. Previous extraction likely failed due to the old pdf-parse library bug. Should succeed now with the new unpdf extractor.",
+			investigationSteps: [
+				"Click Requeue to retry with the fixed PDF extractor.",
+				"If it fails again, open the PDF to check if it's valid and has selectable text.",
+			],
+			investigationUrls: [{ label: "PDF document", url: args.sourceUrl }],
+		};
+	}
+
+	// HTML source with no/thin content
+	if (!args.documentLikeSource && !args.hasRawContent) {
+		return {
+			code: "html_thin",
+			label: "Thin Content",
+			severity: "investigate",
+			featureNeeded: null,
+			description:
+				"Source URL returned HTML but the extracted text was under 100 characters. The page may use JavaScript rendering, be behind a login, or have content in a non-standard layout.",
+			investigationSteps: [
+				"Open the URL below in a browser and check if meeting content is visible.",
+				"Right-click → View Page Source. Is the content in the raw HTML, or does it load via JavaScript?",
+				"If content is visible but not in page source: needs headless browser scraper.",
+				"If content is in the HTML source: the extraction selectors need tuning for this site's layout.",
+				"If the page is mostly empty or navigation: the URL may not be the right meeting detail page.",
+			],
+			investigationUrls: [{ label: "Source URL", url: args.sourceUrl }],
+		};
+	}
+
+	// Has content but still failed (AI/parsing error)
+	if (args.hasRawContent && !args.hasSummary) {
+		return {
+			code: "ai_failure",
+			label: "AI Error",
+			severity: "requeue",
+			featureNeeded: null,
+			description:
+				"Content was extracted successfully but AI summarization failed. Usually transient (API timeout, rate limit, malformed response).",
+			investigationSteps: [
+				"Click Requeue to retry AI summarization.",
+				"If it fails repeatedly, check the Convex logs for the specific API error.",
+				"If the content is very short or not English, the AI prompt may need adjustment.",
+			],
+			investigationUrls: [{ label: "Source URL", url: args.sourceUrl }],
+		};
+	}
+
+	// Fallback
+	return {
+		code: "unknown",
+		label: "Unknown",
+		severity: "investigate",
+		featureNeeded: null,
+		description: err || "No error details available. Check Convex logs for this meeting ID.",
+		investigationSteps: [
+			"Check the Convex dashboard logs for this meeting ID.",
+			"Open the source URL below to inspect what the page returns.",
+			"Once you identify the pattern, we can add a specific handler for it.",
+		],
+		investigationUrls: args.sourceUrl
+			? [{ label: "Source URL", url: args.sourceUrl }]
+			: [],
+	};
 }

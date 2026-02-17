@@ -123,32 +123,47 @@ export const cancel = mutation({
 });
 
 // ═══════════════════════════════════════════════════════════════
-// RETRY JOB - Create a new job to retry a failed one (admin)
+// RETRY JOB - Retry a failed scrape job (admin action)
 // ═══════════════════════════════════════════════════════════════
-export const retry = mutation({
+export const retry = action({
 	args: {
 		jobId: v.id("scrapeJobs"),
+		workosUserId: v.string(),
 	},
-	handler: async (ctx, args) => {
-		const job = await ctx.db.get(args.jobId);
+	handler: async (ctx, args): Promise<{ scheduled: boolean; municipalityId?: Id<"municipalities">; error?: string }> => {
+		// Verify admin
+		const user = await ctx.runQuery(
+			internal.functions.users.queries.getByWorkosUserIdInternal,
+			{ workosUserId: args.workosUserId },
+		);
+		if (!user?.isAdmin) {
+			throw new Error("Unauthorized: Admin access required");
+		}
+
+		// Get the failed job
+		const job = await ctx.runQuery(
+			internal.functions.scrapers.queries.getJob,
+			{ jobId: args.jobId },
+		);
 		if (!job) {
-			throw new Error("Job not found");
+			return { scheduled: false, error: "Job not found" };
 		}
-
-		// Can only retry failed or partial jobs
 		if (job.status !== "failed" && job.status !== "partial") {
-			throw new Error(`Cannot retry job with status: ${job.status}`);
+			return { scheduled: false, error: `Cannot retry job with status: ${job.status}` };
 		}
 
-		// Create a new job for the same municipality
-		const newJobId = await ctx.db.insert("scrapeJobs", {
-			municipalityId: job.municipalityId,
-			status: "pending",
-			triggeredBy: "manual",
-			createdAt: Date.now(),
-		});
+		// Schedule the scraper
+		await ctx.scheduler.runAfter(
+			0,
+			internal.functions.scrapers.actions.runScraper,
+			{
+				municipalityId: job.municipalityId,
+				triggeredBy: "manual",
+				triggeredByUserId: user._id,
+			},
+		);
 
-		return { newJobId, municipalityId: job.municipalityId };
+		return { scheduled: true, municipalityId: job.municipalityId };
 	},
 });
 

@@ -213,69 +213,85 @@ export function parseDate(dateStr: string, _format?: string): number | null {
 // ═══════════════════════════════════════════════════════════════
 
 /** Keywords for each meeting type */
-const meetingTypeKeywords: Record<MeetingType, string[]> = {
-	city_council: [
-		"city council",
-		"town council",
-		"village council",
-		"board of aldermen",
-		"common council",
-		"municipal council",
-		"council meeting",
-		"regular meeting",
-		"special meeting",
-	],
-	school_board: [
-		"school board",
-		"board of education",
-		"school committee",
-		"education board",
-		"school district",
-		"trustees",
-	],
-	planning_commission: [
-		"planning commission",
-		"planning board",
-		"planning committee",
-		"land use",
-		"comprehensive plan",
-		"master plan",
-	],
-	zoning_board: [
-		"zoning board",
-		"zoning commission",
-		"zoning appeals",
-		"board of adjustment",
-		"zoning variance",
-		"zoning hearing",
-	],
-	budget_committee: [
-		"budget committee",
-		"finance committee",
-		"budget hearing",
-		"budget workshop",
-		"fiscal committee",
-		"appropriations",
-	],
-	other: [],
-};
+// Ordered from most specific to least specific to avoid false matches.
+// "regular meeting" / "special meeting" are intentionally omitted — too generic.
+const meetingTypeKeywordsOrdered: Array<{ type: MeetingType; keywords: string[] }> = [
+	{
+		type: "planning_commission",
+		keywords: [
+			"planning and zoning",
+			"planning commission",
+			"planning board",
+			"planning committee",
+			"land use",
+			"comprehensive plan",
+			"master plan",
+		],
+	},
+	{
+		type: "zoning_board",
+		keywords: [
+			"zoning board",
+			"zoning commission",
+			"zoning appeals",
+			"board of adjustment",
+			"zoning variance",
+			"zoning hearing",
+		],
+	},
+	{
+		type: "school_board",
+		keywords: [
+			"school board",
+			"board of education",
+			"school committee",
+			"education board",
+			"school district",
+			"trustees",
+		],
+	},
+	{
+		type: "budget_committee",
+		keywords: [
+			"budget committee",
+			"finance committee",
+			"budget hearing",
+			"budget workshop",
+			"fiscal committee",
+			"appropriations",
+		],
+	},
+	{
+		type: "city_council",
+		keywords: [
+			"city council",
+			"town council",
+			"village council",
+			"board of aldermen",
+			"common council",
+			"municipal council",
+			"council meeting",
+			"town meeting",
+			"village board",
+			"board of selectmen",
+			"selectboard",
+			"city commission",
+			"town commission",
+		],
+	},
+];
 
 /**
- * Infer meeting type from title and content
- * @param title - Meeting title
- * @param content - Optional meeting content for additional context
- * @returns Inferred meeting type
+ * Infer meeting type from title and content.
+ * Checks more specific types first to avoid false positives.
  */
 export function inferMeetingType(title: string, content?: string): MeetingType {
 	const searchText = `${title} ${content ?? ""}`.toLowerCase();
 
-	// Check each type's keywords
-	for (const [type, keywords] of Object.entries(meetingTypeKeywords)) {
-		if (type === "other") continue;
-
+	for (const { type, keywords } of meetingTypeKeywordsOrdered) {
 		for (const keyword of keywords) {
 			if (searchText.includes(keyword)) {
-				return type as MeetingType;
+				return type;
 			}
 		}
 	}

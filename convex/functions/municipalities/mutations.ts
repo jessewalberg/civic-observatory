@@ -1,5 +1,17 @@
 import { v } from "convex/values";
 import { internalMutation, mutation } from "../../_generated/server";
+import { STATE_NAMES } from "../../data/index";
+
+// Valid US state names for validation
+const VALID_STATES = new Set(STATE_NAMES);
+
+function validateState(state: string) {
+	if (!VALID_STATES.has(state)) {
+		throw new Error(
+			`Invalid state "${state}". Must be a full state name (e.g. "Connecticut", not "CT").`,
+		);
+	}
+}
 
 // Platform type for validation
 const platformValidator = v.union(
@@ -66,6 +78,8 @@ export const create = mutation({
 		// Verify admin access
 		await requireAdmin(ctx, args.requestingWorkosUserId);
 
+		validateState(args.state);
+
 		const now = Date.now();
 
 		const id = await ctx.db.insert("municipalities", {
@@ -116,6 +130,11 @@ export const update = mutation({
 		const existing = await ctx.db.get(id);
 		if (!existing) {
 			throw new Error("Municipality not found");
+		}
+
+		// Validate state if provided
+		if (updates.state !== undefined) {
+			validateState(updates.state);
 		}
 
 		// Build update object with only provided fields
@@ -256,6 +275,31 @@ export const verify = mutation({
 		});
 
 		return { isVerified: args.verified };
+	},
+});
+
+// ═══════════════════════════════════════════════════════════════
+// FIX STATE - One-time fix for bad state values (e.g. "CT" → "Connecticut")
+// ═══════════════════════════════════════════════════════════════
+export const fixState = mutation({
+	args: {
+		id: v.id("municipalities"),
+		state: v.string(),
+	},
+	handler: async (ctx, args) => {
+		validateState(args.state);
+
+		const existing = await ctx.db.get(args.id);
+		if (!existing) {
+			throw new Error("Municipality not found");
+		}
+
+		await ctx.db.patch(args.id, {
+			state: args.state,
+			updatedAt: Date.now(),
+		});
+
+		return args.id;
 	},
 });
 

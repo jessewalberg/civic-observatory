@@ -16,7 +16,7 @@ import {
 	Zap,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { TopicBadge } from "@/components/TopicBadge";
+import { TopicBadge, normalizeTopics } from "@/components/TopicBadge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
