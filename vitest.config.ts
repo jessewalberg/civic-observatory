@@ -9,5 +9,8 @@ export default defineConfig({
 	test: {
 		environment: "node",
 		include: ["src/**/*.test.{ts,tsx}", "convex/**/*.test.{ts,tsx}"],
+		// convex-test ships TS sources that must be transformed by vite, not
+		// required from node_modules as-is.
+		server: { deps: { inline: ["convex-test"] } },
 	},
 });
