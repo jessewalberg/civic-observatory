@@ -1,10 +1,18 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import { configure, getAllConfig, getConfig } from "./config";
 import type { AuthKitConfig } from "./interfaces";
 
-// Full set of explicit options so the builder never falls back to ambient
-// env vars — keeps these tests hermetic (no secrets, no process.env reliance).
+// The config builder falls back to ambient WORKOS_* env vars when an option
+// is missing/empty, so clear them before every test — otherwise a developer's
+// shell env (e.g. WORKOS_CLIENT_ID) changes test outcomes.
+beforeEach(() => {
+	for (const key of Object.keys(process.env)) {
+		if (key.startsWith("WORKOS_")) delete process.env[key];
+	}
+});
+
+// Full set of explicit options for the non-fallback paths.
 const valid: Partial<AuthKitConfig> = {
 	clientId: "client_test",
 	apiKey: "sk_test_example",

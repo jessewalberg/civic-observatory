@@ -127,4 +127,26 @@ describe("users queries (pre-Clerk baseline)", () => {
 		});
 		expect(result).toMatchObject({ total: 2, hasMore: false });
 	});
+
+	it("VULNERABILITY: an unauthenticated caller passing an admin's id receives admin stats", async () => {
+		const t = setup();
+		await seedUser(t);
+		await seedUser(t, {
+			workosUserId: "user_root",
+			email: "root@example.com",
+			isAdmin: true,
+		});
+		// Same client-supplied identity gate as listAll: getAdminStats trusts
+		// requestingWorkosUserId. Non-admin id → null, admin id → full stats,
+		// no session required for either.
+		await expect(
+			t.query(api.functions.users.queries.getAdminStats, {
+				requestingWorkosUserId: "user_alice",
+			}),
+		).resolves.toBeNull();
+		const stats = await t.query(api.functions.users.queries.getAdminStats, {
+			requestingWorkosUserId: "user_root", // impersonation: no session needed
+		});
+		expect(stats).toMatchObject({ totalUsers: 2, adminUsers: 1 });
+	});
 });
