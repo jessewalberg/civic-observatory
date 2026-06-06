@@ -128,7 +128,7 @@ describe("users queries (pre-Clerk baseline)", () => {
 		expect(result).toMatchObject({ total: 2, hasMore: false });
 	});
 
-	it("VULNERABILITY: an unauthenticated caller passing an admin's id receives admin stats", async () => {
+	it("LEGACY MODE (until Phase 5): a no-identity caller passing an admin's id receives admin stats", async () => {
 		const t = setup();
 		await seedUser(t);
 		await seedUser(t, {
