@@ -6,6 +6,7 @@ import {
 	type MutationCtx,
 	mutation,
 } from "../../_generated/server";
+import { getCurrentUser, requireAdmin } from "../../lib/auth";
 
 // Meeting type validator
 const meetingTypeValidator = v.union(
@@ -38,15 +39,11 @@ export const create = mutation({
 		rawContent: v.optional(v.string()),
 		documentStorageId: v.optional(v.id("_storage")),
 		sourceUrl: v.optional(v.string()),
-		// Auth: workosUserId passed from client
-		workosUserId: v.string(),
+		// Auth: identity-first; legacy workosUserId ignored under Clerk.
+		workosUserId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		// Get user from workos ID
-		const user = await ctx.db
-			.query("users")
-			.withIndex("by_workos_id", (q) => q.eq("workosUserId", args.workosUserId))
-			.first();
+		const user = await getCurrentUser(ctx, args.workosUserId);
 
 		if (!user) {
 			throw new Error("User not found. Please sign in.");
@@ -262,14 +259,10 @@ export const createFromScrape = internalMutation({
 export const remove = mutation({
 	args: {
 		meetingId: v.id("meetings"),
-		workosUserId: v.string(),
+		workosUserId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		// Get user from workos ID
-		const user = await ctx.db
-			.query("users")
-			.withIndex("by_workos_id", (q) => q.eq("workosUserId", args.workosUserId))
-			.first();
+		const user = await getCurrentUser(ctx, args.workosUserId);
 
 		if (!user) {
 			throw new Error("User not found. Please sign in.");
@@ -318,14 +311,11 @@ export const remove = mutation({
 export const retryProcessing = mutation({
 	args: {
 		meetingId: v.id("meetings"),
-		workosUserId: v.string(),
+		workosUserId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		// Get user
-		const user = await ctx.db
-			.query("users")
-			.withIndex("by_workos_id", (q) => q.eq("workosUserId", args.workosUserId))
-			.first();
+		const user = await getCurrentUser(ctx, args.workosUserId);
 
 		if (!user) {
 			throw new Error("User not found. Please sign in.");
@@ -370,7 +360,7 @@ export const retryProcessing = mutation({
 export const adminRequeueMeeting = mutation({
 	args: {
 		meetingId: v.id("meetings"),
-		requestingWorkosUserId: v.string(),
+		requestingWorkosUserId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		await requireAdminUser(ctx, args.requestingWorkosUserId);
@@ -418,7 +408,7 @@ export const adminRequeueMeeting = mutation({
 export const adminRequeueMunicipalityCandidates = mutation({
 	args: {
 		municipalityId: v.id("municipalities"),
-		requestingWorkosUserId: v.string(),
+		requestingWorkosUserId: v.optional(v.string()),
 		limit: v.optional(v.number()),
 		dryRun: v.optional(v.boolean()),
 	},
@@ -535,7 +525,7 @@ export const adminRequeueMunicipalityCandidates = mutation({
 export const adminUnstickMunicipalityProcessing = mutation({
 	args: {
 		municipalityId: v.id("municipalities"),
-		requestingWorkosUserId: v.string(),
+		requestingWorkosUserId: v.optional(v.string()),
 		olderThanMinutes: v.optional(v.number()),
 		limit: v.optional(v.number()),
 	},
@@ -629,7 +619,7 @@ export const adminUnstickMunicipalityProcessing = mutation({
 export const adminRepairMunicipalityData = mutation({
 	args: {
 		municipalityId: v.id("municipalities"),
-		requestingWorkosUserId: v.string(),
+		requestingWorkosUserId: v.optional(v.string()),
 		staleProcessingMinutes: v.optional(v.number()),
 		limit: v.optional(v.number()),
 	},
@@ -814,17 +804,10 @@ function getMonthStart(): number {
 	return new Date(now.getFullYear(), now.getMonth(), 1).getTime();
 }
 
-async function requireAdminUser(ctx: MutationCtx, workosUserId: string) {
-	const user = await ctx.db
-		.query("users")
-		.withIndex("by_workos_id", (q) => q.eq("workosUserId", workosUserId))
-		.first();
-
-	if (!user?.isAdmin) {
-		throw new Error("Admin access required");
-	}
-
-	return user;
+async function requireAdminUser(ctx: MutationCtx, workosUserId?: string) {
+	// Identity-first via the shared bridge; legacy workosUserId only consulted
+	// when no Clerk identity is present. Removed in Phase 5.
+	return await requireAdmin(ctx, workosUserId, "Admin access required");
 }
 
 function isRequeueStatus(

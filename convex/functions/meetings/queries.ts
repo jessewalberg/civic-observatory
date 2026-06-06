@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { query } from "../../_generated/server";
+import { getCurrentUser } from "../../lib/auth";
 
 // Meeting type validator
 const meetingTypeValidator = v.union(
@@ -297,7 +298,7 @@ export const listPending = query({
 // ═══════════════════════════════════════════════════════════════
 export const adminInvestigateMunicipality = query({
 	args: {
-		requestingWorkosUserId: v.string(),
+		requestingWorkosUserId: v.optional(v.string()),
 		municipalityId: v.id("municipalities"),
 		sampleLimit: v.optional(v.number()),
 		staleProcessingMinutes: v.optional(v.number()),
@@ -309,13 +310,7 @@ export const adminInvestigateMunicipality = query({
 		);
 		const staleProcessingCutoffMs = Date.now() - staleMinutes * 60 * 1000;
 
-		const caller = await ctx.db
-			.query("users")
-			.withIndex("by_workos_id", (q) =>
-				q.eq("workosUserId", args.requestingWorkosUserId),
-			)
-			.first();
-
+		const caller = await getCurrentUser(ctx, args.requestingWorkosUserId);
 		if (!caller?.isAdmin) {
 			return null;
 		}
