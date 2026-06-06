@@ -236,7 +236,7 @@ function PricingPage() {
 								</div>
 							</div>
 							<Button variant="outline" asChild>
-								<a href="mailto:enterprise@civicpulse.app">Contact Sales</a>
+								<a href="mailto:enterprise@civicpulse.com">Contact Sales</a>
 							</Button>
 						</div>
 					</Card>

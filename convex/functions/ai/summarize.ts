@@ -434,7 +434,7 @@ async function hydrateContentFromSourceUrl(args: {
 	const response = await fetch(args.sourceUrl, {
 		headers: {
 			"User-Agent":
-				"Mozilla/5.0 (compatible; CivicPulse/1.0; +https://civicpulse.app)",
+				"Mozilla/5.0 (compatible; CivicPulse/1.0; +https://civicpulse.com)",
 			Accept:
 				"text/html,application/xhtml+xml,application/xml;q=0.9,application/pdf,*/*;q=0.8",
 		},
