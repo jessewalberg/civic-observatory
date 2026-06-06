@@ -1,5 +1,7 @@
 import { v } from "convex/values";
 import { internalMutation, mutation } from "../../_generated/server";
+import { requireAdmin as requireAdminBridge } from "../../lib/auth";
+import type { MutationCtx } from "../../_generated/server";
 import { STATE_NAMES } from "../../data/index";
 
 // Valid US state names for validation
@@ -40,20 +42,10 @@ const scrapeStatusValidator = v.union(
 	v.literal("partial"),
 );
 
-// Helper to check admin status
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function requireAdmin(ctx: any, workosUserId: string) {
-	const caller = await ctx.db
-		.query("users")
-		.withIndex("by_workos_id", (q: { eq: (field: string, value: string) => unknown }) =>
-			q.eq("workosUserId", workosUserId),
-		)
-		.first();
-
-	if (!caller?.isAdmin) {
-		throw new Error("Admin access required");
-	}
-	return caller;
+// Identity-first admin check via the shared bridge; the legacy workosUserId is
+// only consulted when no Clerk identity is present (removed in Phase 5).
+async function requireAdmin(ctx: MutationCtx, workosUserId?: string) {
+	return await requireAdminBridge(ctx, workosUserId, "Admin access required");
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -61,7 +53,7 @@ async function requireAdmin(ctx: any, workosUserId: string) {
 // ═══════════════════════════════════════════════════════════════
 export const create = mutation({
 	args: {
-		requestingWorkosUserId: v.string(),
+		requestingWorkosUserId: v.optional(v.string()),
 		name: v.string(),
 		state: v.string(),
 		county: v.optional(v.string()),
@@ -107,7 +99,7 @@ export const create = mutation({
 // ═══════════════════════════════════════════════════════════════
 export const update = mutation({
 	args: {
-		requestingWorkosUserId: v.string(),
+		requestingWorkosUserId: v.optional(v.string()),
 		id: v.id("municipalities"),
 		name: v.optional(v.string()),
 		state: v.optional(v.string()),
@@ -168,7 +160,9 @@ export const update = mutation({
 // ═══════════════════════════════════════════════════════════════
 // UPDATE SCRAPE STATUS - After a scrape job runs
 // ═══════════════════════════════════════════════════════════════
-export const updateScrapeStatus = mutation({
+// Backend-only (scrape pipeline): was a public backdoor letting any client mark
+// any municipality's scrape status. internalMutation now.
+export const updateScrapeStatus = internalMutation({
 	args: {
 		id: v.id("municipalities"),
 		status: scrapeStatusValidator,
@@ -196,7 +190,7 @@ export const updateScrapeStatus = mutation({
 // ═══════════════════════════════════════════════════════════════
 export const remove = mutation({
 	args: {
-		requestingWorkosUserId: v.string(),
+		requestingWorkosUserId: v.optional(v.string()),
 		id: v.id("municipalities"),
 	},
 	handler: async (ctx, args) => {
@@ -230,7 +224,7 @@ export const remove = mutation({
 // ═══════════════════════════════════════════════════════════════
 export const toggleActive = mutation({
 	args: {
-		requestingWorkosUserId: v.string(),
+		requestingWorkosUserId: v.optional(v.string()),
 		id: v.id("municipalities"),
 	},
 	handler: async (ctx, args) => {
@@ -256,7 +250,7 @@ export const toggleActive = mutation({
 // ═══════════════════════════════════════════════════════════════
 export const verify = mutation({
 	args: {
-		requestingWorkosUserId: v.string(),
+		requestingWorkosUserId: v.optional(v.string()),
 		id: v.id("municipalities"),
 		verified: v.boolean(),
 	},
@@ -285,8 +279,11 @@ export const fixState = mutation({
 	args: {
 		id: v.id("municipalities"),
 		state: v.string(),
+		// Legacy (no-identity) callers only; IGNORED under Clerk. Removed Phase 5.
+		requestingWorkosUserId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
+		await requireAdmin(ctx, args.requestingWorkosUserId);
 		validateState(args.state);
 
 		const existing = await ctx.db.get(args.id);
