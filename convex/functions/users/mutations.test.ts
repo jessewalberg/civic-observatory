@@ -1,5 +1,5 @@
 import { convexTest } from "convex-test";
-import type { Doc, Id } from "../../_generated/dataModel";
+import type { Id } from "../../_generated/dataModel";
 import { describe, expect, it } from "vitest";
 import { api } from "../../_generated/api";
 import schema from "../../schema";
