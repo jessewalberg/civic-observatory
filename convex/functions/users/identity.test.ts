@@ -1,7 +1,6 @@
 import { convexTest } from "convex-test";
 import { describe, expect, it } from "vitest";
 import { api } from "../../_generated/api";
-import { internal } from "../../_generated/api";
 import schema from "../../schema";
 import { modules } from "../../test.setup";
 
@@ -291,40 +290,5 @@ describe("identity overrides client-supplied ids (the security fix)", () => {
 		});
 		const result = await asRoot.query(api.functions.users.queries.listAll, {});
 		expect(result).toMatchObject({ total: 1, hasMore: false });
-	});
-});
-
-describe("linkWorkosToClerk (trusted out-of-band remap)", () => {
-	it("links a known workos→clerk pair, preserving the existing row + history", async () => {
-		const t = setup();
-		const existing = await seedUser(t, {
-			workosUserId: "user_wos_alice",
-			email: "alice@example.com",
-			tier: "pro",
-		});
-		const id = await t.mutation(
-			internal.functions.users.mutations.linkWorkosToClerk,
-			{ workosUserId: "user_wos_alice", clerkUserId: "user_clerk_alice" },
-		);
-		expect(id).toBe(existing);
-		const row = await t.run(async (ctx) => ctx.db.get(existing));
-		expect(row?.clerkUserId).toBe("user_clerk_alice");
-		expect(row?.tier).toBe("pro");
-		expect(row?.workosUserId).toBe("user_wos_alice");
-	});
-
-	it("refuses to relink a row already owned by a different Clerk user", async () => {
-		const t = setup();
-		await seedUser(t, {
-			workosUserId: "user_wos_alice",
-			email: "alice@example.com",
-			clerkUserId: "user_clerk_owner",
-		});
-		await expect(
-			t.mutation(internal.functions.users.mutations.linkWorkosToClerk, {
-				workosUserId: "user_wos_alice",
-				clerkUserId: "user_clerk_intruder",
-			}),
-		).rejects.toThrow(/already linked/);
 	});
 });

@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { internalMutation, mutation } from "../../_generated/server";
+import { mutation } from "../../_generated/server";
 import { getCurrentUser, getIdentity, requireAdmin } from "../../lib/auth";
 
 export const upsertOnLogin = mutation({
@@ -72,13 +72,12 @@ export const ensureFromIdentity = mutation({
 			return byClerkId._id;
 		}
 
-		// CREATE-ONLY. We deliberately do NOT auto-claim a WorkOS-era row by
-		// email: upsertOnLogin is an unauthenticated public mutation (the WorkOS
-		// callback runs pre-session), so any caller can rewrite an arbitrary
-		// row's email and then claim it here. WorkOS→Clerk row remapping is done
-		// out-of-band via the trusted internal linkWorkosToClerk mutation
-		// (run from a WorkOS export with the deploy key), never by client email
-		// match. See SECURITY note + the migration plan's remapping decision.
+		// CREATE-ONLY. No claim-by-email: upsertOnLogin is an unauthenticated
+		// public mutation (the WorkOS callback runs pre-session), so any caller
+		// can rewrite an arbitrary row's email and then claim it — a row-takeover
+		// primitive. First Clerk login always makes a FRESH user; WorkOS-era
+		// history is not carried over (owner accepted, no backwards compat). See
+		// the migration plan's 2026-06-06 remapping decision.
 		const email = identity.email;
 		return await ctx.db.insert("users", {
 			clerkUserId: identity.subject,
@@ -88,37 +87,6 @@ export const ensureFromIdentity = mutation({
 			createdAt: now,
 			lastLoginAt: now,
 		});
-	},
-});
-
-/**
- * Trusted WorkOS→Clerk remap (plan §2.6, secure variant). INTERNAL — callable
- * only from the server / `npx convex run` with the deploy key, never from a
- * client. Links a known (workosUserId → clerkUserId) pair derived from a WorkOS
- * export so tier/Stripe history is preserved without the client-controlled
- * email-claim attack surface. Idempotent; refuses to relink a row already
- * owned by a different Clerk user.
- */
-export const linkWorkosToClerk = internalMutation({
-	args: {
-		workosUserId: v.string(),
-		clerkUserId: v.string(),
-	},
-	handler: async (ctx, args) => {
-		const row = await ctx.db
-			.query("users")
-			.withIndex("by_workos_id", (q) => q.eq("workosUserId", args.workosUserId))
-			.first();
-		if (!row) {
-			throw new Error(`No user for workosUserId ${args.workosUserId}`);
-		}
-		if (row.clerkUserId !== undefined && row.clerkUserId !== args.clerkUserId) {
-			throw new Error(
-				`Row already linked to a different Clerk user (${row.clerkUserId})`,
-			);
-		}
-		await ctx.db.patch(row._id, { clerkUserId: args.clerkUserId });
-		return row._id;
 	},
 });
 

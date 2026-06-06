@@ -291,18 +291,21 @@ define + `.env.local`; Convex-side vars are set in the Convex deployment env.
 
 ## Update 2026-06-06 — remapping decision REVERSED on security grounds
 
-The plan recommended **lazy claim-by-email** (§2.6b). A two-pass adversarial
-review of the Phase-2 implementation proved it is **not securely implementable
-during the transition**: `upsertOnLogin` is an unauthenticated public mutation
-(the WorkOS callback runs before any session), so any caller can rewrite an
-arbitrary row's email and then have `ensureFromIdentity` adopt it by email
-match — a row-takeover (pro/admin) primitive. Email-verification does not help
-(the attacker rewrites to their own verified email).
+The plan recommended **lazy claim-by-email** (§2.6b). A multi-pass adversarial
+review proved it is **not securely implementable during the transition**:
+`upsertOnLogin` is an unauthenticated public mutation (the WorkOS callback runs
+before any session), so any caller can rewrite an arbitrary row's email and then
+have a claim-by-email path adopt it — a row-takeover (pro/admin) primitive.
+Email-verification does not help (the attacker rewrites to their own verified
+email), and guarding the writers is insufficient (the rewrite step can omit the
+Clerk token entirely).
 
-**Decision (needs owner sign-off):** the lazy path is **create-only**;
-WorkOS→Clerk row remapping happens out-of-band via the trusted
-`internal.functions.users.mutations.linkWorkosToClerk` mutation, run once from a
-WorkOS user export with the deploy key (`npx convex run`). This preserves
-tier/Stripe history without any client-controlled claim surface. Lazy
-claim-by-email could only be reinstated AFTER Phase 5 deletes `upsertOnLogin`
-and the WorkOS callback — at which point there is no open email-write primitive.
+**Decision (owner-confirmed 2026-06-06):** `ensureFromIdentity` is
+**create-only**. First Clerk login always makes a fresh user; WorkOS-era
+account history (tier, Stripe, admin) is **not** carried over — the owner
+accepted no backwards compatibility for the pilot. There is no claim-by-email
+and no remap mutation, so the row-takeover surface does not exist. (Lazy claim
+could only return after Phase 5 deletes `upsertOnLogin`, by which point there is
+no open email-write primitive — out of scope for the pilot.)
+
+Full rationale: `[[Projects/civic-pulse/Decisions/ADR-0001-clerk-user-remapping-create-only|ADR-0001]]`.
