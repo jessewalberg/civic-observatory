@@ -10,7 +10,7 @@ import { Suspense } from "react";
 import { Toaster } from "sonner";
 
 import { getAuth, getSignInUrl } from "@/authkit/serverFunctions";
-import { ConvexClientProvider } from "@/components/ConvexClientProvider";
+import { AppConvexProvider } from "@/components/AppConvexProvider";
 import { ErrorBoundary, RootErrorFallback } from "@/components/error";
 import { Header } from "@/components/Header";
 import { RouteLoadingFallback } from "@/components/SuspenseFallback";
@@ -131,14 +131,14 @@ function RootComponent() {
 	return (
 		<RootDocument>
 			<ErrorBoundary>
-				<ConvexClientProvider user={auth.user}>
+				<AppConvexProvider user={auth.user}>
 					<Header user={auth.user} signInUrl={signInUrl} />
 					<Suspense fallback={<RouteLoadingFallback />}>
 						<Outlet />
 					</Suspense>
 					<TanStackRouterDevtools position="bottom-right" />
 					<Toaster richColors position="top-center" />
-				</ConvexClientProvider>
+				</AppConvexProvider>
 			</ErrorBoundary>
 		</RootDocument>
 	);

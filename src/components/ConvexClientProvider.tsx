@@ -2,7 +2,7 @@ import type { User } from "@workos-inc/node";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { createContext, useContext, useState } from "react";
 
-function getConvexUrl(): string {
+export function getConvexUrl(): string {
 	// Try Vite env first
 	if (typeof import.meta !== "undefined" && import.meta.env?.VITE_CONVEX_URL) {
 		return import.meta.env.VITE_CONVEX_URL;
@@ -15,7 +15,7 @@ function getConvexUrl(): string {
 }
 
 // Context to provide WorkOS user throughout the app
-const WorkOSUserContext = createContext<User | null>(null);
+export const WorkOSUserContext = createContext<User | null>(null);
 
 export function useWorkOSUser() {
 	return useContext(WorkOSUserContext);
