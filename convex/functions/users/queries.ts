@@ -36,6 +36,19 @@ export const getByEmail = query({
 });
 
 // Internal version for use in actions
+/**
+ * Identity-first caller resolution for ACTIONS (plan §3 Phase 2). An action's
+ * ctx.auth identity propagates through ctx.runQuery, so an action can resolve
+ * its caller by calling this and ignoring any client-supplied workosUserId when
+ * a Clerk identity is present. Returns null when neither resolves.
+ */
+export const getCurrentInternal = internalQuery({
+	args: { workosUserId: v.optional(v.string()) },
+	handler: async (ctx, args) => {
+		return await getCurrentUser(ctx, args.workosUserId);
+	},
+});
+
 export const getByWorkosUserIdInternal = internalQuery({
 	args: {
 		workosUserId: v.string(),
