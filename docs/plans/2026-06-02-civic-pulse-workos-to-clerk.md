@@ -285,3 +285,24 @@ define + `.env.local`; Convex-side vars are set in the Convex deployment env.
 - `src/components/ConvexClientProvider.tsx` (ClerkProvider + ConvexProviderWithClerk)
 - `src/routes/__root.tsx` (SSR auth loader swap)
 - `vite.config.ts` (env define: drop WORKOS_*, add VITE_CLERK_PUBLISHABLE_KEY)
+
+
+---
+
+## Update 2026-06-06 — remapping decision REVERSED on security grounds
+
+The plan recommended **lazy claim-by-email** (§2.6b). A two-pass adversarial
+review of the Phase-2 implementation proved it is **not securely implementable
+during the transition**: `upsertOnLogin` is an unauthenticated public mutation
+(the WorkOS callback runs before any session), so any caller can rewrite an
+arbitrary row's email and then have `ensureFromIdentity` adopt it by email
+match — a row-takeover (pro/admin) primitive. Email-verification does not help
+(the attacker rewrites to their own verified email).
+
+**Decision (needs owner sign-off):** the lazy path is **create-only**;
+WorkOS→Clerk row remapping happens out-of-band via the trusted
+`internal.functions.users.mutations.linkWorkosToClerk` mutation, run once from a
+WorkOS user export with the deploy key (`npx convex run`). This preserves
+tier/Stripe history without any client-controlled claim surface. Lazy
+claim-by-email could only be reinstated AFTER Phase 5 deletes `upsertOnLogin`
+and the WorkOS callback — at which point there is no open email-write primitive.

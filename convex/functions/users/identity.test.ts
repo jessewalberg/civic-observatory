@@ -1,6 +1,7 @@
 import { convexTest } from "convex-test";
 import { describe, expect, it } from "vitest";
 import { api } from "../../_generated/api";
+import { internal } from "../../_generated/api";
 import schema from "../../schema";
 import { modules } from "../../test.setup";
 
@@ -67,7 +68,7 @@ describe("ensureFromIdentity (lazy claim/create)", () => {
 		expect(user?.tier).toBe("free");
 	});
 
-	it("lazy-claims an existing WorkOS-era user by email", async () => {
+	it("does NOT auto-claim a WorkOS-era row by email (security: email is attacker-writable)", async () => {
 		const t = setup();
 		const existing = await seedUser(t, {
 			email: "alice@example.com",
@@ -82,12 +83,13 @@ describe("ensureFromIdentity (lazy claim/create)", () => {
 			api.functions.users.mutations.ensureFromIdentity,
 			{},
 		);
-		expect(id).toBe(existing);
-		const user = await t.run(async (ctx) => ctx.db.get(existing));
-		expect(user?.clerkUserId).toBe("user_clerk_alice");
-		// Claimed, not duplicated: tier/stripe history survives the migration.
-		expect(user?.tier).toBe("pro");
-		expect(user?.workosUserId).toBe("user_wos_alice");
+		// A fresh row is created; the legacy row is NOT adopted via email match.
+		expect(id).not.toBe(existing);
+		const fresh = await t.run(async (ctx) => ctx.db.get(id));
+		expect(fresh?.clerkUserId).toBe("user_clerk_alice");
+		expect(fresh?.workosUserId).toBeUndefined();
+		const legacy = await t.run(async (ctx) => ctx.db.get(existing));
+		expect(legacy?.clerkUserId).toBeUndefined();
 	});
 
 	it("is idempotent: second call resolves the same row by clerk id", async () => {
@@ -289,5 +291,40 @@ describe("identity overrides client-supplied ids (the security fix)", () => {
 		});
 		const result = await asRoot.query(api.functions.users.queries.listAll, {});
 		expect(result).toMatchObject({ total: 1, hasMore: false });
+	});
+});
+
+describe("linkWorkosToClerk (trusted out-of-band remap)", () => {
+	it("links a known workos→clerk pair, preserving the existing row + history", async () => {
+		const t = setup();
+		const existing = await seedUser(t, {
+			workosUserId: "user_wos_alice",
+			email: "alice@example.com",
+			tier: "pro",
+		});
+		const id = await t.mutation(
+			internal.functions.users.mutations.linkWorkosToClerk,
+			{ workosUserId: "user_wos_alice", clerkUserId: "user_clerk_alice" },
+		);
+		expect(id).toBe(existing);
+		const row = await t.run(async (ctx) => ctx.db.get(existing));
+		expect(row?.clerkUserId).toBe("user_clerk_alice");
+		expect(row?.tier).toBe("pro");
+		expect(row?.workosUserId).toBe("user_wos_alice");
+	});
+
+	it("refuses to relink a row already owned by a different Clerk user", async () => {
+		const t = setup();
+		await seedUser(t, {
+			workosUserId: "user_wos_alice",
+			email: "alice@example.com",
+			clerkUserId: "user_clerk_owner",
+		});
+		await expect(
+			t.mutation(internal.functions.users.mutations.linkWorkosToClerk, {
+				workosUserId: "user_wos_alice",
+				clerkUserId: "user_clerk_intruder",
+			}),
+		).rejects.toThrow(/already linked/);
 	});
 });
