@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { internalMutation, mutation } from "../../_generated/server";
+import { internalMutation } from "../../_generated/server";
 
 export const updateStripeCustomer = internalMutation({
 	args: {
@@ -14,7 +14,7 @@ export const updateStripeCustomer = internalMutation({
 });
 
 // Public mutations for webhook handlers (signature verified on the API route)
-export const handleCheckoutCompleted = mutation({
+export const handleCheckoutCompleted = internalMutation({
 	args: {
 		stripeCustomerId: v.string(),
 		stripeSubscriptionId: v.string(),
@@ -48,7 +48,7 @@ export const handleCheckoutCompleted = mutation({
 	},
 });
 
-export const handleSubscriptionUpdated = mutation({
+export const handleSubscriptionUpdated = internalMutation({
 	args: {
 		stripeSubscriptionId: v.string(),
 		currentPeriodEnd: v.number(),
@@ -83,7 +83,7 @@ export const handleSubscriptionUpdated = mutation({
 	},
 });
 
-export const handleSubscriptionDeleted = mutation({
+export const handleSubscriptionDeleted = internalMutation({
 	args: {
 		stripeSubscriptionId: v.string(),
 	},
