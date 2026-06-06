@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation } from "../../_generated/server";
+import { getCurrentUser, getIdentity, requireAdmin } from "../../lib/auth";
 
 export const upsertOnLogin = mutation({
 	args: {
@@ -40,6 +41,58 @@ export const upsertOnLogin = mutation({
 	},
 });
 
+/**
+ * Phase-2 lazy claim/create (plan §2.6 option b): on the first authenticated
+ * Clerk call, link the identity to an existing row (matched by email, only if
+ * that row is not already owned by another Clerk user) or create a fresh one.
+ * Identity-only — there is deliberately NO legacy fallback here.
+ */
+export const ensureFromIdentity = mutation({
+	args: {},
+	handler: async (ctx) => {
+		const identity = await getIdentity(ctx);
+		if (!identity) {
+			throw new Error("Not authenticated");
+		}
+		const now = Date.now();
+
+		const byClerkId = await ctx.db
+			.query("users")
+			.withIndex("by_clerk_id", (q) => q.eq("clerkUserId", identity.subject))
+			.unique();
+		if (byClerkId) {
+			await ctx.db.patch(byClerkId._id, { lastLoginAt: now });
+			return byClerkId._id;
+		}
+
+		// Lazy-claim by email: adopt the WorkOS-era row so tier/Stripe history
+		// survives — but never steal a row already claimed by another Clerk user.
+		const email = identity.email;
+		if (email) {
+			const byEmail = await ctx.db
+				.query("users")
+				.withIndex("by_email", (q) => q.eq("email", email))
+				.first();
+			if (byEmail && byEmail.clerkUserId === undefined) {
+				await ctx.db.patch(byEmail._id, {
+					clerkUserId: identity.subject,
+					lastLoginAt: now,
+				});
+				return byEmail._id;
+			}
+		}
+
+		return await ctx.db.insert("users", {
+			clerkUserId: identity.subject,
+			email: email ?? "",
+			name: typeof identity.name === "string" ? identity.name : undefined,
+			tier: "free",
+			createdAt: now,
+			lastLoginAt: now,
+		});
+	},
+});
+
 export const updateTier = mutation({
 	args: {
 		userId: v.id("users"),
@@ -59,21 +112,12 @@ export const setAdminStatus = mutation({
 	args: {
 		userId: v.id("users"),
 		isAdmin: v.boolean(),
-		requestingWorkosUserId: v.string(),
+		// Legacy (no-identity) callers only; IGNORED when a Clerk identity is
+		// present. Removed in Phase 5.
+		requestingWorkosUserId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		// Check if requester is admin
-		const requester = await ctx.db
-			.query("users")
-			.withIndex("by_workos_id", (q) =>
-				q.eq("workosUserId", args.requestingWorkosUserId),
-			)
-			.first();
-
-		if (!requester?.isAdmin) {
-			throw new Error("Only admins can modify admin status");
-		}
-
+		await requireAdmin(ctx, args.requestingWorkosUserId);
 		await ctx.db.patch(args.userId, { isAdmin: args.isAdmin });
 	},
 });
@@ -81,15 +125,12 @@ export const setAdminStatus = mutation({
 // Claim initial admin if the system currently has zero admins.
 export const claimInitialAdmin = mutation({
 	args: {
-		requestingWorkosUserId: v.string(),
+		// Legacy (no-identity) callers only; IGNORED when a Clerk identity is
+		// present. Removed in Phase 5.
+		requestingWorkosUserId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		const requester = await ctx.db
-			.query("users")
-			.withIndex("by_workos_id", (q) =>
-				q.eq("workosUserId", args.requestingWorkosUserId),
-			)
-			.first();
+		const requester = await getCurrentUser(ctx, args.requestingWorkosUserId);
 
 		if (!requester) {
 			throw new Error("User not found. Please sign in first.");
@@ -119,20 +160,12 @@ export const adminUpdateUser = mutation({
 		userId: v.id("users"),
 		tier: v.optional(v.union(v.literal("free"), v.literal("pro"))),
 		isAdmin: v.optional(v.boolean()),
-		requestingWorkosUserId: v.string(),
+		// Legacy (no-identity) callers only; IGNORED when a Clerk identity is
+		// present. Removed in Phase 5.
+		requestingWorkosUserId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		// Check if requester is admin
-		const requester = await ctx.db
-			.query("users")
-			.withIndex("by_workos_id", (q) =>
-				q.eq("workosUserId", args.requestingWorkosUserId),
-			)
-			.first();
-
-		if (!requester?.isAdmin) {
-			throw new Error("Admin access required");
-		}
+		await requireAdmin(ctx, args.requestingWorkosUserId);
 
 		const updates: { tier?: "free" | "pro"; isAdmin?: boolean } = {};
 		if (args.tier !== undefined) updates.tier = args.tier;
