@@ -138,7 +138,10 @@ export const create = mutation({
 // ═══════════════════════════════════════════════════════════════
 // UPDATE STATUS - Change processing status
 // ═══════════════════════════════════════════════════════════════
-export const updateStatus = mutation({
+// Backend-only (no client callers): a public mutation here let any client
+// relabel or requeue any meeting. Converted to internalMutation — the AI
+// pipeline calls it server-side; clients use the admin-gated requeue path.
+export const updateStatus = internalMutation({
 	args: {
 		meetingId: v.id("meetings"),
 		status: statusValidator,

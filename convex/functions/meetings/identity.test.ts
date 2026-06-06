@@ -1,6 +1,7 @@
 import { convexTest } from "convex-test";
 import { describe, expect, it } from "vitest";
 import { api } from "../../_generated/api";
+import { internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 import schema from "../../schema";
 import { modules } from "../../test.setup";
@@ -126,5 +127,24 @@ describe("meetings admin mutations under the identity bridge", () => {
 			meetingId: meetingId as Id<"meetings">,
 			requestingWorkosUserId: "user_wos_root",
 		});
+	});
+});
+
+describe("updateStatus is backend-only (no public client surface)", () => {
+	it("is callable via internal and not exposed on the public api", async () => {
+		const t = setup();
+		const muni = await seedMunicipality(t);
+		const meetingId = await seedMeeting(t, muni);
+		// Internal call works (the AI pipeline path).
+		await t.mutation(internal.functions.meetings.mutations.updateStatus, {
+			meetingId: meetingId as Id<"meetings">,
+			status: "processing",
+		});
+		const row = await t.run(async (ctx) => ctx.db.get(meetingId as Id<"meetings">));
+		expect(row?.status).toBe("processing");
+		// updateStatus is internalMutation: it is NOT on api.* (a compile-time
+		// guarantee — referencing api.functions.meetings.mutations.updateStatus
+		// would not typecheck). This test exercising the internal.* path is the
+		// runtime half of that contract.
 	});
 });
