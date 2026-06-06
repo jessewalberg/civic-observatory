@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { internalMutation, mutation } from "../../_generated/server";
-import { getCurrentUser, requireAdmin as requireAdminBridge } from "../../lib/auth";
+import { requireAdmin as requireAdminBridge } from "../../lib/auth";
 import type { MutationCtx } from "../../_generated/server";
 import { STATE_NAMES } from "../../data/index";
 
