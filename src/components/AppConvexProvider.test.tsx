@@ -4,24 +4,38 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 // Mock the Clerk + Convex-Clerk integration modules to lightweight
 // passthroughs: these tests prove OUR gating/wiring (which provider mounts,
-// with which props), not Clerk's internals.
-const clerkProviderSpy = vi.fn();
-const convexWithClerkSpy = vi.fn();
+// with which props), not Clerk's internals. vi.mock is hoisted above imports,
+// so the spies must be created via vi.hoisted.
+const { clerkProviderSpy, convexWithClerkSpy, mockedUseAuth } = vi.hoisted(
+	() => ({
+		clerkProviderSpy: vi.fn(),
+		convexWithClerkSpy: vi.fn(),
+		mockedUseAuth: () => ({ isLoaded: true, isSignedIn: false }),
+	}),
+);
 
 vi.mock("@clerk/tanstack-react-start", () => ({
-	ClerkProvider: (props: { publishableKey?: string; children?: React.ReactNode }) => {
+	ClerkProvider: (props: {
+		publishableKey?: string;
+		children?: React.ReactNode;
+	}) => {
 		clerkProviderSpy(props.publishableKey);
 		return <div data-testid="clerk-provider">{props.children}</div>;
 	},
-	useAuth: () => ({ isLoaded: true, isSignedIn: false }),
+	useAuth: mockedUseAuth,
 }));
 vi.mock("convex/react-clerk", () => ({
-	ConvexProviderWithClerk: (props: { useAuth?: unknown; children?: React.ReactNode }) => {
-		convexWithClerkSpy(typeof props.useAuth);
+	ConvexProviderWithClerk: (props: {
+		client?: unknown;
+		useAuth?: unknown;
+		children?: React.ReactNode;
+	}) => {
+		convexWithClerkSpy({ client: props.client, useAuth: props.useAuth });
 		return <div data-testid="convex-with-clerk">{props.children}</div>;
 	},
 }));
 
+import { ConvexReactClient } from "convex/react";
 import { AppConvexProvider } from "./AppConvexProvider";
 
 describe("AppConvexProvider (Phase 1 gated mount)", () => {
@@ -47,7 +61,7 @@ describe("AppConvexProvider (Phase 1 gated mount)", () => {
 		expect(clerkProviderSpy).not.toHaveBeenCalled();
 	});
 
-	it("mounts ClerkProvider + ConvexProviderWithClerk when a key is configured", () => {
+	it("mounts ClerkProvider + ConvexProviderWithClerk with the full contract", () => {
 		vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY", "pk_test_fake123");
 		vi.stubEnv("VITE_CONVEX_URL", "https://example.convex.cloud");
 
@@ -60,9 +74,14 @@ describe("AppConvexProvider (Phase 1 gated mount)", () => {
 		expect(screen.getByTestId("clerk-provider")).toBeDefined();
 		expect(screen.getByTestId("convex-with-clerk")).toBeDefined();
 		expect(screen.getByText("app-children")).toBeDefined();
-		// Our wiring passes the publishable key + a useAuth hook through.
+		// Pin the contract, not just presence: the publishable key flows to
+		// ClerkProvider; ConvexProviderWithClerk receives a real ConvexReactClient
+		// AND the exact Clerk useAuth hook (not some other function).
 		expect(clerkProviderSpy).toHaveBeenCalledWith("pk_test_fake123");
-		expect(convexWithClerkSpy).toHaveBeenCalledWith("function");
+		expect(convexWithClerkSpy).toHaveBeenCalledTimes(1);
+		const wired = convexWithClerkSpy.mock.calls[0][0];
+		expect(wired.client).toBeInstanceOf(ConvexReactClient);
+		expect(wired.useAuth).toBe(mockedUseAuth);
 	});
 
 	it("still provides the WorkOS user context in Clerk mode (transition phases need both)", async () => {
