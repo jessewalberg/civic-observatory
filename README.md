@@ -13,7 +13,7 @@ AI-powered summaries of local government meetings.
 | Auth | WorkOS AuthKit |
 | UI | shadcn/ui + Tailwind v4 |
 | AI | Claude API |
-| Email | Resend |
+| Email | Cloudflare Email Sending |
 | Deploy | Cloudflare Workers |
 
 ## Structure
