@@ -51,10 +51,11 @@ export async function getCurrentUser(
 export async function requireAdmin(
 	ctx: Ctx,
 	legacyWorkosUserId?: string,
+	message = "Forbidden: admin only",
 ): Promise<Doc<"users">> {
 	const user = await getCurrentUser(ctx, legacyWorkosUserId);
 	if (!user?.isAdmin) {
-		throw new Error("Forbidden: admin only");
+		throw new Error(message);
 	}
 	return user;
 }

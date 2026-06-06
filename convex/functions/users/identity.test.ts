@@ -183,6 +183,98 @@ describe("identity overrides client-supplied ids (the security fix)", () => {
 		expect(stats).toBeNull();
 	});
 
+	it("FIXED: upsertOnLogin is refused under a Clerk identity (no email-rewrite attack)", async () => {
+		const t = setup();
+		const victim = await seedUser(t, {
+			workosUserId: "user_wos_victim",
+			email: "victim@example.com",
+			tier: "pro",
+		});
+		const asAttacker = t.withIdentity({
+			subject: "user_clerk_attacker",
+			issuer: ISSUER,
+			email: "attacker@example.com",
+		});
+		// The exploit Codex found: rewrite the victim row's email to the
+		// attacker's, then claim it. The mutation must refuse outright.
+		await expect(
+			asAttacker.mutation(api.functions.users.mutations.upsertOnLogin, {
+				workosUserId: "user_wos_victim",
+				email: "attacker@example.com",
+			}),
+		).rejects.toThrow(/disabled under Clerk/);
+		const row = await t.run(async (ctx) => ctx.db.get(victim));
+		expect(row?.email).toBe("victim@example.com"); // untouched
+	});
+
+	it("FIXED: getByWorkosUserId ignores the client id under identity (no row-read leak)", async () => {
+		const t = setup();
+		await seedUser(t, {
+			workosUserId: "user_wos_victim",
+			email: "victim@example.com",
+			tier: "pro",
+		});
+		const asPeon = t.withIdentity({
+			subject: "user_clerk_peon",
+			issuer: ISSUER,
+			email: "peon@example.com",
+		});
+		await asPeon.mutation(api.functions.users.mutations.ensureFromIdentity, {});
+		// Asking for the victim's row by workos id returns the CALLER's own row.
+		const got = await asPeon.query(
+			api.functions.users.queries.getByWorkosUserId,
+			{ workosUserId: "user_wos_victim" },
+		);
+		expect(got?.clerkUserId).toBe("user_clerk_peon");
+		expect(got?.email).toBe("peon@example.com");
+	});
+
+	it("FIXED: isAdmin ignores a spoofed admin id under identity", async () => {
+		const t = setup();
+		await seedUser(t, {
+			workosUserId: "user_wos_root",
+			email: "root@example.com",
+			isAdmin: true,
+		});
+		const asPeon = t.withIdentity({
+			subject: "user_clerk_peon",
+			issuer: ISSUER,
+			email: "peon@example.com",
+		});
+		await asPeon.mutation(api.functions.users.mutations.ensureFromIdentity, {});
+		await expect(
+			asPeon.query(api.functions.users.queries.isAdmin, {
+				workosUserId: "user_wos_root",
+			}),
+		).resolves.toBe(false);
+	});
+
+	it("FIXED: setAdminStatus denies a non-admin Clerk caller spoofing an admin id", async () => {
+		const t = setup();
+		const target = await seedUser(t, {
+			workosUserId: "user_wos_target",
+			email: "target@example.com",
+		});
+		await seedUser(t, {
+			workosUserId: "user_wos_root",
+			email: "root@example.com",
+			isAdmin: true,
+		});
+		const asPeon = t.withIdentity({
+			subject: "user_clerk_peon",
+			issuer: ISSUER,
+			email: "peon@example.com",
+		});
+		await asPeon.mutation(api.functions.users.mutations.ensureFromIdentity, {});
+		await expect(
+			asPeon.mutation(api.functions.users.mutations.setAdminStatus, {
+				userId: target,
+				isAdmin: true,
+				requestingWorkosUserId: "user_wos_root",
+			}),
+		).rejects.toThrow(/Only admins/);
+	});
+
 	it("an identity-resolved ADMIN passes the gate without any client-supplied id", async () => {
 		const t = setup();
 		await seedUser(t, {

@@ -10,6 +10,13 @@ export const upsertOnLogin = mutation({
 		avatarUrl: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
+		// Legacy WorkOS callback ONLY. Under a Clerk identity the login path is
+		// ensureFromIdentity; allowing this would let a Clerk-authenticated caller
+		// rewrite an arbitrary WorkOS-era row's email (by client-supplied
+		// workosUserId) and then claim it by email. Refuse.
+		if (await getIdentity(ctx)) {
+			throw new Error("upsertOnLogin is disabled under Clerk; use ensureFromIdentity");
+		}
 		const existing = await ctx.db
 			.query("users")
 			.withIndex("by_workos_id", (q) => q.eq("workosUserId", args.workosUserId))
@@ -117,7 +124,7 @@ export const setAdminStatus = mutation({
 		requestingWorkosUserId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx, args.requestingWorkosUserId);
+		await requireAdmin(ctx, args.requestingWorkosUserId, "Only admins can modify admin status");
 		await ctx.db.patch(args.userId, { isAdmin: args.isAdmin });
 	},
 });
@@ -165,7 +172,7 @@ export const adminUpdateUser = mutation({
 		requestingWorkosUserId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		await requireAdmin(ctx, args.requestingWorkosUserId);
+		await requireAdmin(ctx, args.requestingWorkosUserId, "Admin access required");
 
 		const updates: { tier?: "free" | "pro"; isAdmin?: boolean } = {};
 		if (args.tier !== undefined) updates.tier = args.tier;

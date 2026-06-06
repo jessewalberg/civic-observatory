@@ -4,13 +4,13 @@ import { getCurrentUser } from "../../lib/auth";
 
 export const getByWorkosUserId = query({
 	args: {
-		workosUserId: v.string(),
+		// Legacy (no-identity) callers only; IGNORED when a Clerk identity is
+		// present — otherwise any signed-in user could read any row by guessing
+		// a workosUserId. Under Clerk this returns the caller's OWN user.
+		workosUserId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		return await ctx.db
-			.query("users")
-			.withIndex("by_workos_id", (q) => q.eq("workosUserId", args.workosUserId))
-			.first();
+		return await getCurrentUser(ctx, args.workosUserId);
 	},
 });
 
