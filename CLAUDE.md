@@ -16,7 +16,7 @@ Civic Pulse is a SaaS platform that automatically scrapes meeting documents from
 | AI | OpenRouter (Claude) | Meeting summarization via Convex actions |
 | Scraping | Convex Actions + Cheerio | Serverless, runs in Convex runtime |
 | Payments | Stripe | Subscriptions, webhooks, customer portal |
-| Email | Resend | Alert notification emails |
+| Email | Cloudflare Email Sending | Alert notification emails |
 | Animation | Motion (Framer Motion) | Page transitions, micro-interactions |
 | Package Manager | Bun | For all installs, scripts, and commands |
 
@@ -187,7 +187,7 @@ This is the sequence of work. Do NOT skip ahead. Each phase corresponds to a pro
 27. Subscription CRUD mutations
 28. Subscription modal with topic/keyword filters
 29. Alert generation on new summary
-30. Email sending action (Resend)
+30. Email sending action (Cloudflare Email Sending REST API)
 31. Cron jobs (immediate, daily digest, weekly digest)
 32. Dashboard alert feed
 
@@ -249,8 +249,10 @@ WORKOS_COOKIE_PASSWORD=32-character-minimum-secret
 # OpenRouter (AI API routing)
 OPENROUTER_API_KEY=sk-or-...
 
-# Resend
-RESEND_API_KEY=re_...
+# Cloudflare Email Sending (sendEmail action) — token needs email-send perm,
+# domain civicpulse.com onboarded to CF Email Sending
+CLOUDFLARE_API_TOKEN=...
+CLOUDFLARE_ACCOUNT_ID=...
 
 # Stripe
 STRIPE_SECRET_KEY=sk_test_...

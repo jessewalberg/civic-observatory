@@ -12,11 +12,32 @@ import {
 // ═══════════════════════════════════════════════════════════════
 // CONFIGURATION
 // ═══════════════════════════════════════════════════════════════
-const FROM_EMAIL = "Civic Pulse <alerts@civicpulse.app>";
-const BASE_URL = process.env.SITE_URL ?? "https://civicpulse.app";
+const FROM_ADDRESS = "alerts@civicpulse.com";
+const FROM_NAME = "Civic Pulse";
+const BASE_URL = process.env.SITE_URL ?? "https://civicpulse.com";
+
+/** Minimal HTML→text fallback so Cloudflare Email Sending has a text part
+ * (improves deliverability; CF accepts html-only but spam filters prefer both). */
+export function htmlToText(html: string): string {
+	return html
+		.replace(/<style[\s\S]*?<\/style>/gi, "")
+		.replace(/<script[\s\S]*?<\/script>/gi, "")
+		.replace(/<\/(p|div|tr|h[1-6]|li)>/gi, "\n")
+		.replace(/<br\s*\/?>/gi, "\n")
+		.replace(/<[^>]+>/g, "")
+		.replace(/&nbsp;/g, " ")
+		.replace(/&amp;/g, "&")
+		.replace(/&lt;/g, "<")
+		.replace(/&gt;/g, ">")
+		.replace(/\n{3,}/g, "\n\n")
+		.trim();
+}
 
 // ═══════════════════════════════════════════════════════════════
-// SEND EMAIL - Core email sending via Resend API
+// SEND EMAIL - Core sending via the Cloudflare Email Sending REST API.
+// Transactional only; the sending domain (civicpulse.com) must be onboarded to
+// Cloudflare Email Sending and CLOUDFLARE_API_TOKEN must carry the email send
+// permission. Replaced Resend to consolidate on Cloudflare (one fewer vendor).
 // ═══════════════════════════════════════════════════════════════
 export const sendEmail = internalAction({
 	args: {
@@ -29,37 +50,59 @@ export const sendEmail = internalAction({
 		_ctx,
 		args,
 	): Promise<{ success: boolean; error?: string; id?: string }> => {
-		const apiKey = process.env.RESEND_API_KEY;
+		const apiToken = process.env.CLOUDFLARE_API_TOKEN;
+		const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
 
-		if (!apiKey) {
-			console.error("RESEND_API_KEY is not configured");
+		if (!apiToken || !accountId) {
+			console.error(
+				"CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID not configured",
+			);
 			return { success: false, error: "Email service not configured" };
 		}
 
 		try {
-			const response = await fetch("https://api.resend.com/emails", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					Authorization: `Bearer ${apiKey}`,
+			const response = await fetch(
+				`https://api.cloudflare.com/client/v4/accounts/${accountId}/email/sending/send`,
+				{
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						Authorization: `Bearer ${apiToken}`,
+					},
+					body: JSON.stringify({
+						from: { address: FROM_ADDRESS, name: FROM_NAME },
+						to: args.to,
+						subject: args.subject,
+						html: args.html,
+						text: htmlToText(args.html),
+						...(args.replyTo ? { reply_to: args.replyTo } : {}),
+					}),
 				},
-				body: JSON.stringify({
-					from: FROM_EMAIL,
-					to: args.to,
-					subject: args.subject,
-					html: args.html,
-					reply_to: args.replyTo,
-				}),
-			});
+			);
 
 			if (!response.ok) {
 				const errorData = await response.text();
-				console.error(`Resend API error (${response.status}):`, errorData);
+				console.error(
+					`Cloudflare Email API error (${response.status}):`,
+					errorData,
+				);
 				return { success: false, error: `Email API error: ${response.status}` };
 			}
 
-			const data = await response.json();
-			return { success: true, id: data.id };
+			// CF returns { success, errors, result: { delivered, queued, permanent_bounces } }
+			const data = (await response.json()) as {
+				success?: boolean;
+				errors?: Array<{ message?: string }>;
+				result?: { queued?: string[]; delivered?: string[] };
+			};
+			if (data.success === false) {
+				const msg =
+					data.errors?.map((e) => e.message).join("; ") || "send failed";
+				console.error("Cloudflare Email send failed:", msg);
+				return { success: false, error: msg };
+			}
+			const id = data.result?.queued?.[0] ?? data.result?.delivered?.[0];
+			return { success: true, id };
 		} catch (error) {
 			const errorMessage =
 				error instanceof Error ? error.message : "Unknown error";

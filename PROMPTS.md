@@ -477,10 +477,10 @@ Update ai.ts to call this.
 
 ### Prompt 5.4: Email Sending
 ```
-Set up email with Resend:
+Set up email with Cloudflare Email Sending:
 
 convex/email.ts:
-- sendEmail action (Resend API)
+- sendEmail action (Cloudflare Email Sending REST API)
 - sendImmediateAlert: Single meeting email
 - sendDailyDigest: Grouped email
 - sendWeeklyDigest: Weekly summary
@@ -660,7 +660,7 @@ Full test pass:
 ```
 Deploy to production:
 
-1. Production Convex, WorkOS, Stripe, Resend
+1. Production Convex, Clerk, Stripe, Cloudflare Email
 2. npx convex deploy --prod
 3. Cloudflare setup
 4. DNS configuration
