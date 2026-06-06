@@ -1,12 +1,13 @@
 import { v } from "convex/values";
 import { internalMutation, mutation } from "../../_generated/server";
+import { getCurrentUser } from "../../lib/auth";
 
 // ═══════════════════════════════════════════════════════════════
 // RECORD USAGE - Increment usage count for an action (public)
 // ═══════════════════════════════════════════════════════════════
 export const recordUsage = mutation({
 	args: {
-		workosUserId: v.string(),
+		workosUserId: v.optional(v.string()),
 		action: v.union(
 			v.literal("summary_view"),
 			v.literal("meeting_upload"),
@@ -21,10 +22,7 @@ export const recordUsage = mutation({
 	},
 	handler: async (ctx, args) => {
 		// Get user
-		const user = await ctx.db
-			.query("users")
-			.withIndex("by_workos_id", (q) => q.eq("workosUserId", args.workosUserId))
-			.first();
+		const user = await getCurrentUser(ctx, args.workosUserId);
 
 		if (!user) {
 			throw new Error("User not found");

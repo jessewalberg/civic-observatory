@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { internalQuery, query } from "../../_generated/server";
 import { type Action, LIMITS, type Tier } from "../../lib/constants/limits";
+import { getCurrentUser } from "../../lib/auth";
 
 // ═══════════════════════════════════════════════════════════════
 // GET USAGE COUNT - Current usage for a user/action/window
@@ -21,18 +22,8 @@ export const getUsageCount = query({
 		),
 	},
 	handler: async (ctx, args) => {
-		if (!args.workosUserId) {
-			return { count: 0, windowStart: 0 };
-		}
-
-		const workosUserId = args.workosUserId;
-
-		// Get user
-		const user = await ctx.db
-			.query("users")
-			.withIndex("by_workos_id", (q) => q.eq("workosUserId", workosUserId))
-			.first();
-
+		// Identity-first: the caller's own usage (legacy arg ignored under Clerk).
+		const user = await getCurrentUser(ctx, args.workosUserId);
 		if (!user) {
 			return { count: 0, windowStart: 0 };
 		}
@@ -75,12 +66,8 @@ export const checkLimit = query({
 		let tier: Tier = "anonymous";
 		let userId = null;
 
-		if (args.workosUserId) {
-			const workosUserId = args.workosUserId;
-			const user = await ctx.db
-				.query("users")
-				.withIndex("by_workos_id", (q) => q.eq("workosUserId", workosUserId))
-				.first();
+		{
+			const user = await getCurrentUser(ctx, args.workosUserId);
 
 			if (user) {
 				tier = user.tier as Tier;
@@ -165,13 +152,10 @@ export const checkLimit = query({
 // ═══════════════════════════════════════════════════════════════
 export const getUserUsageSummary = query({
 	args: {
-		workosUserId: v.string(),
+		workosUserId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		const user = await ctx.db
-			.query("users")
-			.withIndex("by_workos_id", (q) => q.eq("workosUserId", args.workosUserId))
-			.first();
+		const user = await getCurrentUser(ctx, args.workosUserId);
 
 		if (!user) {
 			return null;
@@ -238,13 +222,10 @@ export const getUserUsageSummary = query({
 // ═══════════════════════════════════════════════════════════════
 export const getUsageStats = query({
 	args: {
-		workosUserId: v.string(),
+		workosUserId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		const user = await ctx.db
-			.query("users")
-			.withIndex("by_workos_id", (q) => q.eq("workosUserId", args.workosUserId))
-			.first();
+		const user = await getCurrentUser(ctx, args.workosUserId);
 
 		if (!user) {
 			return null;
