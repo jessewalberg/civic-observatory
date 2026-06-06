@@ -13,7 +13,8 @@ export const updateStripeCustomer = internalMutation({
 	},
 });
 
-// Public mutations for webhook handlers (signature verified on the API route)
+// Internal webhook handlers — invoked ONLY by the signature-verified Convex
+// httpAction (convex/http.ts → handleWebhook). Not client-callable (ADR-0002).
 export const handleCheckoutCompleted = internalMutation({
 	args: {
 		stripeCustomerId: v.string(),
