@@ -3,7 +3,7 @@
 import { v } from "convex/values";
 import Stripe from "stripe";
 import { internal } from "../../_generated/api";
-import { action } from "../../_generated/server";
+import { action, internalAction } from "../../_generated/server";
 
 function getStripe() {
 	const key = process.env.STRIPE_SECRET_KEY;
@@ -15,7 +15,8 @@ function getStripe() {
 
 export const createCheckoutSession = action({
 	args: {
-		workosUserId: v.string(),
+		// Legacy (no-identity) callers only; IGNORED under Clerk. Removed Phase 5.
+		workosUserId: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<{ url: string | null }> => {
 		const stripe = getStripe();
@@ -23,9 +24,10 @@ export const createCheckoutSession = action({
 		if (!priceId) throw new Error("STRIPE_PRO_PRICE_ID not configured");
 		const appUrl = process.env.VITE_APP_URL || "http://localhost:3000";
 
-		// Get user from database
+		// Identity-first: a caller can only checkout for THEMSELVES (a spoofed
+		// workosUserId is ignored when a Clerk identity is present).
 		const user = await ctx.runQuery(
-			internal.functions.users.queries.getByWorkosUserIdInternal,
+			internal.functions.users.queries.getCurrentInternal,
 			{ workosUserId: args.workosUserId },
 		);
 
@@ -41,7 +43,7 @@ export const createCheckoutSession = action({
 			const customer = await stripe.customers.create({
 				email: user.email,
 				metadata: {
-					workosUserId: args.workosUserId,
+					workosUserId: user.workosUserId ?? "",
 					convexUserId: user._id,
 				},
 			});
@@ -71,7 +73,7 @@ export const createCheckoutSession = action({
 			success_url: `${appUrl}/pricing?success=true`,
 			cancel_url: `${appUrl}/pricing?canceled=true`,
 			metadata: {
-				workosUserId: args.workosUserId,
+				workosUserId: user.workosUserId ?? "",
 				convexUserId: user._id,
 			},
 		});
@@ -82,15 +84,16 @@ export const createCheckoutSession = action({
 
 export const createPortalSession = action({
 	args: {
-		workosUserId: v.string(),
+		// Legacy (no-identity) callers only; IGNORED under Clerk. Removed Phase 5.
+		workosUserId: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<{ url: string }> => {
 		const stripe = getStripe();
 		const appUrl = process.env.VITE_APP_URL || "http://localhost:3000";
 
-		// Get user from database
+		// Identity-first: a caller can only open THEIR OWN billing portal.
 		const user = await ctx.runQuery(
-			internal.functions.users.queries.getByWorkosUserIdInternal,
+			internal.functions.users.queries.getCurrentInternal,
 			{ workosUserId: args.workosUserId },
 		);
 
@@ -109,5 +112,87 @@ export const createPortalSession = action({
 		});
 
 		return { url: session.url };
+	},
+});
+
+// ═══════════════════════════════════════════════════════════════
+// WEBHOOK — relocated from the worker (Clerk migration Phase 2, ADR).
+// Signature verification + dispatch run server-side in Convex so the
+// subscription mutations are internalMutation (no longer client-callable).
+// Called only by the convex/http.ts httpAction with the raw body + signature.
+// ═══════════════════════════════════════════════════════════════
+export const handleWebhook = internalAction({
+	args: {
+		body: v.string(),
+		signature: v.string(),
+	},
+	handler: async (ctx, args): Promise<{ ok: boolean; error?: string }> => {
+		const stripe = getStripe();
+		const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+		if (!webhookSecret) {
+			throw new Error("STRIPE_WEBHOOK_SECRET not configured");
+		}
+
+		let event: Stripe.Event;
+		try {
+			event = stripe.webhooks.constructEvent(
+				args.body,
+				args.signature,
+				webhookSecret,
+			);
+		} catch (err) {
+			console.error("Stripe webhook signature verification failed:", err);
+			return { ok: false, error: "Invalid signature" };
+		}
+
+		switch (event.type) {
+			case "checkout.session.completed": {
+				const session = event.data.object as Stripe.Checkout.Session;
+				if (
+					session.mode === "subscription" &&
+					session.subscription &&
+					session.customer
+				) {
+					const subscription = (await stripe.subscriptions.retrieve(
+						session.subscription as string,
+					)) as Stripe.Subscription & { current_period_end?: number };
+					await ctx.runMutation(
+						internal.functions.stripe.mutations.handleCheckoutCompleted,
+						{
+							stripeCustomerId: session.customer as string,
+							stripeSubscriptionId: subscription.id,
+							currentPeriodEnd: (subscription.current_period_end ?? 0) * 1000,
+						},
+					);
+				}
+				break;
+			}
+			case "customer.subscription.updated": {
+				const subscription = event.data.object as Stripe.Subscription & {
+					current_period_end?: number;
+				};
+				await ctx.runMutation(
+					internal.functions.stripe.mutations.handleSubscriptionUpdated,
+					{
+						stripeSubscriptionId: subscription.id,
+						currentPeriodEnd: (subscription.current_period_end ?? 0) * 1000,
+						status: subscription.status,
+					},
+				);
+				break;
+			}
+			case "customer.subscription.deleted": {
+				const subscription = event.data.object as Stripe.Subscription;
+				await ctx.runMutation(
+					internal.functions.stripe.mutations.handleSubscriptionDeleted,
+					{ stripeSubscriptionId: subscription.id },
+				);
+				break;
+			}
+			default:
+				console.log("Unhandled Stripe event type:", event.type);
+		}
+
+		return { ok: true };
 	},
 });
