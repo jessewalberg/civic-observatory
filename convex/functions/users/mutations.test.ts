@@ -1,4 +1,5 @@
 import { convexTest } from "convex-test";
+import type { Id } from "../../_generated/dataModel";
 import { describe, expect, it } from "vitest";
 import { api } from "../../_generated/api";
 import schema from "../../schema";
@@ -82,7 +83,7 @@ describe("admin mutations — legacy error contract (no identity)", () => {
 			isAdmin: true,
 			requestingWorkosUserId: "user_wos_root",
 		});
-		const row = await t.run(async (ctx) => ctx.db.get(target));
+		const row = await t.run(async (ctx) => ctx.db.get(target as Id<"users">));
 		expect(row?.isAdmin).toBe(true);
 	});
 
@@ -92,7 +93,7 @@ describe("admin mutations — legacy error contract (no identity)", () => {
 			workosUserId: "user_wos_new",
 			email: "new@example.com",
 		});
-		const row = await t.run(async (ctx) => ctx.db.get(id));
+		const row = await t.run(async (ctx) => ctx.db.get(id as Id<"users">));
 		expect(row?.workosUserId).toBe("user_wos_new");
 		expect(row?.email).toBe("new@example.com");
 	});

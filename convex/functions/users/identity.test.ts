@@ -1,4 +1,5 @@
 import { convexTest } from "convex-test";
+import type { Id } from "../../_generated/dataModel";
 import { describe, expect, it } from "vitest";
 import { api } from "../../_generated/api";
 import schema from "../../schema";
@@ -60,7 +61,7 @@ describe("ensureFromIdentity (lazy claim/create)", () => {
 			api.functions.users.mutations.ensureFromIdentity,
 			{},
 		);
-		const user = await t.run(async (ctx) => ctx.db.get(id));
+		const user = await t.run(async (ctx) => ctx.db.get(id as Id<"users">));
 		expect(user?.clerkUserId).toBe("user_clerk_new");
 		expect(user?.email).toBe("new@example.com");
 		expect(user?.workosUserId).toBeUndefined();
@@ -84,10 +85,10 @@ describe("ensureFromIdentity (lazy claim/create)", () => {
 		);
 		// A fresh row is created; the legacy row is NOT adopted via email match.
 		expect(id).not.toBe(existing);
-		const fresh = await t.run(async (ctx) => ctx.db.get(id));
+		const fresh = await t.run(async (ctx) => ctx.db.get(id as Id<"users">));
 		expect(fresh?.clerkUserId).toBe("user_clerk_alice");
 		expect(fresh?.workosUserId).toBeUndefined();
-		const legacy = await t.run(async (ctx) => ctx.db.get(existing));
+		const legacy = await t.run(async (ctx) => ctx.db.get(existing as Id<"users">));
 		expect(legacy?.clerkUserId).toBeUndefined();
 	});
 
@@ -128,7 +129,7 @@ describe("ensureFromIdentity (lazy claim/create)", () => {
 			api.functions.users.mutations.ensureFromIdentity,
 			{},
 		);
-		const intruderRow = await t.run(async (ctx) => ctx.db.get(id));
+		const intruderRow = await t.run(async (ctx) => ctx.db.get(id as Id<"users">));
 		// A NEW row is created; the owner's row is untouched.
 		expect(intruderRow?.clerkUserId).toBe("user_clerk_intruder");
 		const owner = await t.run(async (ctx) =>
@@ -204,7 +205,7 @@ describe("identity overrides client-supplied ids (the security fix)", () => {
 				email: "attacker@example.com",
 			}),
 		).rejects.toThrow(/disabled under Clerk/);
-		const row = await t.run(async (ctx) => ctx.db.get(victim));
+		const row = await t.run(async (ctx) => ctx.db.get(victim as Id<"users">));
 		expect(row?.email).toBe("victim@example.com"); // untouched
 	});
 
