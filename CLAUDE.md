@@ -88,8 +88,6 @@ civic-observatory/
 │   │   ├── utils.ts              # cn(), formatDate()
 │   │   ├── toast.ts              # Toast wrapper
 │   │   └── seo.ts                # SEO helpers
-│   ├── authkit/
-│   │   └── serverAuth.ts         # requireAuth (Clerk) server-fn
 │   └── styles.css                # Tailwind + design tokens
 ├── convex/                       # Convex backend (THIS IS THE ENTIRE BACKEND)
 │   ├── schema.ts                 # Database schema (8 tables)
