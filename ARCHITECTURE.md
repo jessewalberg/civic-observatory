@@ -25,7 +25,7 @@
          ┌───────────────────────┼───────────────────────┐
          ▼                       ▼                       ▼
 ┌─────────────────┐   ┌─────────────────┐   ┌─────────────────┐
-│     WorkOS      │   │     Claude      │   │  CF Email Send  │
+│      Clerk      │   │     Claude      │   │  CF Email Send  │
 │     (Auth)      │   │      (AI)       │   │    (Email)      │
 └─────────────────┘   └─────────────────┘   └─────────────────┘
                               │
@@ -46,7 +46,7 @@ import { v } from "convex/values";
 export default defineSchema({
   
   // ═══════════════════════════════════════════════════════════════
-  // USERS - Synced from WorkOS
+  // USERS - Synced from Clerk (workosUserId retained until Phase 6 data migration)
   // ═══════════════════════════════════════════════════════════════
   users: defineTable({
     workosUserId: v.string(),

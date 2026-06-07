@@ -10,7 +10,7 @@ AI-powered summaries of local government meetings.
 |-------|------|
 | Frontend | TanStack Start |
 | Backend | Convex |
-| Auth | WorkOS AuthKit |
+| Auth | Clerk |
 | UI | shadcn/ui + Tailwind v4 |
 | AI | Claude API |
 | Email | Cloudflare Email Sending |

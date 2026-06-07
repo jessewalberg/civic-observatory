@@ -164,7 +164,7 @@ function MunicipalityDetailPage() {
 
 	// Fetch user if authenticated
 	const user = useQuery(
-		api.functions.users.queries.getByWorkosUserId,
+		api.functions.users.queries.current,
 		isAuthenticated ? {} : "skip",
 	);
 
