@@ -1,0 +1,43 @@
+# Continuous deployment generated for the secretkit pattern (Cloudflare host).
+# On push to main this runs the test gate, then deploys production. The three
+# bootstrap creds are GitHub *Environment* secrets (synced from 1Password
+# civic-observatory-ci); public bundle vars come from committed .env.production.
+# CLERK_SECRET_KEY is a one-time Worker secret (wrangler secret put), not here.
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy production
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Test gate
+        run: pnpm test
+
+      - name: Deploy
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_ENV: production
+        run: |
+          pnpm exec convex deploy
+          pnpm build
+          pnpm exec wrangler deploy --env "$CLOUDFLARE_ENV"
