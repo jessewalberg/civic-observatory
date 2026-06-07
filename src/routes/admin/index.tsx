@@ -28,7 +28,7 @@ export const Route = createFileRoute("/admin/")({
 	},
 	head: () => ({
 		meta: [
-			{ title: "Admin Dashboard | Civic Pulse" },
+			{ title: "Admin Dashboard | Civic Observatory" },
 			{ name: "description", content: "Admin overview and statistics" },
 			{ name: "robots", content: "noindex, nofollow" },
 		],
@@ -193,7 +193,7 @@ function AdminContent({ workosUserId }: { workosUserId: string }) {
 							</h1>
 						</div>
 						<p className="text-muted-foreground">
-							Overview of Civic Pulse platform metrics and management.
+							Overview of Civic Observatory platform metrics and management.
 						</p>
 					</div>
 

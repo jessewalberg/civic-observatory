@@ -1,8 +1,8 @@
-# Civic Pulse — Municipal Meeting Intelligence Platform
+# Civic Observatory — Municipal Meeting Intelligence Platform
 
 ## What This Project Is
 
-Civic Pulse is a SaaS platform that automatically scrapes meeting documents from municipal government websites, summarizes them with AI, and alerts users when topics they care about are discussed. Think "Google Alerts for local government meetings."
+Civic Observatory is a SaaS platform that automatically scrapes meeting documents from municipal government websites, summarizes them with AI, and alerts users when topics they care about are discussed. Think "Google Alerts for local government meetings."
 
 ## Tech Stack (Non-Negotiable)
 
@@ -52,7 +52,7 @@ Read these documents IN ORDER before starting any work:
 ## File Structure
 
 ```
-civic-pulse/
+civic-observatory/
 ├── src/                          # TanStack Start application
 │   ├── routes/                   # File-based routes
 │   │   ├── __root.tsx            # Root layout: providers, fonts, toaster
@@ -250,7 +250,7 @@ WORKOS_COOKIE_PASSWORD=32-character-minimum-secret
 OPENROUTER_API_KEY=sk-or-...
 
 # Cloudflare Email Sending (sendEmail action) — token needs email-send perm,
-# domain civicpulse.com onboarded to CF Email Sending
+# domain civicobservatory.com onboarded to CF Email Sending
 CLOUDFLARE_API_TOKEN=...
 CLOUDFLARE_ACCOUNT_ID=...
 

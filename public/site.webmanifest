@@ -1,6 +1,6 @@
 {
-  "name": "Civic Pulse",
-  "short_name": "Civic Pulse",
+  "name": "Civic Observatory",
+  "short_name": "Civic Observatory",
   "description": "AI-powered summaries of local government meetings",
   "start_url": "/",
   "display": "standalone",

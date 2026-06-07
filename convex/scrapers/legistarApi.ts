@@ -69,7 +69,7 @@ export async function fetchLegistarEvents(
 			headers: {
 				Accept: "application/json",
 				"User-Agent":
-					"Mozilla/5.0 (compatible; CivicPulse/1.0; +https://civicpulse.com)",
+					"Mozilla/5.0 (compatible; CivicObservatory/1.0; +https://civicobservatory.com)",
 			},
 		});
 

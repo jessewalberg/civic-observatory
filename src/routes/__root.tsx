@@ -21,7 +21,7 @@ export const Route = createRootRoute({
 		meta: [
 			{ charSet: "utf-8" },
 			{ name: "viewport", content: "width=device-width, initial-scale=1" },
-			{ title: "Civic Pulse - Municipal Meeting Summarizer" },
+			{ title: "Civic Observatory - Municipal Meeting Summarizer" },
 			{ name: "theme-color", content: "#0A0A0B" },
 			// SEO essentials
 			{ name: "robots", content: "index, follow" },

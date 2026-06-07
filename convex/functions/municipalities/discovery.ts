@@ -60,7 +60,7 @@ const STATE_ABBREVS: Record<string, string> = {
 	Wyoming: "wy",
 };
 
-const UA = "Mozilla/5.0 (compatible; CivicPulse/1.0; +https://civicpulse.com)";
+const UA = "Mozilla/5.0 (compatible; CivicObservatory/1.0; +https://civicobservatory.com)";
 const TIMEOUT_MS = 8000;
 
 // ═══════════════════════════════════════════════════════════════

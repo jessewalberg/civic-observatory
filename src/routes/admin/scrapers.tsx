@@ -50,7 +50,7 @@ export const Route = createFileRoute("/admin/scrapers")({
 	},
 	head: () => ({
 		meta: [
-			{ title: "Scraper Admin | Civic Pulse" },
+			{ title: "Scraper Admin | Civic Observatory" },
 			{ name: "description", content: "Manage web scrapers" },
 			{ name: "robots", content: "noindex, nofollow" },
 		],

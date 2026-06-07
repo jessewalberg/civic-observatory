@@ -1,4 +1,4 @@
-# Civic Pulse Architecture
+# Civic Observatory Architecture
 
 ## System Diagram
 

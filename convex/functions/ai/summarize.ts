@@ -434,7 +434,7 @@ async function hydrateContentFromSourceUrl(args: {
 	const response = await fetch(args.sourceUrl, {
 		headers: {
 			"User-Agent":
-				"Mozilla/5.0 (compatible; CivicPulse/1.0; +https://civicpulse.com)",
+				"Mozilla/5.0 (compatible; CivicObservatory/1.0; +https://civicobservatory.com)",
 			Accept:
 				"text/html,application/xhtml+xml,application/xml;q=0.9,application/pdf,*/*;q=0.8",
 		},
@@ -547,8 +547,8 @@ async function callOpenRouterAPI(
 			headers: {
 				"Content-Type": "application/json",
 				Authorization: `Bearer ${apiKey}`,
-				"HTTP-Referer": "https://civicpulse.io",
-				"X-Title": "Civic Pulse",
+				"HTTP-Referer": "https://civicobservatory.com",
+				"X-Title": "Civic Observatory",
 			},
 			body: JSON.stringify({
 				model: "anthropic/claude-sonnet-4",

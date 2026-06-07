@@ -12,9 +12,9 @@ import {
 // ═══════════════════════════════════════════════════════════════
 // CONFIGURATION
 // ═══════════════════════════════════════════════════════════════
-const FROM_ADDRESS = "alerts@civicpulse.com";
-const FROM_NAME = "Civic Pulse";
-const BASE_URL = process.env.SITE_URL ?? "https://civicpulse.com";
+const FROM_ADDRESS = "alerts@civicobservatory.com";
+const FROM_NAME = "Civic Observatory";
+const BASE_URL = process.env.SITE_URL ?? "https://civicobservatory.com";
 
 /** Minimal HTML→text fallback so Cloudflare Email Sending has a text part
  * (improves deliverability; CF accepts html-only but spam filters prefer both). */
@@ -35,7 +35,7 @@ export function htmlToText(html: string): string {
 
 // ═══════════════════════════════════════════════════════════════
 // SEND EMAIL - Core sending via the Cloudflare Email Sending REST API.
-// Transactional only; the sending domain (civicpulse.com) must be onboarded to
+// Transactional only; the sending domain (civicobservatory.com) must be onboarded to
 // Cloudflare Email Sending and CLOUDFLARE_API_TOKEN must carry the email send
 // permission. Replaced Resend to consolidate on Cloudflare (one fewer vendor).
 // ═══════════════════════════════════════════════════════════════

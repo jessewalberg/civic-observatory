@@ -45,8 +45,8 @@ async function callVisionWithImage(
 			headers: {
 				"Content-Type": "application/json",
 				Authorization: `Bearer ${apiKey}`,
-				"HTTP-Referer": "https://civicpulse.io",
-				"X-Title": "Civic Pulse OCR",
+				"HTTP-Referer": "https://civicobservatory.com",
+				"X-Title": "Civic Observatory OCR",
 			},
 			body: JSON.stringify({
 				model: "anthropic/claude-sonnet-4",
@@ -92,8 +92,8 @@ async function callVisionWithPdf(
 			headers: {
 				"Content-Type": "application/json",
 				Authorization: `Bearer ${apiKey}`,
-				"HTTP-Referer": "https://civicpulse.io",
-				"X-Title": "Civic Pulse OCR",
+				"HTTP-Referer": "https://civicobservatory.com",
+				"X-Title": "Civic Observatory OCR",
 			},
 			body: JSON.stringify({
 				model: "anthropic/claude-sonnet-4",

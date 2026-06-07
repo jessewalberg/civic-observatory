@@ -301,7 +301,7 @@ export function immediateAlertTemplate(
         <a href="${params.unsubscribeUrl}">Unsubscribe</a>
       </p>
       <p style="margin-top: 16px;">
-        Civic Pulse - Stay informed about your local government
+        Civic Observatory - Stay informed about your local government
       </p>
     </div>
   </div>
@@ -373,7 +373,7 @@ export function dailyDigestTemplate(
         <a href="${params.unsubscribeUrl}">Unsubscribe from digests</a>
       </p>
       <p style="margin-top: 16px;">
-        Civic Pulse - Stay informed about your local government
+        Civic Observatory - Stay informed about your local government
       </p>
     </div>
   </div>
@@ -489,7 +489,7 @@ export function weeklyDigestTemplate(
         <a href="${params.unsubscribeUrl}">Unsubscribe from digests</a>
       </p>
       <p style="margin-top: 16px;">
-        Civic Pulse - Stay informed about your local government
+        Civic Observatory - Stay informed about your local government
       </p>
     </div>
   </div>

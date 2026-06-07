@@ -1,9 +1,9 @@
 /**
- * SEO utilities for Civic Pulse
+ * SEO utilities for Civic Observatory
  */
 
-export const SITE_NAME = "Civic Pulse";
-export const SITE_URL = "https://civicpulse.io";
+export const SITE_NAME = "Civic Observatory";
+export const SITE_URL = "https://civicobservatory.com";
 export const DEFAULT_DESCRIPTION =
 	"AI-powered summaries of local government meetings. Stay informed about city councils, school boards, and planning commissions.";
 
@@ -158,7 +158,7 @@ export function generateOrganizationJsonLd() {
 		contactPoint: {
 			"@type": "ContactPoint",
 			contactType: "customer support",
-			email: "support@civicpulse.io",
+			email: "support@civicobservatory.com",
 		},
 	};
 }

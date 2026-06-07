@@ -40,7 +40,7 @@ export const Route = createFileRoute("/dashboard/upload")({
 	},
 	head: () => ({
 		meta: [
-			{ title: "Upload Meeting | Civic Pulse" },
+			{ title: "Upload Meeting | Civic Observatory" },
 			{
 				name: "description",
 				content: "Upload a meeting document for AI summarization",

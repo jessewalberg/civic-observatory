@@ -53,7 +53,7 @@ export const Route = createFileRoute("/admin/municipalities")({
 	},
 	head: () => ({
 		meta: [
-			{ title: "Manage Municipalities | Civic Pulse Admin" },
+			{ title: "Manage Municipalities | Civic Observatory Admin" },
 			{ name: "description", content: "Add and manage municipalities" },
 			{ name: "robots", content: "noindex, nofollow" },
 		],

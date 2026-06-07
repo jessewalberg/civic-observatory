@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-// RELOCATED (Clerk migration Phase 2 — see civic-pulse ADR-0002 / convex/http.ts).
+// RELOCATED (Clerk migration Phase 2 — see civic-observatory ADR-0002 / convex/http.ts).
 //
 // The Stripe webhook is now handled INSIDE Convex as an httpAction at
 // `https://<deployment>.convex.site/stripe/webhook`, which verifies the

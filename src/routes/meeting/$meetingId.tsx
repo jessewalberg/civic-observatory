@@ -61,7 +61,7 @@ export const Route = createFileRoute("/meeting/$meetingId")({
 		const meeting = loaderData?.meeting;
 		if (!meeting) {
 			return {
-				meta: [{ title: "Meeting Not Found | Civic Pulse" }],
+				meta: [{ title: "Meeting Not Found | Civic Observatory" }],
 			};
 		}
 
@@ -79,7 +79,7 @@ export const Route = createFileRoute("/meeting/$meetingId")({
 				(meeting.summary.executiveSummary.length > 160 ? "..." : "")
 			: `${typeLabel} meeting from ${meeting.municipality?.name || "local government"} on ${formattedDate}`;
 
-		const title = `${meeting.title} | Civic Pulse`;
+		const title = `${meeting.title} | Civic Observatory`;
 		const municipalityName = meeting.municipality?.name || "Local Government";
 
 		// JSON-LD structured data
@@ -120,7 +120,7 @@ export const Route = createFileRoute("/meeting/$meetingId")({
 				{ property: "og:title", content: meeting.title },
 				{ property: "og:description", content: description },
 				{ property: "og:type", content: "article" },
-				{ property: "og:site_name", content: "Civic Pulse" },
+				{ property: "og:site_name", content: "Civic Observatory" },
 				// Twitter Card
 				{ name: "twitter:card", content: "summary" },
 				{ name: "twitter:title", content: meeting.title },

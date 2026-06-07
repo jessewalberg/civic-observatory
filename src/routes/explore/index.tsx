@@ -24,13 +24,13 @@ export const Route = createFileRoute("/explore/")({
 	pendingComponent: ExploreSkeleton,
 	head: () => ({
 		meta: [
-			{ title: "Explore Municipalities | Civic Pulse" },
+			{ title: "Explore Municipalities | Civic Observatory" },
 			{
 				name: "description",
 				content:
 					"Browse and search local governments across the United States. Find meeting summaries from city councils, school boards, and planning commissions.",
 			},
-			{ property: "og:title", content: "Explore Municipalities | Civic Pulse" },
+			{ property: "og:title", content: "Explore Municipalities | Civic Observatory" },
 			{
 				property: "og:description",
 				content:
@@ -40,7 +40,7 @@ export const Route = createFileRoute("/explore/")({
 			{ name: "twitter:card", content: "summary" },
 			{
 				name: "twitter:title",
-				content: "Explore Municipalities | Civic Pulse",
+				content: "Explore Municipalities | Civic Observatory",
 			},
 			{
 				name: "twitter:description",

@@ -60,7 +60,7 @@ export const Route = createFileRoute("/explore/$municipalityId")({
 		const municipality = loaderData?.municipality;
 		if (!municipality) {
 			return {
-				meta: [{ title: "Municipality Not Found | Civic Pulse" }],
+				meta: [{ title: "Municipality Not Found | Civic Observatory" }],
 			};
 		}
 
@@ -74,7 +74,7 @@ export const Route = createFileRoute("/explore/$municipalityId")({
 
 		const description = `Browse municipal meeting summaries from ${municipality.name}, ${location}${populationText}. Stay informed about local government decisions.`;
 
-		const title = `${municipality.name}, ${municipality.state} | Civic Pulse`;
+		const title = `${municipality.name}, ${municipality.state} | Civic Observatory`;
 
 		// JSON-LD structured data for government organization
 		const jsonLd = {
@@ -114,7 +114,7 @@ export const Route = createFileRoute("/explore/$municipalityId")({
 				},
 				{ property: "og:description", content: description },
 				{ property: "og:type", content: "website" },
-				{ property: "og:site_name", content: "Civic Pulse" },
+				{ property: "og:site_name", content: "Civic Observatory" },
 				// Twitter Card
 				{ name: "twitter:card", content: "summary" },
 				{
