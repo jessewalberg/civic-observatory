@@ -268,4 +268,118 @@ describe("identity overrides client-supplied ids (the security fix)", () => {
 		const row = await t.run(async (ctx) => ctx.db.get(target as Id<"users">));
 		expect(row?.isAdmin).toBe(true);
 	});
+
+	it("adminUpdateUser denies a non-admin identity and succeeds for an admin", async () => {
+		const t = setup();
+		const target = await seedUser(t, {
+			clerkUserId: "user_clerk_target",
+			email: "target@example.com",
+		});
+		await seedUser(t, {
+			clerkUserId: "user_clerk_peon",
+			email: "peon@example.com",
+		});
+		await seedUser(t, {
+			clerkUserId: "user_clerk_root",
+			email: "root@example.com",
+			isAdmin: true,
+		});
+		const asPeon = t.withIdentity({
+			subject: "user_clerk_peon",
+			issuer: ISSUER,
+			email: "peon@example.com",
+		});
+		await expect(
+			asPeon.mutation(api.functions.users.mutations.adminUpdateUser, {
+				userId: target,
+				tier: "pro",
+			}),
+		).rejects.toThrow(/Admin access required/);
+
+		const asRoot = t.withIdentity({
+			subject: "user_clerk_root",
+			issuer: ISSUER,
+			email: "root@example.com",
+		});
+		await asRoot.mutation(api.functions.users.mutations.adminUpdateUser, {
+			userId: target,
+			tier: "pro",
+		});
+		const row = await t.run(async (ctx) => ctx.db.get(target as Id<"users">));
+		expect(row?.tier).toBe("pro");
+	});
+
+	it("getAdminBootstrapStatus lets the authenticated caller claim initial admin only when none exists", async () => {
+		const t = setup();
+		await seedUser(t, {
+			clerkUserId: "user_clerk_alice",
+			email: "alice@example.com",
+		});
+		const asAlice = t.withIdentity({
+			subject: "user_clerk_alice",
+			issuer: ISSUER,
+			email: "alice@example.com",
+		});
+		const before = await asAlice.query(
+			api.functions.users.queries.getAdminBootstrapStatus,
+			{},
+		);
+		expect(before.canClaimInitialAdmin).toBe(true);
+
+		await seedUser(t, {
+			clerkUserId: "user_clerk_root",
+			email: "root@example.com",
+			isAdmin: true,
+		});
+		const after = await asAlice.query(
+			api.functions.users.queries.getAdminBootstrapStatus,
+			{},
+		);
+		expect(after.hasAnyAdmin).toBe(true);
+		expect(after.canClaimInitialAdmin).toBe(false);
+	});
+
+	it("claimInitialAdmin promotes the first authenticated user, then refuses once an admin exists", async () => {
+		const t = setup();
+		await seedUser(t, {
+			clerkUserId: "user_clerk_alice",
+			email: "alice@example.com",
+		});
+		const asAlice = t.withIdentity({
+			subject: "user_clerk_alice",
+			issuer: ISSUER,
+			email: "alice@example.com",
+		});
+		await asAlice.mutation(
+			api.functions.users.mutations.claimInitialAdmin,
+			{},
+		);
+		const alice = await t.run(async (ctx) =>
+			ctx.db
+				.query("users")
+				.withIndex("by_clerk_id", (q) => q.eq("clerkUserId", "user_clerk_alice"))
+				.unique(),
+		);
+		expect(alice?.isAdmin).toBe(true);
+
+		await seedUser(t, {
+			clerkUserId: "user_clerk_bob",
+			email: "bob@example.com",
+		});
+		const asBob = t.withIdentity({
+			subject: "user_clerk_bob",
+			issuer: ISSUER,
+			email: "bob@example.com",
+		});
+		await expect(
+			asBob.mutation(api.functions.users.mutations.claimInitialAdmin, {}),
+		).rejects.toThrow(/admin already exists/);
+	});
+
+	it("claimInitialAdmin refuses an unauthenticated caller", async () => {
+		const t = setup();
+		await expect(
+			t.mutation(api.functions.users.mutations.claimInitialAdmin, {}),
+		).rejects.toThrow(/sign in first/);
+	});
 });
