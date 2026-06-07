@@ -25,14 +25,14 @@ import { CompactVoteDisplay } from "@/components/VoteDisplay";
 export const Route = createFileRoute("/")({
 	component: LandingPage,
 	head: () => {
-		const title = "Civic Pulse - Municipal Meeting Summarizer";
+		const title = "Civic Observatory - Municipal Meeting Summarizer";
 		const description =
 			"AI-powered summaries of local government meetings. Stay informed about city councils, school boards, and planning commissions in your community.";
 
 		const jsonLd = {
 			"@context": "https://schema.org",
 			"@type": "WebApplication",
-			name: "Civic Pulse",
+			name: "Civic Observatory",
 			description,
 			applicationCategory: "GovernmentApplication",
 			operatingSystem: "Web",
@@ -50,7 +50,7 @@ export const Route = createFileRoute("/")({
 			],
 			creator: {
 				"@type": "Organization",
-				name: "Civic Pulse",
+				name: "Civic Observatory",
 				description: "Making local government accessible to everyone",
 			},
 		};
@@ -62,7 +62,7 @@ export const Route = createFileRoute("/")({
 				{ property: "og:title", content: title },
 				{ property: "og:description", content: description },
 				{ property: "og:type", content: "website" },
-				{ property: "og:site_name", content: "Civic Pulse" },
+				{ property: "og:site_name", content: "Civic Observatory" },
 				{ name: "twitter:card", content: "summary_large_image" },
 				{ name: "twitter:title", content: title },
 				{ name: "twitter:description", content: description },
@@ -242,7 +242,7 @@ function LandingPage() {
 									animate={{ opacity: 1, y: 0 }}
 									transition={{ delay: 0.3 }}
 								>
-									Most people miss them. With Civic Pulse, you won't. Get
+									Most people miss them. With Civic Observatory, you won't. Get
 									AI-powered summaries of city councils, school boards, and
 									planning commissions—delivered to your inbox.
 								</motion.p>
@@ -559,7 +559,7 @@ function LandingPage() {
 							</h2>
 							<p className="text-muted-foreground text-lg max-w-2xl mx-auto">
 								Whether you're covering city hall or just trying to understand
-								why your street got repaved, Civic Pulse has you covered.
+								why your street got repaved, Civic Observatory has you covered.
 							</p>
 						</motion.div>
 
@@ -660,7 +660,7 @@ function LandingPage() {
 						<div className="flex flex-col md:flex-row items-center justify-between gap-6">
 							<div className="flex items-center gap-2">
 								<Building2 className="h-5 w-5 text-primary" />
-								<span className="font-display font-semibold">Civic Pulse</span>
+								<span className="font-display font-semibold">Civic Observatory</span>
 							</div>
 							<div className="flex items-center gap-8 text-sm text-muted-foreground">
 								<Link
@@ -684,7 +684,7 @@ function LandingPage() {
 								</span>
 							</div>
 							<p className="text-sm text-muted-foreground">
-								© {new Date().getFullYear()} Civic Pulse. All rights reserved.
+								© {new Date().getFullYear()} Civic Observatory. All rights reserved.
 							</p>
 						</div>
 					</div>

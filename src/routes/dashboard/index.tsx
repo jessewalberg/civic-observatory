@@ -30,7 +30,7 @@ export const Route = createFileRoute("/dashboard/")({
 	},
 	head: () => ({
 		meta: [
-			{ title: "Dashboard | Civic Pulse" },
+			{ title: "Dashboard | Civic Observatory" },
 			{
 				name: "description",
 				content: "Your personalized feed of local government updates",

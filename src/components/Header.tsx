@@ -21,7 +21,7 @@ export function Header({ user, signInUrl }: HeaderProps) {
 				>
 					<Building2 className="h-6 w-6 text-primary" />
 					<span className="font-display text-lg font-semibold tracking-tight">
-						Civic Pulse
+						Civic Observatory
 					</span>
 				</Link>
 

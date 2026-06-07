@@ -44,7 +44,7 @@ export const Route = createFileRoute("/admin/investigations")({
 	},
 	head: () => ({
 		meta: [
-			{ title: "Meeting Investigations | Civic Pulse Admin" },
+			{ title: "Meeting Investigations | Civic Observatory Admin" },
 			{
 				name: "description",
 				content:

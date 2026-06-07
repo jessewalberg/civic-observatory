@@ -1,7 +1,7 @@
 import { nanoid } from "nanoid";
 import { useEffect, useState } from "react";
 
-const VISITOR_ID_KEY = "civic-pulse-visitor-id";
+const VISITOR_ID_KEY = "civic-observatory-visitor-id";
 
 export function useVisitorId(): string | null {
 	const [visitorId, setVisitorId] = useState<string | null>(null);

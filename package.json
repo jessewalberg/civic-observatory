@@ -1,5 +1,5 @@
 {
-  "name": "civic-pulse",
+  "name": "civic-observatory",
   "description": "Municipal meeting summarizer - AI-powered summaries of local government meetings",
   "private": true,
   "type": "module",

@@ -28,7 +28,7 @@ export async function fetchWithRetry(
 				signal: controller.signal,
 				headers: {
 					"User-Agent":
-						"Mozilla/5.0 (compatible; CivicPulse/1.0; +https://civicpulse.com)",
+						"Mozilla/5.0 (compatible; CivicObservatory/1.0; +https://civicobservatory.com)",
 					Accept:
 						"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 					...options?.headers,

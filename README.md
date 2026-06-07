@@ -1,4 +1,4 @@
-# Civic Pulse - Municipal Meeting Summarizer
+# Civic Observatory - Municipal Meeting Summarizer
 
 AI-powered summaries of local government meetings.
 
@@ -19,7 +19,7 @@ AI-powered summaries of local government meetings.
 ## Structure
 
 ```
-civic-pulse/
+civic-observatory/
 ├── CLAUDE.md           # Project overview
 ├── ARCHITECTURE.md     # Database + systems
 ├── PROMPTS.md          # Development prompts

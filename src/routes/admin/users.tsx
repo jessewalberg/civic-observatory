@@ -51,7 +51,7 @@ export const Route = createFileRoute("/admin/users")({
 	},
 	head: () => ({
 		meta: [
-			{ title: "Manage Users | Civic Pulse Admin" },
+			{ title: "Manage Users | Civic Observatory Admin" },
 			{ name: "description", content: "User management and administration" },
 			{ name: "robots", content: "noindex, nofollow" },
 		],

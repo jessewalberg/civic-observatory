@@ -7,8 +7,8 @@ export const Route = createFileRoute("/api/robots")({
 				const url = new URL(request.url);
 				const baseUrl = `${url.protocol}//${url.host}`;
 
-				const robotsTxt = `# Civic Pulse robots.txt
-# https://civicpulse.io
+				const robotsTxt = `# Civic Observatory robots.txt
+# https://civicobservatory.com
 
 User-agent: *
 Allow: /

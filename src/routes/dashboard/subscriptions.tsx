@@ -38,7 +38,7 @@ export const Route = createFileRoute("/dashboard/subscriptions")({
 	},
 	head: () => ({
 		meta: [
-			{ title: "Subscriptions | Civic Pulse" },
+			{ title: "Subscriptions | Civic Observatory" },
 			{
 				name: "description",
 				content: "Manage your municipality subscriptions",

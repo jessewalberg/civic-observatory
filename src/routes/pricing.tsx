@@ -47,7 +47,7 @@ export const Route = createFileRoute("/pricing")({
 			description,
 			mainEntity: {
 				"@type": "Product",
-				name: "Civic Pulse Pro",
+				name: "Civic Observatory Pro",
 				description:
 					"Unlimited access to municipal meeting summaries with real-time alerts",
 				offers: [
@@ -73,13 +73,13 @@ export const Route = createFileRoute("/pricing")({
 
 		return {
 			meta: [
-				{ title: "Pricing | Civic Pulse" },
+				{ title: "Pricing | Civic Observatory" },
 				{ name: "description", content: description },
-				{ property: "og:title", content: "Pricing | Civic Pulse" },
+				{ property: "og:title", content: "Pricing | Civic Observatory" },
 				{ property: "og:description", content: description },
 				{ property: "og:type", content: "website" },
 				{ name: "twitter:card", content: "summary" },
-				{ name: "twitter:title", content: "Pricing | Civic Pulse" },
+				{ name: "twitter:title", content: "Pricing | Civic Observatory" },
 				{ name: "twitter:description", content: description },
 			],
 			scripts: [
@@ -236,7 +236,7 @@ function PricingPage() {
 								</div>
 							</div>
 							<Button variant="outline" asChild>
-								<a href="mailto:enterprise@civicpulse.com">Contact Sales</a>
+								<a href="mailto:enterprise@civicobservatory.com">Contact Sales</a>
 							</Button>
 						</div>
 					</Card>
