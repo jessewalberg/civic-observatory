@@ -39,11 +39,9 @@ export const create = mutation({
 		rawContent: v.optional(v.string()),
 		documentStorageId: v.optional(v.id("_storage")),
 		sourceUrl: v.optional(v.string()),
-		// Auth: identity-first; legacy workosUserId ignored under Clerk.
-		workosUserId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		const user = await getCurrentUser(ctx, args.workosUserId);
+		const user = await getCurrentUser(ctx);
 
 		if (!user) {
 			throw new Error("User not found. Please sign in.");
@@ -262,10 +260,9 @@ export const createFromScrape = internalMutation({
 export const remove = mutation({
 	args: {
 		meetingId: v.id("meetings"),
-		workosUserId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		const user = await getCurrentUser(ctx, args.workosUserId);
+		const user = await getCurrentUser(ctx);
 
 		if (!user) {
 			throw new Error("User not found. Please sign in.");
@@ -314,11 +311,10 @@ export const remove = mutation({
 export const retryProcessing = mutation({
 	args: {
 		meetingId: v.id("meetings"),
-		workosUserId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		// Get user
-		const user = await getCurrentUser(ctx, args.workosUserId);
+		const user = await getCurrentUser(ctx);
 
 		if (!user) {
 			throw new Error("User not found. Please sign in.");
@@ -363,10 +359,9 @@ export const retryProcessing = mutation({
 export const adminRequeueMeeting = mutation({
 	args: {
 		meetingId: v.id("meetings"),
-		requestingWorkosUserId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		await requireAdminUser(ctx, args.requestingWorkosUserId);
+		await requireAdminUser(ctx);
 
 		const meeting = await ctx.db.get(args.meetingId);
 		if (!meeting) {
@@ -411,12 +406,11 @@ export const adminRequeueMeeting = mutation({
 export const adminRequeueMunicipalityCandidates = mutation({
 	args: {
 		municipalityId: v.id("municipalities"),
-		requestingWorkosUserId: v.optional(v.string()),
 		limit: v.optional(v.number()),
 		dryRun: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
-		await requireAdminUser(ctx, args.requestingWorkosUserId);
+		await requireAdminUser(ctx);
 
 		const municipality = await ctx.db.get(args.municipalityId);
 		if (!municipality) {
@@ -528,12 +522,11 @@ export const adminRequeueMunicipalityCandidates = mutation({
 export const adminUnstickMunicipalityProcessing = mutation({
 	args: {
 		municipalityId: v.id("municipalities"),
-		requestingWorkosUserId: v.optional(v.string()),
 		olderThanMinutes: v.optional(v.number()),
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		await requireAdminUser(ctx, args.requestingWorkosUserId);
+		await requireAdminUser(ctx);
 
 		const municipality = await ctx.db.get(args.municipalityId);
 		if (!municipality) {
@@ -622,12 +615,11 @@ export const adminUnstickMunicipalityProcessing = mutation({
 export const adminRepairMunicipalityData = mutation({
 	args: {
 		municipalityId: v.id("municipalities"),
-		requestingWorkosUserId: v.optional(v.string()),
 		staleProcessingMinutes: v.optional(v.number()),
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		await requireAdminUser(ctx, args.requestingWorkosUserId);
+		await requireAdminUser(ctx);
 
 		const municipality = await ctx.db.get(args.municipalityId);
 		if (!municipality) {
@@ -807,10 +799,9 @@ function getMonthStart(): number {
 	return new Date(now.getFullYear(), now.getMonth(), 1).getTime();
 }
 
-async function requireAdminUser(ctx: MutationCtx, workosUserId?: string) {
-	// Identity-first via the shared bridge; legacy workosUserId only consulted
-	// when no Clerk identity is present. Removed in Phase 5.
-	return await requireAdmin(ctx, workosUserId, "Admin access required");
+async function requireAdminUser(ctx: MutationCtx) {
+	// Identity-first admin check via the shared bridge.
+	return await requireAdmin(ctx, "Admin access required");
 }
 
 function isRequeueStatus(

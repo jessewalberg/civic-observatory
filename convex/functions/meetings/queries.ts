@@ -298,7 +298,6 @@ export const listPending = query({
 // ═══════════════════════════════════════════════════════════════
 export const adminInvestigateMunicipality = query({
 	args: {
-		requestingWorkosUserId: v.optional(v.string()),
 		municipalityId: v.id("municipalities"),
 		sampleLimit: v.optional(v.number()),
 		staleProcessingMinutes: v.optional(v.number()),
@@ -310,7 +309,7 @@ export const adminInvestigateMunicipality = query({
 		);
 		const staleProcessingCutoffMs = Date.now() - staleMinutes * 60 * 1000;
 
-		const caller = await getCurrentUser(ctx, args.requestingWorkosUserId);
+		const caller = await getCurrentUser(ctx);
 		if (!caller?.isAdmin) {
 			return null;
 		}

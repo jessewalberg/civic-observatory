@@ -77,15 +77,4 @@ describe("scrapeJobs cancel under the identity bridge", () => {
 		expect(job?.status).toBe("failed");
 	});
 
-	it("legacy (no identity) cancel still honors a supplied admin id", async () => {
-		const t = setup();
-		await seedUser(t, { workosUserId: "user_wos_root", email: "root@example.com", isAdmin: true });
-		const jobId = await seedJob(t);
-		await t.mutation(api.functions.scrapeJobs.mutations.cancel, {
-			jobId: jobId as Id<"scrapeJobs">,
-			requestingWorkosUserId: "user_wos_root",
-		});
-		const job = await t.run(async (ctx) => ctx.db.get(jobId as Id<"scrapeJobs">));
-		expect(job?.status).toBe("failed");
-	});
 });

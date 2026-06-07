@@ -6,11 +6,12 @@ export default defineSchema({
 	// USERS - Synced from WorkOS
 	// ═══════════════════════════════════════════════════════════════
 	users: defineTable({
-		// Transition (WorkOS→Clerk, plan §3 Phase 2): workosUserId is optional so
-		// Clerk-era rows can exist without one; clerkUserId is the Clerk subject.
-		// Phase 6 narrows this once remapping completes.
-		workosUserId: v.optional(v.string()),
+		// clerkUserId is the Clerk subject (identity key). workosUserId is a
+		// dead WorkOS-era column kept optional so existing rows validate; it has
+		// no code references or index after Phase 6 and can be dropped once any
+		// remaining rows are cleared (a one-shot data migration).
 		clerkUserId: v.optional(v.string()),
+		workosUserId: v.optional(v.string()),
 		email: v.string(),
 		name: v.optional(v.string()),
 		avatarUrl: v.optional(v.string()),
@@ -22,7 +23,6 @@ export default defineSchema({
 		createdAt: v.number(),
 		lastLoginAt: v.number(),
 	})
-		.index("by_workos_id", ["workosUserId"])
 		.index("by_clerk_id", ["clerkUserId"])
 		.index("by_email", ["email"])
 		.index("by_stripe_customer", ["stripeCustomerId"]),

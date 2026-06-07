@@ -2,18 +2,6 @@ import { v } from "convex/values";
 import { internalQuery, query } from "../../_generated/server";
 import { getCurrentUser } from "../../lib/auth";
 
-export const getByWorkosUserId = query({
-	args: {
-		// Legacy (no-identity) callers only; IGNORED when a Clerk identity is
-		// present — otherwise any signed-in user could read any row by guessing
-		// a workosUserId. Under Clerk this returns the caller's OWN user.
-		workosUserId: v.optional(v.string()),
-	},
-	handler: async (ctx, args) => {
-		return await getCurrentUser(ctx, args.workosUserId);
-	},
-});
-
 export const getById = query({
 	args: {
 		userId: v.id("users"),
@@ -35,41 +23,23 @@ export const getByEmail = query({
 	},
 });
 
-// Internal version for use in actions
 /**
- * Identity-first caller resolution for ACTIONS (plan §3 Phase 2). An action's
- * ctx.auth identity propagates through ctx.runQuery, so an action can resolve
- * its caller by calling this and ignoring any client-supplied workosUserId when
- * a Clerk identity is present. Returns null when neither resolves.
+ * Identity-first caller resolution for ACTIONS. An action's ctx.auth identity
+ * propagates through ctx.runQuery, so an action resolves its caller by calling
+ * this. Returns null when unauthenticated / no matching row.
  */
 export const getCurrentInternal = internalQuery({
-	args: { workosUserId: v.optional(v.string()) },
-	handler: async (ctx, args) => {
-		return await getCurrentUser(ctx, args.workosUserId);
+	args: {},
+	handler: async (ctx) => {
+		return await getCurrentUser(ctx);
 	},
 });
 
-export const getByWorkosUserIdInternal = internalQuery({
-	args: {
-		workosUserId: v.string(),
-	},
-	handler: async (ctx, args) => {
-		return await ctx.db
-			.query("users")
-			.withIndex("by_workos_id", (q) => q.eq("workosUserId", args.workosUserId))
-			.first();
-	},
-});
-
-// Check if user is admin by workos ID
+// Check whether the current Clerk caller is an admin
 export const isAdmin = query({
-	args: {
-		// Legacy (no-identity) callers only; IGNORED when a Clerk identity is
-		// present. Removed in Phase 5.
-		workosUserId: v.optional(v.string()),
-	},
-	handler: async (ctx, args) => {
-		const user = await getCurrentUser(ctx, args.workosUserId);
+	args: {},
+	handler: async (ctx) => {
+		const user = await getCurrentUser(ctx);
 		return user?.isAdmin === true;
 	},
 });
@@ -84,10 +54,8 @@ export const current = query({
 
 // Admin bootstrap status
 export const getAdminBootstrapStatus = query({
-	args: {
-		workosUserId: v.optional(v.string()),
-	},
-	handler: async (ctx, args) => {
+	args: {},
+	handler: async (ctx) => {
 		const users = await ctx.db.query("users").collect();
 		const adminCount = users.filter((u) => u.isAdmin === true).length;
 		const hasAnyAdmin = adminCount > 0;
@@ -95,7 +63,7 @@ export const getAdminBootstrapStatus = query({
 		let requesterExists = false;
 		let requesterIsAdmin = false;
 
-		const requester = await getCurrentUser(ctx, args.workosUserId);
+		const requester = await getCurrentUser(ctx);
 		requesterExists = Boolean(requester);
 		requesterIsAdmin = requester?.isAdmin === true;
 
@@ -113,14 +81,11 @@ export const getAdminBootstrapStatus = query({
 // Get all users (admin only)
 export const listAll = query({
 	args: {
-		// Legacy (no-identity) callers only; IGNORED when a Clerk identity is
-		// present. Removed in Phase 5.
-		requestingWorkosUserId: v.optional(v.string()),
 		limit: v.optional(v.number()),
 		offset: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		const caller = await getCurrentUser(ctx, args.requestingWorkosUserId);
+		const caller = await getCurrentUser(ctx);
 
 		if (!caller?.isAdmin) {
 			return [];
@@ -143,13 +108,9 @@ export const listAll = query({
 
 // Get admin stats (admin only)
 export const getAdminStats = query({
-	args: {
-		// Legacy (no-identity) callers only; IGNORED when a Clerk identity is
-		// present. Removed in Phase 5.
-		requestingWorkosUserId: v.optional(v.string()),
-	},
-	handler: async (ctx, args) => {
-		const caller = await getCurrentUser(ctx, args.requestingWorkosUserId);
+	args: {},
+	handler: async (ctx) => {
+		const caller = await getCurrentUser(ctx);
 
 		if (!caller?.isAdmin) {
 			return null;

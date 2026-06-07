@@ -49,7 +49,6 @@ describe("usage domain under the identity bridge", () => {
 		});
 
 		await asCaller.mutation(api.functions.usage.mutations.recordUsage, {
-			workosUserId: "user_wos_victim", // spoof attempt
 			action: "summary_view",
 			windowType: "day",
 		});
@@ -85,30 +84,11 @@ describe("usage domain under the identity bridge", () => {
 		});
 		const stats = await asCaller.query(
 			api.functions.usage.queries.getUsageStats,
-			{ workosUserId: "user_wos_other" },
+			{},
 		);
 		// Resolves the caller (a real free-tier user), not the spoofed target.
 		expect(stats).not.toBeNull();
 		expect(stats?.tier).toBe("free");
 	});
 
-	it("legacy (no identity) recordUsage still keys by the supplied workosUserId", async () => {
-		const t = setup();
-		const u = await seedUser(t, {
-			workosUserId: "user_wos_legacy",
-			email: "legacy@example.com",
-		});
-		await t.mutation(api.functions.usage.mutations.recordUsage, {
-			workosUserId: "user_wos_legacy",
-			action: "summary_view",
-			windowType: "day",
-		});
-		const records = await t.run(async (ctx) =>
-			ctx.db
-				.query("usageRecords")
-				.filter((q) => q.eq(q.field("userId"), u))
-				.collect(),
-		);
-		expect(records.length).toBeGreaterThan(0);
-	});
 });

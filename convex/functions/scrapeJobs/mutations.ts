@@ -95,12 +95,10 @@ export const update = internalMutation({
 export const cancel = mutation({
 	args: {
 		jobId: v.id("scrapeJobs"),
-		// Legacy (no-identity) callers only; IGNORED under Clerk. Removed Phase 5.
-		requestingWorkosUserId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		// Was an UNAUTHENTICATED public mutation despite "cancelled by admin".
-		await requireAdmin(ctx, args.requestingWorkosUserId, "Admin access required");
+		await requireAdmin(ctx, "Admin access required");
 		const job = await ctx.db.get(args.jobId);
 		if (!job) {
 			throw new Error("Job not found");
@@ -133,13 +131,12 @@ export const cancel = mutation({
 export const retry = action({
 	args: {
 		jobId: v.id("scrapeJobs"),
-		workosUserId: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<{ scheduled: boolean; municipalityId?: Id<"municipalities">; error?: string }> => {
 		// Verify admin
 		const user = await ctx.runQuery(
 			internal.functions.users.queries.getCurrentInternal,
-			{ workosUserId: args.workosUserId },
+			{},
 		);
 		if (!user?.isAdmin) {
 			throw new Error("Unauthorized: Admin access required");
@@ -250,13 +247,12 @@ export const clearStuck = internalMutation({
 export const triggerScrape = action({
 	args: {
 		municipalityId: v.id("municipalities"),
-		workosUserId: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<TriggerScrapeResult> => {
 		// Verify user is admin
 		const user = await ctx.runQuery(
 			internal.functions.users.queries.getCurrentInternal,
-			{ workosUserId: args.workosUserId },
+			{},
 		);
 
 		if (!user?.isAdmin) {

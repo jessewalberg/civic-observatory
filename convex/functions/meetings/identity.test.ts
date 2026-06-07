@@ -89,7 +89,6 @@ describe("meetings admin mutations under the identity bridge", () => {
 		await expect(
 			asPeon.mutation(api.functions.meetings.mutations.adminRequeueMeeting, {
 				meetingId: meetingId as Id<"meetings">,
-				requestingWorkosUserId: "user_wos_root", // spoof
 			}),
 		).rejects.toThrow(/Admin access required/);
 	});
@@ -114,20 +113,6 @@ describe("meetings admin mutations under the identity bridge", () => {
 		});
 	});
 
-	it("legacy (no identity) admin mutation still honors the supplied admin id", async () => {
-		const t = setup();
-		await seedUser(t, {
-			workosUserId: "user_wos_root",
-			email: "root@example.com",
-			isAdmin: true,
-		});
-		const muni = await seedMunicipality(t);
-		const meetingId = await seedMeeting(t, muni);
-		await t.mutation(api.functions.meetings.mutations.adminRequeueMeeting, {
-			meetingId: meetingId as Id<"meetings">,
-			requestingWorkosUserId: "user_wos_root",
-		});
-	});
 });
 
 describe("updateStatus is backend-only (no public client surface)", () => {
