@@ -441,7 +441,6 @@ interface BatchRescrapeResult {
 
 export const batchRescrape = action({
 	args: {
-		workosUserId: v.string(),
 		platform: v.optional(
 			v.union(
 				v.literal("granicus"),
@@ -454,10 +453,10 @@ export const batchRescrape = action({
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<BatchRescrapeResult> => {
-		// Verify admin
+		// Verify admin (identity-first via the Phase-2 ctx.auth bridge)
 		const user = await ctx.runQuery(
-			internal.functions.users.queries.getByWorkosUserIdInternal,
-			{ workosUserId: args.workosUserId },
+			internal.functions.users.queries.getCurrentInternal,
+			{},
 		);
 		if (!user?.isAdmin) {
 			throw new Error("Unauthorized: Admin access required");
@@ -510,14 +509,13 @@ export const batchRescrape = action({
 // ═══════════════════════════════════════════════════════════════
 export const triggerScrapeAllDue = action({
 	args: {
-		workosUserId: v.string(),
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<ScrapeAllDueResult> => {
-		// Verify admin
+		// Verify admin (identity-first via the Phase-2 ctx.auth bridge)
 		const user = await ctx.runQuery(
-			internal.functions.users.queries.getByWorkosUserIdInternal,
-			{ workosUserId: args.workosUserId },
+			internal.functions.users.queries.getCurrentInternal,
+			{},
 		);
 		if (!user?.isAdmin) {
 			throw new Error("Unauthorized: Admin access required");

@@ -9,7 +9,6 @@ import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { Suspense } from "react";
 import { Toaster } from "sonner";
 
-import { getAuth, getSignInUrl } from "@/authkit/serverFunctions";
 import { AppConvexProvider } from "@/components/AppConvexProvider";
 import { ErrorBoundary, RootErrorFallback } from "@/components/error";
 import { Header } from "@/components/Header";
@@ -75,10 +74,6 @@ export const Route = createRootRoute({
 			{ rel: "manifest", href: "/site.webmanifest" },
 		],
 	}),
-	loader: async () => {
-		const [auth, signInUrl] = await Promise.all([getAuth(), getSignInUrl()]);
-		return { auth, signInUrl };
-	},
 	component: RootComponent,
 	errorComponent: RootErrorComponent,
 	notFoundComponent: NotFoundComponent,
@@ -126,13 +121,11 @@ function NotFoundPage() {
 }
 
 function RootComponent() {
-	const { auth, signInUrl } = Route.useLoaderData();
-
 	return (
 		<RootDocument>
 			<ErrorBoundary>
-				<AppConvexProvider user={auth.user}>
-					<Header user={auth.user} signInUrl={signInUrl} />
+				<AppConvexProvider>
+					<Header />
 					<Suspense fallback={<RouteLoadingFallback />}>
 						<Outlet />
 					</Suspense>

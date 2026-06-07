@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useAction, useQuery } from "convex/react";
+import { useAction, useConvexAuth, useQuery } from "convex/react";
 import {
 	Building2,
 	Check,
@@ -13,7 +13,6 @@ import {
 import { motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { getAuth, getSignInUrl } from "@/authkit/serverFunctions";
 import { UsageProgressBar } from "@/components/UsageProgressBar";
 import {
 	Accordion,
@@ -32,10 +31,6 @@ export const Route = createFileRoute("/pricing")({
 		success: search.success === "true",
 		canceled: search.canceled === "true",
 	}),
-	loader: async () => {
-		const [auth, signInUrl] = await Promise.all([getAuth(), getSignInUrl()]);
-		return { auth, signInUrl };
-	},
 	head: () => {
 		const description =
 			"Choose the plan that fits your needs. Free tier includes 50 daily summaries. Pro plan at $15/month for unlimited access and real-time alerts.";
@@ -130,7 +125,7 @@ const plans = [
 ];
 
 function PricingPage() {
-	const { auth, signInUrl } = Route.useLoaderData();
+	const { isAuthenticated } = useConvexAuth();
 	const { success, canceled } = Route.useSearch();
 
 	return (
@@ -202,7 +197,7 @@ function PricingPage() {
 					</div>
 
 					{/* Current Usage (if logged in) */}
-					{auth.user && <CurrentUsage workosUserId={auth.user.id} />}
+					{isAuthenticated && <CurrentUsage />}
 
 					{/* Plans */}
 					<div className="grid md:grid-cols-2 gap-8 mb-16">
@@ -210,10 +205,7 @@ function PricingPage() {
 							<PlanCard
 								key={plan.name}
 								plan={plan}
-								isLoggedIn={!!auth.user}
-								signInUrl={signInUrl}
-								currentTier={auth.user ? undefined : "anonymous"}
-								workosUserId={auth.user?.id}
+								isLoggedIn={isAuthenticated}
 							/>
 						))}
 					</div>
@@ -305,10 +297,11 @@ function PricingPage() {
 	);
 }
 
-function CurrentUsage({ workosUserId }: { workosUserId: string }) {
-	const usageStats = useQuery(api.functions.usage.queries.getUsageStats, {
-		workosUserId,
-	});
+function CurrentUsage() {
+	const usageStats = useQuery(
+		api.functions.usage.queries.getUsageStats,
+		{},
+	);
 
 	if (!usageStats) return null;
 
@@ -376,22 +369,14 @@ function CurrentUsage({ workosUserId }: { workosUserId: string }) {
 interface PlanCardProps {
 	plan: (typeof plans)[0];
 	isLoggedIn: boolean;
-	signInUrl: string;
-	currentTier?: string;
-	workosUserId?: string;
 }
 
-function PlanCard({
-	plan,
-	isLoggedIn,
-	signInUrl,
-	workosUserId,
-}: PlanCardProps) {
+function PlanCard({ plan, isLoggedIn }: PlanCardProps) {
 	const [isLoading, setIsLoading] = useState(false);
 
 	const usageStats = useQuery(
 		api.functions.usage.queries.getUsageStats,
-		workosUserId ? { workosUserId } : "skip",
+		isLoggedIn ? {} : "skip",
 	);
 
 	const createCheckoutSession = useAction(
@@ -407,11 +392,11 @@ function PlanCard({
 	const isUserPro = currentTier === "pro";
 
 	const handleUpgrade = async () => {
-		if (!workosUserId) return;
+		if (!isLoggedIn) return;
 
 		setIsLoading(true);
 		try {
-			const { url } = await createCheckoutSession({ workosUserId });
+			const { url } = await createCheckoutSession({});
 			if (url) {
 				window.location.href = url;
 			}
@@ -425,11 +410,11 @@ function PlanCard({
 	};
 
 	const handleManagePlan = async () => {
-		if (!workosUserId) return;
+		if (!isLoggedIn) return;
 
 		setIsLoading(true);
 		try {
-			const { url } = await createPortalSession({ workosUserId });
+			const { url } = await createPortalSession({});
 			if (url) {
 				window.location.href = url;
 			}
@@ -522,7 +507,7 @@ function PlanCard({
 					</Link>
 				)
 			) : (
-				<a href={signInUrl}>
+				<a href="/sign-in">
 					<Button
 						className={cn("w-full", !isPro && "variant-outline")}
 						variant={isPro ? "default" : "outline"}

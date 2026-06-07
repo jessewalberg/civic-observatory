@@ -8,17 +8,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "../../convex/_generated/api";
 
 interface UsageWidgetProps {
-	workosUserId: string;
 	variant?: "card" | "compact";
 }
 
-export function UsageWidget({
-	workosUserId,
-	variant = "card",
-}: UsageWidgetProps) {
-	const usageStats = useQuery(api.functions.usage.queries.getUsageStats, {
-		workosUserId,
-	});
+export function UsageWidget({ variant = "card" }: UsageWidgetProps) {
+	const usageStats = useQuery(
+		api.functions.usage.queries.getUsageStats,
+		{},
+	);
 
 	if (usageStats === undefined || usageStats === null) {
 		return variant === "card" ? (
