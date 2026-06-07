@@ -8,8 +8,8 @@ import { modules } from "../../test.setup";
 // Phase 2 (docs/plans/2026-06-02-civic-pulse-workos-to-clerk.md §3): the
 // ctx.auth identity bridge. With a Clerk identity present, the server derives
 // WHO IS CALLING from the JWT — client-supplied ids are ignored, so the
-// Phase-0 impersonation hole is closed in Clerk mode. Legacy (no-identity)
-// callers keep today's behavior until Phase 5 removes the fallback.
+// Phase-0 impersonation hole is closed: there is no client-supplied id
+// argument at all (the legacy fallback was removed in Phase 6).
 
 const ISSUER = "https://clerk.example.com";
 
@@ -159,9 +159,7 @@ describe("identity overrides client-supplied ids (the security fix)", () => {
 
 		// The Phase-0 impersonation move: pass the admin's id. With an identity
 		// present the server ignores the argument entirely.
-		const result = await asPeon.query(api.functions.users.queries.listAll, {
-			requestingWorkosUserId: "user_wos_root",
-		});
+		const result = await asPeon.query(api.functions.users.queries.listAll, {});
 		expect(result).toEqual([]);
 	});
 
@@ -179,57 +177,14 @@ describe("identity overrides client-supplied ids (the security fix)", () => {
 		});
 		await asPeon.mutation(api.functions.users.mutations.ensureFromIdentity, {});
 
-		const stats = await asPeon.query(api.functions.users.queries.getAdminStats, {
-			requestingWorkosUserId: "user_wos_root",
-		});
+		const stats = await asPeon.query(
+			api.functions.users.queries.getAdminStats,
+			{},
+		);
 		expect(stats).toBeNull();
 	});
 
-	it("FIXED: upsertOnLogin is refused under a Clerk identity (no email-rewrite attack)", async () => {
-		const t = setup();
-		const victim = await seedUser(t, {
-			workosUserId: "user_wos_victim",
-			email: "victim@example.com",
-			tier: "pro",
-		});
-		const asAttacker = t.withIdentity({
-			subject: "user_clerk_attacker",
-			issuer: ISSUER,
-			email: "attacker@example.com",
-		});
-		// The exploit Codex found: rewrite the victim row's email to the
-		// attacker's, then claim it. The mutation must refuse outright.
-		await expect(
-			asAttacker.mutation(api.functions.users.mutations.upsertOnLogin, {
-				workosUserId: "user_wos_victim",
-				email: "attacker@example.com",
-			}),
-		).rejects.toThrow(/disabled under Clerk/);
-		const row = await t.run(async (ctx) => ctx.db.get(victim as Id<"users">));
-		expect(row?.email).toBe("victim@example.com"); // untouched
-	});
 
-	it("FIXED: getByWorkosUserId ignores the client id under identity (no row-read leak)", async () => {
-		const t = setup();
-		await seedUser(t, {
-			workosUserId: "user_wos_victim",
-			email: "victim@example.com",
-			tier: "pro",
-		});
-		const asPeon = t.withIdentity({
-			subject: "user_clerk_peon",
-			issuer: ISSUER,
-			email: "peon@example.com",
-		});
-		await asPeon.mutation(api.functions.users.mutations.ensureFromIdentity, {});
-		// Asking for the victim's row by workos id returns the CALLER's own row.
-		const got = await asPeon.query(
-			api.functions.users.queries.getByWorkosUserId,
-			{ workosUserId: "user_wos_victim" },
-		);
-		expect(got?.clerkUserId).toBe("user_clerk_peon");
-		expect(got?.email).toBe("peon@example.com");
-	});
 
 	it("FIXED: isAdmin ignores a spoofed admin id under identity", async () => {
 		const t = setup();
@@ -245,9 +200,7 @@ describe("identity overrides client-supplied ids (the security fix)", () => {
 		});
 		await asPeon.mutation(api.functions.users.mutations.ensureFromIdentity, {});
 		await expect(
-			asPeon.query(api.functions.users.queries.isAdmin, {
-				workosUserId: "user_wos_root",
-			}),
+			asPeon.query(api.functions.users.queries.isAdmin, {}),
 		).resolves.toBe(false);
 	});
 
@@ -272,7 +225,6 @@ describe("identity overrides client-supplied ids (the security fix)", () => {
 			asPeon.mutation(api.functions.users.mutations.setAdminStatus, {
 				userId: target,
 				isAdmin: true,
-				requestingWorkosUserId: "user_wos_root",
 			}),
 		).rejects.toThrow(/Only admins/);
 	});
@@ -291,5 +243,143 @@ describe("identity overrides client-supplied ids (the security fix)", () => {
 		});
 		const result = await asRoot.query(api.functions.users.queries.listAll, {});
 		expect(result).toMatchObject({ total: 1, hasMore: false });
+	});
+
+	it("an identity-resolved ADMIN can setAdminStatus (no client-supplied id)", async () => {
+		const t = setup();
+		const target = await seedUser(t, {
+			clerkUserId: "user_clerk_target",
+			email: "target@example.com",
+		});
+		await seedUser(t, {
+			clerkUserId: "user_clerk_root",
+			email: "root@example.com",
+			isAdmin: true,
+		});
+		const asRoot = t.withIdentity({
+			subject: "user_clerk_root",
+			issuer: ISSUER,
+			email: "root@example.com",
+		});
+		await asRoot.mutation(api.functions.users.mutations.setAdminStatus, {
+			userId: target,
+			isAdmin: true,
+		});
+		const row = await t.run(async (ctx) => ctx.db.get(target as Id<"users">));
+		expect(row?.isAdmin).toBe(true);
+	});
+
+	it("adminUpdateUser denies a non-admin identity and succeeds for an admin", async () => {
+		const t = setup();
+		const target = await seedUser(t, {
+			clerkUserId: "user_clerk_target",
+			email: "target@example.com",
+		});
+		await seedUser(t, {
+			clerkUserId: "user_clerk_peon",
+			email: "peon@example.com",
+		});
+		await seedUser(t, {
+			clerkUserId: "user_clerk_root",
+			email: "root@example.com",
+			isAdmin: true,
+		});
+		const asPeon = t.withIdentity({
+			subject: "user_clerk_peon",
+			issuer: ISSUER,
+			email: "peon@example.com",
+		});
+		await expect(
+			asPeon.mutation(api.functions.users.mutations.adminUpdateUser, {
+				userId: target,
+				tier: "pro",
+			}),
+		).rejects.toThrow(/Admin access required/);
+
+		const asRoot = t.withIdentity({
+			subject: "user_clerk_root",
+			issuer: ISSUER,
+			email: "root@example.com",
+		});
+		await asRoot.mutation(api.functions.users.mutations.adminUpdateUser, {
+			userId: target,
+			tier: "pro",
+		});
+		const row = await t.run(async (ctx) => ctx.db.get(target as Id<"users">));
+		expect(row?.tier).toBe("pro");
+	});
+
+	it("getAdminBootstrapStatus lets the authenticated caller claim initial admin only when none exists", async () => {
+		const t = setup();
+		await seedUser(t, {
+			clerkUserId: "user_clerk_alice",
+			email: "alice@example.com",
+		});
+		const asAlice = t.withIdentity({
+			subject: "user_clerk_alice",
+			issuer: ISSUER,
+			email: "alice@example.com",
+		});
+		const before = await asAlice.query(
+			api.functions.users.queries.getAdminBootstrapStatus,
+			{},
+		);
+		expect(before.canClaimInitialAdmin).toBe(true);
+
+		await seedUser(t, {
+			clerkUserId: "user_clerk_root",
+			email: "root@example.com",
+			isAdmin: true,
+		});
+		const after = await asAlice.query(
+			api.functions.users.queries.getAdminBootstrapStatus,
+			{},
+		);
+		expect(after.hasAnyAdmin).toBe(true);
+		expect(after.canClaimInitialAdmin).toBe(false);
+	});
+
+	it("claimInitialAdmin promotes the first authenticated user, then refuses once an admin exists", async () => {
+		const t = setup();
+		await seedUser(t, {
+			clerkUserId: "user_clerk_alice",
+			email: "alice@example.com",
+		});
+		const asAlice = t.withIdentity({
+			subject: "user_clerk_alice",
+			issuer: ISSUER,
+			email: "alice@example.com",
+		});
+		await asAlice.mutation(
+			api.functions.users.mutations.claimInitialAdmin,
+			{},
+		);
+		const alice = await t.run(async (ctx) =>
+			ctx.db
+				.query("users")
+				.withIndex("by_clerk_id", (q) => q.eq("clerkUserId", "user_clerk_alice"))
+				.unique(),
+		);
+		expect(alice?.isAdmin).toBe(true);
+
+		await seedUser(t, {
+			clerkUserId: "user_clerk_bob",
+			email: "bob@example.com",
+		});
+		const asBob = t.withIdentity({
+			subject: "user_clerk_bob",
+			issuer: ISSUER,
+			email: "bob@example.com",
+		});
+		await expect(
+			asBob.mutation(api.functions.users.mutations.claimInitialAdmin, {}),
+		).rejects.toThrow(/admin already exists/);
+	});
+
+	it("claimInitialAdmin refuses an unauthenticated caller", async () => {
+		const t = setup();
+		await expect(
+			t.mutation(api.functions.users.mutations.claimInitialAdmin, {}),
+		).rejects.toThrow(/sign in first/);
 	});
 });

@@ -2,17 +2,11 @@ import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 
 /**
- * Phase-2 identity bridge (WorkOS→Clerk migration plan §3).
- *
- * DUAL-MODE during the transition:
- *  - When a Clerk identity is present (`ctx.auth.getUserIdentity()`), the
- *    caller is resolved FROM THE JWT — any client-supplied id argument is
- *    ignored, which closes the Phase-0 impersonation hole for Clerk traffic.
- *  - When no identity is present (today's live WorkOS clients send none), the
- *    legacy client-supplied `workosUserId` argument is honored so production
- *    keeps working. THE LEGACY PATH IS STILL IMPERSONATABLE — that is the
- *    pre-existing hole, unchanged, and Phase 5 deletes it together with the
- *    WorkOS client code.
+ * Identity bridge (WorkOS→Clerk migration, Phase 2 + Phase 6). The caller is
+ * resolved SOLELY from the Clerk JWT via `ctx.auth.getUserIdentity()` — there
+ * is no client-supplied id argument, so a caller can only ever act as itself.
+ * (The WorkOS-era legacy fallback was removed in Phase 6 together with the
+ * WorkOS client code.)
  */
 
 type Ctx = QueryCtx | MutationCtx;
@@ -22,38 +16,26 @@ export async function getIdentity(ctx: Ctx) {
 }
 
 /**
- * Resolve the calling user. Identity wins; the legacy arg is consulted only
- * when there is no identity. Returns null when neither resolves.
+ * Resolve the calling user from the Clerk identity. Returns null when the
+ * request is unauthenticated or no matching user row exists.
  */
-export async function getCurrentUser(
-	ctx: Ctx,
-	legacyWorkosUserId?: string,
-): Promise<Doc<"users"> | null> {
+export async function getCurrentUser(ctx: Ctx): Promise<Doc<"users"> | null> {
 	const identity = await getIdentity(ctx);
-	if (identity) {
-		return await ctx.db
-			.query("users")
-			.withIndex("by_clerk_id", (q) => q.eq("clerkUserId", identity.subject))
-			.unique();
+	if (!identity) {
+		return null;
 	}
-	if (legacyWorkosUserId) {
-		return await ctx.db
-			.query("users")
-			.withIndex("by_workos_id", (q) =>
-				q.eq("workosUserId", legacyWorkosUserId),
-			)
-			.first();
-	}
-	return null;
+	return await ctx.db
+		.query("users")
+		.withIndex("by_clerk_id", (q) => q.eq("clerkUserId", identity.subject))
+		.unique();
 }
 
-/** Throw unless the caller resolves to an admin (identity-first, dual-mode). */
+/** Throw unless the calling Clerk identity resolves to an admin. */
 export async function requireAdmin(
 	ctx: Ctx,
-	legacyWorkosUserId?: string,
 	message = "Forbidden: admin only",
 ): Promise<Doc<"users">> {
-	const user = await getCurrentUser(ctx, legacyWorkosUserId);
+	const user = await getCurrentUser(ctx);
 	if (!user?.isAdmin) {
 		throw new Error(message);
 	}

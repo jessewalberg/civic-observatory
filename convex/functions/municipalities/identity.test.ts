@@ -54,7 +54,6 @@ describe("municipalities admin mutations under the identity bridge", () => {
 			asPeon.mutation(api.functions.municipalities.mutations.update, {
 				id: muni as Id<"municipalities">,
 				name: "Hacked",
-				requestingWorkosUserId: "user_wos_root",
 			}),
 		).rejects.toThrow(/Admin access required|admin/i);
 	});
@@ -99,16 +98,4 @@ describe("municipalities admin mutations under the identity bridge", () => {
 		expect(row?.lastScrapeStatus).toBe("success");
 	});
 
-	it("legacy (no identity) admin update still honors the supplied admin id", async () => {
-		const t = setup();
-		await seedUser(t, { workosUserId: "user_wos_root", email: "root@example.com", isAdmin: true });
-		const muni = await seedMunicipality(t);
-		await t.mutation(api.functions.municipalities.mutations.update, {
-			id: muni as Id<"municipalities">,
-			name: "LegacyRenamed",
-			requestingWorkosUserId: "user_wos_root",
-		});
-		const row = await t.run(async (ctx) => ctx.db.get(muni as Id<"municipalities">));
-		expect(row?.name).toBe("LegacyRenamed");
-	});
 });

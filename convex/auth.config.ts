@@ -1,7 +1,7 @@
-// Convex ⇄ Clerk trust (WorkOS→Clerk migration plan §2.1). Inert until the
-// CLERK_JWT_ISSUER_DOMAIN deployment env var is set AND the Clerk instance has
-// a JWT template named "convex" — until then no Clerk JWTs validate and
-// ctx.auth.getUserIdentity() stays null (legacy WorkOS mode).
+// Convex ⇄ Clerk trust. Requires the CLERK_JWT_ISSUER_DOMAIN deployment env var
+// set AND a Clerk JWT template named "convex"; until both exist no Clerk JWTs
+// validate and ctx.auth.getUserIdentity() returns null (so identity-gated
+// functions deny). Clerk is the only auth provider (WorkOS removed in Phase 6).
 export default {
 	providers: [
 		{

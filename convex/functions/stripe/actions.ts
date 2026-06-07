@@ -14,21 +14,17 @@ function getStripe() {
 }
 
 export const createCheckoutSession = action({
-	args: {
-		// Legacy (no-identity) callers only; IGNORED under Clerk. Removed Phase 5.
-		workosUserId: v.optional(v.string()),
-	},
-	handler: async (ctx, args): Promise<{ url: string | null }> => {
+	args: {},
+	handler: async (ctx): Promise<{ url: string | null }> => {
 		const stripe = getStripe();
 		const priceId = process.env.STRIPE_PRO_PRICE_ID;
 		if (!priceId) throw new Error("STRIPE_PRO_PRICE_ID not configured");
 		const appUrl = process.env.VITE_APP_URL || "http://localhost:3000";
 
-		// Identity-first: a caller can only checkout for THEMSELVES (a spoofed
-		// workosUserId is ignored when a Clerk identity is present).
+		// Identity-first: a caller can only checkout for THEMSELVES.
 		const user = await ctx.runQuery(
 			internal.functions.users.queries.getCurrentInternal,
-			{ workosUserId: args.workosUserId },
+			{},
 		);
 
 		if (!user) {
@@ -43,7 +39,6 @@ export const createCheckoutSession = action({
 			const customer = await stripe.customers.create({
 				email: user.email,
 				metadata: {
-					workosUserId: user.workosUserId ?? "",
 					convexUserId: user._id,
 				},
 			});
@@ -73,7 +68,6 @@ export const createCheckoutSession = action({
 			success_url: `${appUrl}/pricing?success=true`,
 			cancel_url: `${appUrl}/pricing?canceled=true`,
 			metadata: {
-				workosUserId: user.workosUserId ?? "",
 				convexUserId: user._id,
 			},
 		});
@@ -83,18 +77,15 @@ export const createCheckoutSession = action({
 });
 
 export const createPortalSession = action({
-	args: {
-		// Legacy (no-identity) callers only; IGNORED under Clerk. Removed Phase 5.
-		workosUserId: v.optional(v.string()),
-	},
-	handler: async (ctx, args): Promise<{ url: string }> => {
+	args: {},
+	handler: async (ctx): Promise<{ url: string }> => {
 		const stripe = getStripe();
 		const appUrl = process.env.VITE_APP_URL || "http://localhost:3000";
 
 		// Identity-first: a caller can only open THEIR OWN billing portal.
 		const user = await ctx.runQuery(
 			internal.functions.users.queries.getCurrentInternal,
-			{ workosUserId: args.workosUserId },
+			{},
 		);
 
 		if (!user) {

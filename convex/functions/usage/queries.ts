@@ -8,7 +8,6 @@ import { getCurrentUser } from "../../lib/auth";
 // ═══════════════════════════════════════════════════════════════
 export const getUsageCount = query({
 	args: {
-		workosUserId: v.optional(v.string()),
 		action: v.union(
 			v.literal("summary_view"),
 			v.literal("meeting_upload"),
@@ -23,7 +22,7 @@ export const getUsageCount = query({
 	},
 	handler: async (ctx, args) => {
 		// Identity-first: the caller's own usage (legacy arg ignored under Clerk).
-		const user = await getCurrentUser(ctx, args.workosUserId);
+		const user = await getCurrentUser(ctx);
 		if (!user) {
 			return { count: 0, windowStart: 0 };
 		}
@@ -53,7 +52,6 @@ export const getUsageCount = query({
 // ═══════════════════════════════════════════════════════════════
 export const checkLimit = query({
 	args: {
-		workosUserId: v.optional(v.string()),
 		action: v.union(
 			v.literal("summary_view"),
 			v.literal("meeting_upload"),
@@ -67,7 +65,7 @@ export const checkLimit = query({
 		let userId = null;
 
 		{
-			const user = await getCurrentUser(ctx, args.workosUserId);
+			const user = await getCurrentUser(ctx);
 
 			if (user) {
 				tier = user.tier as Tier;
@@ -151,11 +149,9 @@ export const checkLimit = query({
 // GET USER USAGE SUMMARY - All usage for a user
 // ═══════════════════════════════════════════════════════════════
 export const getUserUsageSummary = query({
-	args: {
-		workosUserId: v.optional(v.string()),
-	},
-	handler: async (ctx, args) => {
-		const user = await getCurrentUser(ctx, args.workosUserId);
+	args: {},
+	handler: async (ctx) => {
+		const user = await getCurrentUser(ctx);
 
 		if (!user) {
 			return null;
@@ -221,11 +217,9 @@ export const getUserUsageSummary = query({
 // GET USAGE STATS - Simplified stats for UI widget
 // ═══════════════════════════════════════════════════════════════
 export const getUsageStats = query({
-	args: {
-		workosUserId: v.optional(v.string()),
-	},
-	handler: async (ctx, args) => {
-		const user = await getCurrentUser(ctx, args.workosUserId);
+	args: {},
+	handler: async (ctx) => {
+		const user = await getCurrentUser(ctx);
 
 		if (!user) {
 			return null;

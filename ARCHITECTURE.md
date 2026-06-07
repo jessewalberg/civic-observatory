@@ -46,10 +46,12 @@ import { v } from "convex/values";
 export default defineSchema({
   
   // ═══════════════════════════════════════════════════════════════
-  // USERS - Synced from Clerk (workosUserId retained until Phase 6 data migration)
+  // USERS - keyed by Clerk subject (clerkUserId). workosUserId is a dead
   // ═══════════════════════════════════════════════════════════════
+  // WorkOS-era column kept optional until cleared (no index, no code refs).
   users: defineTable({
-    workosUserId: v.string(),
+    clerkUserId: v.optional(v.string()),
+    workosUserId: v.optional(v.string()),
     email: v.string(),
     name: v.optional(v.string()),
     avatarUrl: v.optional(v.string()),
@@ -61,7 +63,7 @@ export default defineSchema({
     createdAt: v.number(),
     lastLoginAt: v.number(),
   })
-    .index("by_workos_id", ["workosUserId"])
+    .index("by_clerk_id", ["clerkUserId"])
     .index("by_email", ["email"])
     .index("by_stripe_customer", ["stripeCustomerId"]),
 

@@ -7,7 +7,6 @@ import { getCurrentUser } from "../../lib/auth";
 // ═══════════════════════════════════════════════════════════════
 export const recordUsage = mutation({
 	args: {
-		workosUserId: v.optional(v.string()),
 		action: v.union(
 			v.literal("summary_view"),
 			v.literal("meeting_upload"),
@@ -22,7 +21,7 @@ export const recordUsage = mutation({
 	},
 	handler: async (ctx, args) => {
 		// Get user
-		const user = await getCurrentUser(ctx, args.workosUserId);
+		const user = await getCurrentUser(ctx);
 
 		if (!user) {
 			throw new Error("User not found");
