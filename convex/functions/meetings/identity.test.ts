@@ -93,7 +93,7 @@ describe("meetings admin mutations under the identity bridge", () => {
 		).rejects.toThrow(/Admin access required/);
 	});
 
-	it("an identity-resolved admin passes adminRequeueMeeting without a client id", async () => {
+	it("an identity-resolved admin passes the adminRequeueMeeting auth gate", async () => {
 		const t = setup();
 		await seedUser(t, {
 			clerkUserId: "user_clerk_root",
@@ -101,16 +101,36 @@ describe("meetings admin mutations under the identity bridge", () => {
 			isAdmin: true,
 		});
 		const muni = await seedMunicipality(t);
-		const meetingId = await seedMeeting(t, muni);
+		// Seed a meeting with NO usable content source so requeue throws a DOMAIN
+		// error immediately after the admin check — this proves the admin was
+		// authorized WITHOUT firing the summarizeMeeting schedule (a runAfter that
+		// would otherwise complete past test teardown and trip convex-test's
+		// "Write outside of transaction").
+		const meetingId = await t.run(async (ctx) =>
+			ctx.db.insert("meetings", {
+				municipalityId: muni,
+				title: "Council",
+				meetingType: "city_council" as const,
+				meetingDate: Date.now(),
+				sourceType: "manual_entry" as const,
+				sourceUrl: "",
+				status: "failed" as const,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			}),
+		);
 		const asRoot = t.withIdentity({
 			subject: "user_clerk_root",
 			issuer: ISSUER,
 			email: "root@example.com",
 		});
-		// Should not throw on the auth gate (may no-op on requeue internals).
-		await asRoot.mutation(api.functions.meetings.mutations.adminRequeueMeeting, {
-			meetingId: meetingId as Id<"meetings">,
-		});
+		// Gets PAST the admin gate (not "Admin access required"), then fails the
+		// content-source domain check — no scheduling occurs.
+		await expect(
+			asRoot.mutation(api.functions.meetings.mutations.adminRequeueMeeting, {
+				meetingId: meetingId as Id<"meetings">,
+			}),
+		).rejects.toThrow(/no available content source/);
 	});
 
 });

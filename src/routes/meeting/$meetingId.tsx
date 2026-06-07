@@ -18,7 +18,7 @@ import { motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { ShareButton } from "@/components/ShareButton";
 import { MeetingDetailSkeleton } from "@/components/skeletons";
-import { type Topic, TopicBadge, normalizeTopics } from "@/components/TopicBadge";
+import { TopicBadge, normalizeTopics } from "@/components/TopicBadge";
 import { UsageLimitExceeded } from "@/components/UsageLimitExceeded";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

@@ -7,13 +7,30 @@
   "observability": {
     "enabled": true
   },
-  // Environment variables - set these in Cloudflare dashboard or use .dev.vars locally
-  // Required vars (use wrangler secret put for sensitive values):
-  // - CLERK_SECRET_KEY
-  // - CLERK_JWT_ISSUER_DOMAIN
-  // - VITE_CLERK_PUBLISHABLE_KEY
-  // - OPENROUTER_API_KEY
-  "vars": {
-    // Public vars can be set here
+  // Public (non-secret) vars live here / in .env.<mode>. Secrets are set on the
+  // Convex deployment (CLERK_JWT_ISSUER_DOMAIN, OPENROUTER_API_KEY, STRIPE_*,
+  // CLOUDFLARE_* for email) and as a Worker secret for SSR:
+  //   pnpm exec wrangler secret put CLERK_SECRET_KEY --env production
+  "vars": {},
+  "env": {
+    "production": {
+      "name": "civic-observatory",
+      "workers_dev": false,
+      "routes": [
+        {
+          "pattern": "civicobservatory.com",
+          "custom_domain": true
+        }
+      ],
+      "observability": {
+        "enabled": true
+      },
+      "vars": {
+        "VITE_CONVEX_URL": "https://abundant-starling-365.convex.cloud",
+        "VITE_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuY2l2aWNvYnNlcnZhdG9yeS5jb20k",
+        "CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuY2l2aWNvYnNlcnZhdG9yeS5jb20k",
+        "VITE_APP_URL": "https://civicobservatory.com"
+      }
+    }
   }
 }
