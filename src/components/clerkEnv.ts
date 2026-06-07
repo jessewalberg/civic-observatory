@@ -1,7 +1,7 @@
 /**
- * Phase-1 Clerk gate (WorkOS→Clerk migration plan §3). Clerk mounts ONLY when
- * a publishable key is configured, so deploying this code with no key set
- * changes nothing — the legacy WorkOS path keeps running untouched.
+ * Resolve the Clerk publishable key for the browser bundle, falling back to the
+ * Cloudflare Worker runtime env during SSR. Returns undefined when unset so the
+ * caller can surface a clear configuration error.
  */
 export function getClerkPublishableKey(): string | undefined {
 	// Vite build-time env first (client bundle), then runtime process.env
@@ -17,8 +17,4 @@ export function getClerkPublishableKey(): string | undefined {
 	const raw = fromVite || fromProcess || "";
 	const trimmed = raw.trim();
 	return trimmed.length > 0 ? trimmed : undefined;
-}
-
-export function clerkEnabled(): boolean {
-	return getClerkPublishableKey() !== undefined;
 }

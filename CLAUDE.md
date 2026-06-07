@@ -10,7 +10,7 @@ Civic Observatory is a SaaS platform that automatically scrapes meeting document
 |-------|-----------|-------|
 | Frontend Framework | TanStack Start (React) | SSR, type-safe routing, server functions |
 | Backend / Database | Convex | Reactive DB, server functions, crons, file storage |
-| Authentication | WorkOS AuthKit | Hosted UI, social logins, free to 1M MAUs |
+| Authentication | Clerk | Hosted UI + components, social logins, Convex JWT template |
 | Hosting | Cloudflare Workers | Edge deployment via Wrangler |
 | UI Components | shadcn/ui + Tailwind v4 | CSS-first config, all components from shadcn |
 | AI | OpenRouter (Claude) | Meeting summarization via Convex actions |
@@ -25,7 +25,7 @@ Civic Observatory is a SaaS platform that automatically scrapes meeting document
 Read these documents IN ORDER before starting any work:
 
 1. **`docs/DESIGN_SYSTEM.md`** — Design philosophy, color palette, typography, component patterns. Read FIRST before writing any UI code.
-2. **`docs/AUTH_PATTERN.md`** — How authentication works with WorkOS AuthKit. Every route and Convex function must follow this pattern.
+2. **Auth** — Clerk for sessions (clerkMiddleware in `src/start.ts`); Convex authorizes via `ctx.auth` (see `convex/lib/auth.ts`). Every route and Convex function must follow this pattern.
 3. **`docs/CONVEX_GUIDE.md`** — How to write Convex functions (queries, mutations, actions), schema design, and cron jobs.
 4. **`docs/ROUTES_AND_PAGES.md`** — Every page in the app, what data it needs, which tier can access it.
 5. **`docs/SCRAPER.md`** — The scraping pipeline: platform detection, HTML extraction, rate limiting.
@@ -37,9 +37,9 @@ Read these documents IN ORDER before starting any work:
 
 1. **Design first, code second.** Set up shadcn/ui and the full design system before building any pages. Every component should look production-grade from day one.
 
-2. **Auth is modeled on WorkOS AuthKit.** Use the official template: https://github.com/get-convex/templates/tree/main/template-tanstack-start-authkit. Do not invent custom auth. Use `getAuth()` for server-side checks, sync users to Convex on first login.
+2. **Auth is Clerk.** Do not invent custom auth. Server-side route guards use the `requireAuth` server-fn (`src/lib/serverAuth.ts`) over Clerk's `auth()`; Convex resolves the caller from `ctx.auth` via `getCurrentUser`/`requireAdmin`. New Clerk users are synced to Convex by `UserBootstrap` (calls `users.ensureFromIdentity`).
 
-3. **Convex is the API for all data operations.** Never create REST endpoints for reading/writing data. All data flows through Convex queries/mutations/actions. **Exception: auth.** WorkOS session management runs in TanStack Start server functions.
+3. **Convex is the API for all data operations.** Never create REST endpoints for reading/writing data. All data flows through Convex queries/mutations/actions. **Exception: auth.** Clerk session management runs via clerkMiddleware in `src/start.ts`.
 
 4. **Type safety everywhere.** Convex generates types from your schema. Use them. TanStack Router infers route params. Use them. Never use `any`.
 
@@ -73,7 +73,7 @@ civic-observatory/
 │   │   │   └── scrapers.tsx
 │   │   ├── pricing.tsx
 │   │   └── api/
-│   │       ├── auth/callback.ts  # WorkOS callback
+│   │       ├── sign-in.$.tsx     # Clerk sign-in (catch-all)
 │   │       ├── stripe/webhook.ts # Stripe webhook
 │   │       ├── sitemap.tsx
 │   │       └── robots.tsx
@@ -89,7 +89,7 @@ civic-observatory/
 │   │   ├── toast.ts              # Toast wrapper
 │   │   └── seo.ts                # SEO helpers
 │   ├── authkit/
-│   │   └── serverFunctions.ts    # WorkOS helpers
+│   │   └── serverAuth.ts         # requireAuth (Clerk) server-fn
 │   └── styles.css                # Tailwind + design tokens
 ├── convex/                       # Convex backend (THIS IS THE ENTIRE BACKEND)
 │   ├── schema.ts                 # Database schema (8 tables)
@@ -151,7 +151,7 @@ This is the sequence of work. Do NOT skip ahead. Each phase corresponds to a pro
 
 ### Phase 0: Scaffold + Design System (`prompts/00-scaffold-design-system.md`)
 1. Create project from TanStack Start template
-2. Add Convex + WorkOS AuthKit
+2. Add Convex + Clerk
 3. Add Cloudflare Workers support
 4. Install and configure shadcn/ui with custom dark theme
 5. Build ALL reusable components with the design system applied
@@ -240,11 +240,10 @@ bun wrangler deploy        # Deploy to Cloudflare
 CONVEX_DEPLOYMENT=dev:your-deployment
 VITE_CONVEX_URL=https://your-deployment.convex.cloud
 
-# WorkOS AuthKit
-WORKOS_CLIENT_ID=client_...
-WORKOS_API_KEY=sk_test_...
-WORKOS_REDIRECT_URI=http://localhost:3000/api/auth/callback
-WORKOS_COOKIE_PASSWORD=32-character-minimum-secret
+# Clerk (server = Worker secrets, client = Vite bundle)
+CLERK_SECRET_KEY=sk_...
+CLERK_JWT_ISSUER_DOMAIN=https://<your-subdomain>.clerk.accounts.dev
+VITE_CLERK_PUBLISHABLE_KEY=pk_...
 
 # OpenRouter (AI API routing)
 OPENROUTER_API_KEY=sk-or-...
