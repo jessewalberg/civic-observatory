@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ConvexHttpClient } from "convex/browser";
-import { useMutation, useQuery } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import {
 	AlertCircle,
 	Calendar,
@@ -16,8 +16,6 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
-import { getAuth, getSignInUrl } from "@/authkit/serverFunctions";
-import { useWorkOSUser } from "@/components/ConvexClientProvider";
 import { ShareButton } from "@/components/ShareButton";
 import { MeetingDetailSkeleton } from "@/components/skeletons";
 import { type Topic, TopicBadge, normalizeTopics } from "@/components/TopicBadge";
@@ -41,10 +39,9 @@ export const Route = createFileRoute("/meeting/$meetingId")({
 	loader: async ({ params }) => {
 		const convexUrl = import.meta.env.VITE_CONVEX_URL;
 		if (!convexUrl) {
-			return { meeting: null, auth: { user: null }, signInUrl: "" };
+			return { meeting: null };
 		}
 		try {
-			const [auth, signInUrl] = await Promise.all([getAuth(), getSignInUrl()]);
 			const convex = new ConvexHttpClient(convexUrl);
 			const meeting = await convex.query(
 				api.functions.meetings.queries.getWithSummary,
@@ -52,9 +49,9 @@ export const Route = createFileRoute("/meeting/$meetingId")({
 					id: params.meetingId as Id<"meetings">,
 				},
 			);
-			return { meeting, auth, signInUrl };
+			return { meeting };
 		} catch {
-			return { meeting: null, auth: { user: null }, signInUrl: "" };
+			return { meeting: null };
 		}
 	},
 	head: ({ loaderData }) => {
@@ -218,11 +215,10 @@ interface MeetingData {
 
 function MeetingDetailPage() {
 	const { meetingId } = Route.useParams();
-	const { auth: _auth, signInUrl } = Route.useLoaderData();
+	const { isAuthenticated } = useConvexAuth();
 	const [showRawContent, setShowRawContent] = useState(false);
 	const [isRetrying, setIsRetrying] = useState(false);
 	const [retryError, setRetryError] = useState<string | null>(null);
-	const workosUser = useWorkOSUser();
 	const hasTrackedView = useRef(false);
 
 	// Real-time updates via useQuery
@@ -237,9 +233,7 @@ function MeetingDetailPage() {
 	// Check usage limit for summary views
 	const usageCheck = useQuery(
 		api.functions.usage.queries.checkLimit,
-		workosUser
-			? { workosUserId: workosUser.id, action: "summary_view" }
-			: "skip",
+		isAuthenticated ? { action: "summary_view" } : "skip",
 	);
 
 	// Track summary view for authenticated users (only if within limit)
@@ -247,20 +241,19 @@ function MeetingDetailPage() {
 		if (
 			meeting?.status === "summarized" &&
 			meeting.summary &&
-			workosUser &&
+			isAuthenticated &&
 			!hasTrackedView.current &&
 			usageCheck?.allowed !== false // Don't track if limit exceeded
 		) {
 			hasTrackedView.current = true;
 			recordUsage({
-				workosUserId: workosUser.id,
 				action: "summary_view",
 				windowType: "day",
 			}).catch(() => {
 				// Silently fail - don't interrupt user experience for tracking
 			});
 		}
-	}, [meeting, workosUser, recordUsage, usageCheck]);
+	}, [meeting, isAuthenticated, recordUsage, usageCheck]);
 
 	if (meeting === undefined) {
 		return <MeetingDetailSkeleton />;
@@ -307,7 +300,7 @@ function MeetingDetailPage() {
 				resetsAt={usageCheck.resetsAt}
 				tier={usageCheck.tier as "anonymous" | "free" | "pro"}
 				action="summary_view"
-				signInUrl={signInUrl}
+				signInUrl="/sign-in"
 			/>
 		);
 	}
@@ -315,16 +308,15 @@ function MeetingDetailPage() {
 	const date = new Date(meeting.meetingDate);
 	const typeLabel =
 		meetingTypeLabels[meeting.meetingType] ?? meeting.meetingType;
-	const canRetry = Boolean(workosUser);
+	const canRetry = isAuthenticated;
 
 	const handleRetry = async () => {
-		if (!workosUser || isRetrying) return;
+		if (!isAuthenticated || isRetrying) return;
 		setIsRetrying(true);
 		setRetryError(null);
 		try {
 			await retryProcessing({
 				meetingId: meeting._id,
-				workosUserId: workosUser.id,
 			});
 		} catch (error) {
 			setRetryError(

@@ -12,7 +12,6 @@ import {
 import { motion } from "motion/react";
 import { useId, useState } from "react";
 import { toast } from "sonner";
-import { getAuth, getSignInUrl } from "@/authkit/serverFunctions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -41,13 +40,13 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
+import { requireAuth } from "@/lib/serverAuth";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 
 export const Route = createFileRoute("/admin/users")({
-	loader: async () => {
-		const [auth, signInUrl] = await Promise.all([getAuth(), getSignInUrl()]);
-		return { auth, signInUrl };
+	beforeLoad: async () => {
+		await requireAuth();
 	},
 	head: () => ({
 		meta: [
@@ -60,37 +59,10 @@ export const Route = createFileRoute("/admin/users")({
 });
 
 function UsersAdminPage() {
-	const { auth, signInUrl } = Route.useLoaderData();
-
-	if (!auth.user) {
-		return (
-			<div className="min-h-screen bg-background flex items-center justify-center">
-				<motion.div
-					initial={{ opacity: 0, y: 20 }}
-					animate={{ opacity: 1, y: 0 }}
-					className="text-center max-w-md mx-auto px-4"
-				>
-					<div className="rounded-full bg-primary/10 p-4 mb-4 mx-auto w-fit">
-						<Shield className="h-8 w-8 text-primary" />
-					</div>
-					<h1 className="font-display text-2xl font-bold text-foreground mb-2">
-						Admin Access Required
-					</h1>
-					<p className="text-muted-foreground mb-6">
-						Please sign in to manage users.
-					</p>
-					<a href={signInUrl}>
-						<Button size="lg">Sign In</Button>
-					</a>
-				</motion.div>
-			</div>
-		);
-	}
-
-	return <UsersContent workosUserId={auth.user.id} />;
+	return <UsersContent />;
 }
 
-function UsersContent({ workosUserId }: { workosUserId: string }) {
+function UsersContent() {
 	const formId = useId();
 	const [searchQuery, setSearchQuery] = useState("");
 	const [filterTier, setFilterTier] = useState<string>("all");
@@ -106,14 +78,11 @@ function UsersContent({ workosUserId }: { workosUserId: string }) {
 
 	// Queries
 	const isAdmin = useQuery(api.functions.users.queries.isAdmin, {
-		workosUserId,
 	});
 	const usersResult = useQuery(api.functions.users.queries.listAll, {
-		requestingWorkosUserId: workosUserId,
 		limit: 500,
 	});
 	const stats = useQuery(api.functions.users.queries.getAdminStats, {
-		requestingWorkosUserId: workosUserId,
 	});
 
 	// Handle the paginated users result
@@ -184,7 +153,6 @@ function UsersContent({ workosUserId }: { workosUserId: string }) {
 				userId: editingUser.id,
 				tier: editingUser.tier,
 				isAdmin: editingUser.isAdmin,
-				requestingWorkosUserId: workosUserId,
 			});
 			toast.success("User updated");
 			setEditingUser(null);
@@ -202,7 +170,6 @@ function UsersContent({ workosUserId }: { workosUserId: string }) {
 			await adminUpdateUser({
 				userId,
 				tier,
-				requestingWorkosUserId: workosUserId,
 			});
 			toast.success(`User set to ${tier}`);
 		} catch (error) {
@@ -220,7 +187,6 @@ function UsersContent({ workosUserId }: { workosUserId: string }) {
 			await adminUpdateUser({
 				userId,
 				isAdmin: !currentIsAdmin,
-				requestingWorkosUserId: workosUserId,
 			});
 			toast.success(currentIsAdmin ? "Admin removed" : "Admin granted");
 		} catch (error) {

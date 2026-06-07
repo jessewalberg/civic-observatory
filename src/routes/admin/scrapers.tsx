@@ -19,7 +19,6 @@ import {
 import { motion } from "motion/react";
 import { Fragment, useState } from "react";
 import { toast } from "sonner";
-import { getAuth, getSignInUrl } from "@/authkit/serverFunctions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -40,13 +39,13 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { requireAuth } from "@/lib/serverAuth";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 
 export const Route = createFileRoute("/admin/scrapers")({
-	loader: async () => {
-		const [auth, signInUrl] = await Promise.all([getAuth(), getSignInUrl()]);
-		return { auth, signInUrl };
+	beforeLoad: async () => {
+		await requireAuth();
 	},
 	head: () => ({
 		meta: [
@@ -59,38 +58,10 @@ export const Route = createFileRoute("/admin/scrapers")({
 });
 
 function ScrapersAdminPage() {
-	const { auth, signInUrl } = Route.useLoaderData();
-
-	// Auth check
-	if (!auth.user) {
-		return (
-			<div className="min-h-screen bg-background flex items-center justify-center">
-				<motion.div
-					initial={{ opacity: 0, y: 20 }}
-					animate={{ opacity: 1, y: 0 }}
-					className="text-center max-w-md mx-auto px-4"
-				>
-					<div className="rounded-full bg-primary/10 p-4 mb-4 mx-auto w-fit">
-						<Server className="h-8 w-8 text-primary" />
-					</div>
-					<h1 className="font-display text-2xl font-bold text-foreground mb-2">
-						Admin Access Required
-					</h1>
-					<p className="text-muted-foreground mb-6">
-						Please sign in to access the scraper administration panel.
-					</p>
-					<a href={signInUrl}>
-						<Button size="lg">Sign In</Button>
-					</a>
-				</motion.div>
-			</div>
-		);
-	}
-
-	return <ScrapersContent workosUserId={auth.user.id} />;
+	return <ScrapersContent />;
 }
 
-function ScrapersContent({ workosUserId }: { workosUserId: string }) {
+function ScrapersContent() {
 	const [expandedId, setExpandedId] = useState<string | null>(null);
 	const [scrapingIds, setScrapingIds] = useState<Set<string>>(new Set());
 	const [batchRunning, setBatchRunning] = useState<string | null>(null);
@@ -102,7 +73,6 @@ function ScrapersContent({ workosUserId }: { workosUserId: string }) {
 
 	// Queries
 	const isAdmin = useQuery(api.functions.users.queries.isAdmin, {
-		workosUserId,
 	});
 	const stats = useQuery(api.functions.scrapeJobs.queries.getStats, {});
 	const recentJobs = useQuery(api.functions.scrapeJobs.queries.getRecent, {
@@ -135,7 +105,7 @@ function ScrapersContent({ workosUserId }: { workosUserId: string }) {
 	) => {
 		setScrapingIds((prev) => new Set(prev).add(municipalityId));
 		try {
-			await triggerScrape({ municipalityId, workosUserId });
+			await triggerScrape({ municipalityId });
 			toast.success(`Scrape started for ${municipalityName}`);
 		} catch (error) {
 			const message =
@@ -160,7 +130,6 @@ function ScrapersContent({ workosUserId }: { workosUserId: string }) {
 		setBatchRunning(label);
 		try {
 			const result = await batchRescrape({
-				workosUserId,
 				...opts,
 				limit: 50,
 			});
@@ -184,7 +153,6 @@ function ScrapersContent({ workosUserId }: { workosUserId: string }) {
 		setBatchRunning("all-due");
 		try {
 			const result = await triggerScrapeAllDue({
-				workosUserId,
 				limit: 50,
 			});
 			if (result.scheduled === 0) {
@@ -206,7 +174,7 @@ function ScrapersContent({ workosUserId }: { workosUserId: string }) {
 	const handleRetryJob = async (jobId: Id<"scrapeJobs">, muniName: string) => {
 		setRetryingIds((prev) => new Set(prev).add(jobId));
 		try {
-			const result = await retryJob({ jobId, workosUserId });
+			const result = await retryJob({ jobId });
 			if (result.scheduled) {
 				toast.success(`Retry scheduled for ${muniName}`);
 			} else {

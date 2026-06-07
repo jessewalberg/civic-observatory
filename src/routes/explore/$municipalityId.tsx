@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ConvexHttpClient } from "convex/browser";
-import { useQuery } from "convex/react";
+import { useConvexAuth, useQuery } from "convex/react";
 import {
 	ArrowLeft,
 	Bell,
@@ -18,7 +18,6 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
-import { getAuth, getSignInUrl } from "@/authkit/serverFunctions";
 import { MeetingCard, MeetingCardSkeleton } from "@/components/MeetingCard";
 import { SubscriptionModal } from "@/components/SubscriptionModal";
 import { Badge } from "@/components/ui/badge";
@@ -37,11 +36,9 @@ import type { Id } from "../../../convex/_generated/dataModel";
 export const Route = createFileRoute("/explore/$municipalityId")({
 	component: MunicipalityDetailPage,
 	loader: async ({ params }) => {
-		const [auth, signInUrl] = await Promise.all([getAuth(), getSignInUrl()]);
-
 		const convexUrl = import.meta.env.VITE_CONVEX_URL;
 		if (!convexUrl) {
-			return { municipality: null, auth, signInUrl };
+			return { municipality: null };
 		}
 		try {
 			const convex = new ConvexHttpClient(convexUrl);
@@ -51,9 +48,9 @@ export const Route = createFileRoute("/explore/$municipalityId")({
 					id: params.municipalityId as Id<"municipalities">,
 				},
 			);
-			return { municipality, auth, signInUrl };
+			return { municipality };
 		} catch {
-			return { municipality: null, auth, signInUrl };
+			return { municipality: null };
 		}
 	},
 	head: ({ loaderData }) => {
@@ -155,7 +152,7 @@ const meetingTypeLabels: Record<MeetingType, string> = {
 
 function MunicipalityDetailPage() {
 	const { municipalityId } = Route.useParams();
-	const { auth, signInUrl } = Route.useLoaderData();
+	const { isAuthenticated } = useConvexAuth();
 	const [meetingType, setMeetingType] = useState<string>("");
 	const [cursor, setCursor] = useState<string | null>(null);
 	const [showSubscribeModal, setShowSubscribeModal] = useState(false);
@@ -168,7 +165,7 @@ function MunicipalityDetailPage() {
 	// Fetch user if authenticated
 	const user = useQuery(
 		api.functions.users.queries.getByWorkosUserId,
-		auth?.user ? { workosUserId: auth.user.id } : "skip",
+		isAuthenticated ? {} : "skip",
 	);
 
 	// Check if user is subscribed to this municipality
@@ -349,9 +346,9 @@ function MunicipalityDetailPage() {
 										</Button>
 									</a>
 								)}
-								{!auth?.user ? (
+								{!isAuthenticated ? (
 									// Not logged in - show sign in button
-									<a href={signInUrl}>
+									<a href="/sign-in">
 										<Button size="sm">
 											<Bell className="h-4 w-4 mr-2" />
 											Sign in to Subscribe

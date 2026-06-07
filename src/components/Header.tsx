@@ -1,17 +1,17 @@
+import {
+	SignedIn,
+	SignedOut,
+	SignInButton,
+	UserButton,
+} from "@clerk/clerk-react";
 import { Link } from "@tanstack/react-router";
-import type { User } from "@workos-inc/node";
 import { useQuery } from "convex/react";
 import { Bell, Building2, Shield } from "lucide-react";
+import { useConvexUser } from "@/lib/auth";
 import { api } from "../../convex/_generated/api";
-import { SignInButton } from "./SignInButton";
 import { Button } from "./ui/button";
 
-interface HeaderProps {
-	user: User | null;
-	signInUrl: string;
-}
-
-export function Header({ user, signInUrl }: HeaderProps) {
+export function Header() {
 	return (
 		<header className="fixed top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-lg">
 			<div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
@@ -32,29 +32,32 @@ export function Header({ user, signInUrl }: HeaderProps) {
 					>
 						Explore
 					</Link>
-					{user && (
+					<SignedIn>
 						<Link
 							to="/dashboard"
 							className="text-sm text-muted-foreground transition-colors hover:text-foreground"
 						>
 							Dashboard
 						</Link>
-					)}
-					{user && <AdminLink workosUserId={user.id} />}
-					{user && <NotificationBadge workosUserId={user.id} />}
-					<SignInButton user={user} signInUrl={signInUrl} />
+						<AdminLink />
+						<NotificationBadge />
+						<UserButton />
+					</SignedIn>
+					<SignedOut>
+						<SignInButton mode="modal">
+							<Button>Sign in</Button>
+						</SignInButton>
+					</SignedOut>
 				</nav>
 			</div>
 		</header>
 	);
 }
 
-function AdminLink({ workosUserId }: { workosUserId: string }) {
-	const isAdmin = useQuery(api.functions.users.queries.isAdmin, {
-		workosUserId,
-	});
+function AdminLink() {
+	const user = useConvexUser();
 
-	if (!isAdmin) {
+	if (!user?.isAdmin) {
 		return null;
 	}
 
@@ -68,13 +71,9 @@ function AdminLink({ workosUserId }: { workosUserId: string }) {
 	);
 }
 
-function NotificationBadge({ workosUserId }: { workosUserId: string }) {
-	// Get the Convex user
-	const convexUser = useQuery(api.functions.users.queries.getByWorkosUserId, {
-		workosUserId,
-	});
+function NotificationBadge() {
+	const convexUser = useConvexUser();
 
-	// Get unread count
 	const unreadCount = useQuery(
 		api.functions.alerts.queries.getUnreadCount,
 		convexUser ? { userId: convexUser._id } : "skip",

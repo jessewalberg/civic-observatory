@@ -14,7 +14,6 @@ import {
 import { motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { getAuth, getSignInUrl } from "@/authkit/serverFunctions";
 import { SubscriptionModal } from "@/components/SubscriptionModal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,14 +26,14 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
+import { requireAuth } from "@/lib/serverAuth";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 // cn utility not currently used
 
 export const Route = createFileRoute("/dashboard/subscriptions")({
-	loader: async () => {
-		const [auth, signInUrl] = await Promise.all([getAuth(), getSignInUrl()]);
-		return { auth, signInUrl };
+	beforeLoad: async () => {
+		await requireAuth();
 	},
 	head: () => ({
 		meta: [
@@ -49,45 +48,15 @@ export const Route = createFileRoute("/dashboard/subscriptions")({
 });
 
 function SubscriptionsPage() {
-	const { auth, signInUrl } = Route.useLoaderData();
-
-	// Auth check
-	if (!auth.user) {
-		return (
-			<div className="min-h-screen bg-background flex items-center justify-center">
-				<motion.div
-					initial={{ opacity: 0, y: 20 }}
-					animate={{ opacity: 1, y: 0 }}
-					className="text-center max-w-md mx-auto px-4"
-				>
-					<div className="rounded-full bg-primary/10 p-4 mb-4 mx-auto w-fit">
-						<Bell className="h-8 w-8 text-primary" />
-					</div>
-					<h1 className="font-display text-2xl font-bold text-foreground mb-2">
-						Sign in Required
-					</h1>
-					<p className="text-muted-foreground mb-6">
-						Sign in to manage your subscriptions and get notified about new
-						meeting summaries.
-					</p>
-					<a href={signInUrl}>
-						<Button size="lg">Sign In</Button>
-					</a>
-				</motion.div>
-			</div>
-		);
-	}
-
-	return <SubscriptionsContent workosUserId={auth.user.id} />;
+	return <SubscriptionsContent />;
 }
 
-function SubscriptionsContent({ workosUserId }: { workosUserId: string }) {
+function SubscriptionsContent() {
 	const [editingSubscription, setEditingSubscription] =
 		useState<Subscription | null>(null);
 
 	// Get user
 	const user = useQuery(api.functions.users.queries.getByWorkosUserId, {
-		workosUserId,
 	});
 
 	// Get subscriptions
