@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-// Phase 4: Header renders Clerk's <SignedIn>/<SignedOut> primitives and stops
-// prop-drilling a WorkOS user. We mock Clerk's components to lightweight gates
-// driven by a controllable signed-in flag.
+// Phase 4: Header gates on Clerk's useUser().isSignedIn (same package as the
+// provider) and renders UserButton vs SignInButton. We mock Clerk to a
+// controllable signed-in flag.
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -9,11 +9,8 @@ const { signedInState } = vi.hoisted(() => ({
 	signedInState: { value: false },
 }));
 
-vi.mock("@clerk/clerk-react", () => ({
-	SignedIn: ({ children }: { children: React.ReactNode }) =>
-		signedInState.value ? <>{children}</> : null,
-	SignedOut: ({ children }: { children: React.ReactNode }) =>
-		signedInState.value ? null : <>{children}</>,
+vi.mock("@clerk/tanstack-react-start", () => ({
+	useUser: () => ({ isLoaded: true, isSignedIn: signedInState.value }),
 	SignInButton: ({ children }: { children?: React.ReactNode }) => (
 		<div data-testid="clerk-signin">{children ?? "Sign in"}</div>
 	),

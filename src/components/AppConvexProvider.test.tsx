@@ -33,6 +33,8 @@ vi.mock("convex/react-clerk", () => ({
 		return <div data-testid="convex-with-clerk">{props.children}</div>;
 	},
 }));
+// UserBootstrap hits real Convex hooks; this test only asserts provider wiring.
+vi.mock("./UserBootstrap", () => ({ UserBootstrap: () => null }));
 
 import { ConvexReactClient } from "convex/react";
 import { AppConvexProvider } from "./AppConvexProvider";

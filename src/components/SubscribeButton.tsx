@@ -14,7 +14,6 @@ interface SubscribeButtonProps {
 	variant?: "default" | "outline" | "ghost";
 	size?: "default" | "sm" | "lg" | "icon";
 	className?: string;
-	signInUrl?: string;
 }
 
 export function SubscribeButton({
@@ -24,7 +23,6 @@ export function SubscribeButton({
 	variant = "outline",
 	size = "default",
 	className,
-	signInUrl,
 }: SubscribeButtonProps) {
 	const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -39,7 +37,7 @@ export function SubscribeButton({
 	// If not logged in, redirect to sign in
 	if (!userId) {
 		return (
-			<a href={signInUrl || "/api/auth/login"}>
+			<a href="/sign-in">
 				<Button variant={variant} size={size} className={className}>
 					<Bell className="h-4 w-4 mr-2" />
 					Subscribe

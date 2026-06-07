@@ -1,9 +1,8 @@
 import {
-	SignedIn,
-	SignedOut,
 	SignInButton,
 	UserButton,
-} from "@clerk/clerk-react";
+	useUser,
+} from "@clerk/tanstack-react-start";
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { Bell, Building2, Shield } from "lucide-react";
@@ -12,6 +11,8 @@ import { api } from "../../convex/_generated/api";
 import { Button } from "./ui/button";
 
 export function Header() {
+	const { isSignedIn } = useUser();
+
 	return (
 		<header className="fixed top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-lg">
 			<div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
@@ -32,22 +33,23 @@ export function Header() {
 					>
 						Explore
 					</Link>
-					<SignedIn>
-						<Link
-							to="/dashboard"
-							className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-						>
-							Dashboard
-						</Link>
-						<AdminLink />
-						<NotificationBadge />
-						<UserButton />
-					</SignedIn>
-					<SignedOut>
+					{isSignedIn ? (
+						<>
+							<Link
+								to="/dashboard"
+								className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+							>
+								Dashboard
+							</Link>
+							<AdminLink />
+							<NotificationBadge />
+							<UserButton />
+						</>
+					) : (
 						<SignInButton mode="modal">
 							<Button>Sign in</Button>
 						</SignInButton>
-					</SignedOut>
+					)}
 				</nav>
 			</div>
 		</header>
