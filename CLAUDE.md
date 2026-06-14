@@ -18,7 +18,7 @@ Civic Observatory is a SaaS platform that automatically scrapes meeting document
 | Payments | Stripe | Subscriptions, webhooks, customer portal |
 | Email | Cloudflare Email Sending | Alert notification emails |
 | Animation | Motion (Framer Motion) | Page transitions, micro-interactions |
-| Package Manager | Bun | For all installs, scripts, and commands |
+| Package Manager | pnpm@9.15.9 | For all installs, scripts, and commands (pinned via `packageManager` field) |
 
 ## Project Documentation
 
@@ -33,7 +33,7 @@ Read these documents IN ORDER before starting any work:
 
 ## Critical Rules
 
-0. **Bun only, never npm/npx.** Always use `bun` for all commands. The PATH requires sourcing: run `source ~/.zshrc && bun ...` or use the full path `/Users/home/.bun/bin/bun`. Never use npm, npx, yarn, or pnpm.
+0. **pnpm only, never bun/npm/yarn.** The repo is pinned to `pnpm@9.15.9` via the `packageManager` field in `package.json`, with a committed `pnpm-lock.yaml`; CI deploys with `pnpm install --frozen-lockfile`. Always use `pnpm` for installs, scripts, and commands. Never use npm, yarn, or bun. (Use `pnpm dlx` where you would have reached for `npx`/`bunx`.)
 
 1. **Design first, code second.** Set up shadcn/ui and the full design system before building any pages. Every component should look production-grade from day one.
 
@@ -218,17 +218,17 @@ This is the sequence of work. Do NOT skip ahead. Each phase corresponds to a pro
 
 ```bash
 # Development
-bun dev               # Start frontend dev server
-bun convex dev        # Start Convex dev server (run in separate terminal)
+pnpm dev               # Start frontend dev server
+pnpm convex dev        # Start Convex dev server (run in separate terminal)
 
 # Code Quality
-bun typecheck         # TypeScript check
-bun lint              # Biome lint
+pnpm typecheck         # TypeScript check
+pnpm lint              # Biome lint
 
 # Production
-bun run build         # Build for production
-bun convex deploy --prod   # Deploy Convex
-bun wrangler deploy        # Deploy to Cloudflare
+pnpm run build         # Build for production
+pnpm convex deploy --prod   # Deploy Convex
+pnpm wrangler deploy        # Deploy to Cloudflare
 ```
 
 ## Environment Variables
