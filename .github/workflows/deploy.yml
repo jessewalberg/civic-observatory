@@ -1,22 +1,56 @@
-# Continuous deployment generated for the secretkit pattern (Cloudflare host).
-# On push to main this runs the test gate, then deploys production. The three
-# bootstrap creds are GitHub *Environment* secrets (synced from 1Password
-# civic-observatory-ci); public bundle vars come from committed .env.production.
-# CLERK_SECRET_KEY is a one-time Worker secret (wrangler secret put), not here.
+# Continuous deployment for the secretkit pattern (Cloudflare host).
+#
+# INV-8 (gates run pre-merge): the `gate` job runs on every pull_request AND on
+# push to main — so the test+build gate must pass BEFORE a PR can merge, not only
+# after. The `deploy` job is push-only (`if: github.event_name == 'push'`) and
+# runs after the gate, so a red PR never reaches production.
+#
+# INV-7 (no secrets resolution in CI): this workflow carries ONLY the three
+# deploy bootstrap creds as GitHub *Environment* secrets (synced from 1Password
+# civic-observatory-ci): CONVEX_DEPLOY_KEY, CLOUDFLARE_API_TOKEN,
+# CLOUDFLARE_ACCOUNT_ID. There is no OP_SERVICE_ACCOUNT_TOKEN / op:// /
+# secretkit sync / op run / doppler run anywhere here. Runtime secrets
+# (CLERK_SECRET_KEY as a Worker secret; CLERK_JWT_ISSUER_DOMAIN, OPENROUTER_API_KEY,
+# STRIPE_* on the Convex deployment) are synced OUT-OF-BAND by the owner and
+# persist on the deployment — CI never resolves them. Public bundle vars come
+# from committed .env.production / wrangler.jsonc, not secrets.
 
 name: Deploy
 
 on:
   push:
     branches: [main]
+  pull_request:
 
 concurrency:
   group: deploy-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
+  gate:
+    name: Test & build gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Test
+        run: pnpm test
+
+      # `pnpm build` = convex codegen (local schema only, no deploy key needed)
+      # + vite build + tsc --noEmit, so this is the typecheck gate too.
+      - name: Build
+        run: pnpm build
+
   deploy:
     name: Deploy production
+    needs: gate
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     environment: production
     steps:
@@ -27,9 +61,6 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-
-      - name: Test gate
-        run: pnpm test
 
       - name: Deploy
         env:
