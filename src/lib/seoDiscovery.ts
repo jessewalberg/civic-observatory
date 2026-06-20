@@ -44,12 +44,18 @@ export async function createSitemapResponse(
 	const baseUrl = getBaseUrl(request);
 	let municipalities: SitemapMunicipality[] = [];
 	let meetings: SitemapMeeting[] = [];
+	let sitemapSource = "static-fallback";
 
 	if (source) {
 		try {
 			const records = await source.getSitemapRecords();
 			municipalities = records.municipalities;
 			meetings = records.meetings;
+			sitemapSource =
+				municipalities.length > 0 ||
+				meetings.some((meeting) => meeting.status === "summarized")
+					? "dynamic"
+					: "dynamic-empty";
 		} catch (error) {
 			console.error("Sitemap generation error:", error);
 		}
@@ -59,6 +65,7 @@ export async function createSitemapResponse(
 		headers: {
 			"Content-Type": "application/xml; charset=utf-8",
 			"Cache-Control": "public, max-age=3600, s-maxage=3600",
+			"X-Sitemap-Source": sitemapSource,
 		},
 	});
 }
@@ -147,7 +154,7 @@ ${urlElements}
 </urlset>`;
 }
 
-function createConvexSitemapSource(
+export function createConvexSitemapSource(
 	convexUrl: string | undefined,
 ): SitemapDataSource | null {
 	if (!convexUrl) {

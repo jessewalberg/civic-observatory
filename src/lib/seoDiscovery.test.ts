@@ -60,6 +60,7 @@ describe("SEO discovery responses", () => {
 
 		expect(response.status).toBe(200);
 		expect(response.headers.get("Content-Type")).toContain("application/xml");
+		expect(response.headers.get("X-Sitemap-Source")).toBe("dynamic");
 		expect(source.getSitemapRecords).toHaveBeenCalledOnce();
 
 		const body = await response.text();
@@ -89,6 +90,7 @@ describe("SEO discovery responses", () => {
 		);
 
 		expect(response.status).toBe(200);
+		expect(response.headers.get("X-Sitemap-Source")).toBe("static-fallback");
 		const body = await response.text();
 		expect(body).toContain("<loc>https://civicobservatory.com/</loc>");
 		expect(body).toContain("<loc>https://civicobservatory.com/explore</loc>");
@@ -100,6 +102,41 @@ describe("SEO discovery responses", () => {
 		);
 
 		consoleError.mockRestore();
+	});
+
+	it("marks successful but empty dynamic sitemap responses", async () => {
+		const source: SitemapDataSource = {
+			getSitemapRecords: vi.fn(async () => ({
+				municipalities: [],
+				meetings: [],
+			})),
+		};
+
+		const response = await createSitemapResponse(
+			new Request("https://civicobservatory.com/sitemap.xml"),
+			source,
+		);
+
+		expect(response.status).toBe(200);
+		expect(response.headers.get("X-Sitemap-Source")).toBe("dynamic-empty");
+
+		const body = await response.text();
+		expect(body).toContain("<loc>https://civicobservatory.com/</loc>");
+		expect(body).not.toContain("/meeting/");
+	});
+
+	it("marks no-source sitemap responses as static fallback", async () => {
+		const response = await createSitemapResponse(
+			new Request("https://civicobservatory.com/sitemap.xml"),
+			null,
+		);
+
+		expect(response.status).toBe(200);
+		expect(response.headers.get("X-Sitemap-Source")).toBe("static-fallback");
+
+		const body = await response.text();
+		expect(body).toContain("<loc>https://civicobservatory.com/</loc>");
+		expect(body).not.toContain("/meeting/");
 	});
 
 	it("redirects legacy API discovery endpoints to canonical paths", () => {
