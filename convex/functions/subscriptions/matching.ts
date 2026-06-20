@@ -1,5 +1,17 @@
 import type { Doc } from "../../_generated/dataModel";
 
+const NON_DISCRIMINATING_TOPIC_TOKENS = new Set([
+	"and",
+	"for",
+	"general",
+	"human",
+	"of",
+	"public",
+	"service",
+	"services",
+	"the",
+]);
+
 export type SubscriptionMatchSkipReason =
 	| "inactive"
 	| "missing_user"
@@ -108,8 +120,8 @@ function getMatchedTopics(
 		return summary.topics.slice(0, 3);
 	}
 
-	return subscription.topicFilters.filter((filter) =>
-		summary.topics.some((topic) => topicsMatch(filter, topic)),
+	return summary.topics.filter((topic) =>
+		subscription.topicFilters?.some((filter) => topicsMatch(filter, topic)),
 	);
 }
 
@@ -120,15 +132,27 @@ function topicsMatch(filter: string, topic: string): boolean {
 		return false;
 	}
 
+	if (normalizedFilter === normalizedTopic) {
+		return true;
+	}
+
+	if (normalizedTopic.includes(normalizedFilter)) {
+		return true;
+	}
+
+	const topicTokens = tokenize(normalizedTopic);
 	if (
-		normalizedFilter.includes(normalizedTopic) ||
-		normalizedTopic.includes(normalizedFilter)
+		normalizedFilter.includes(normalizedTopic) &&
+		topicTokens.some(isDiscriminatingTopicToken)
 	) {
 		return true;
 	}
 
-	const topicTokens = new Set(tokenize(normalizedTopic));
-	return tokenize(normalizedFilter).some((token) => topicTokens.has(token));
+	const topicTokenSet = new Set(topicTokens);
+	const filterTokens = tokenize(normalizedFilter).filter(
+		isDiscriminatingTopicToken,
+	);
+	return filterTokens.some((token) => topicTokenSet.has(token));
 }
 
 function buildSummarySearchText(summary: Doc<"summaries">): string {
@@ -157,6 +181,10 @@ function includesKeyword(text: string, keyword: string): boolean {
 
 function tokenize(value: string): string[] {
 	return value.split(" ").filter((token) => token.length >= 3);
+}
+
+function isDiscriminatingTopicToken(token: string): boolean {
+	return !NON_DISCRIMINATING_TOPIC_TOKENS.has(token);
 }
 
 function normalizeText(value: string): string {

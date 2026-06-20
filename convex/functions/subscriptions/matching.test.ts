@@ -52,17 +52,30 @@ async function seedMunicipality(
 async function seedMeetingAndSummary(
 	t: ReturnType<typeof convexTest>,
 	municipalityId: Id<"municipalities">,
+	options: {
+		meetingType?:
+			| "city_council"
+			| "school_board"
+			| "planning_commission"
+			| "zoning_board"
+			| "budget_committee"
+			| "other";
+		executiveSummary?: string;
+		topics?: string[];
+	} = {},
 ) {
 	const now = Date.now();
 	const meetingId = await t.run(async (ctx) =>
 		ctx.db.insert("meetings", {
 			municipalityId,
 			title: "Town Council Bond Hearing",
-			meetingType: "city_council" as const,
+			meetingType: options.meetingType ?? ("city_council" as const),
 			meetingDate: Date.UTC(2026, 5, 18),
 			sourceType: "manual_entry" as const,
 			sourceUrl: "https://example.test/agenda.pdf",
-			rawContent: "Council discussed school safety and a park bond.",
+			rawContent:
+				options.executiveSummary ??
+				"Council discussed school safety and a park bond.",
 			status: "summarized" as const,
 			createdAt: now,
 			updatedAt: now,
@@ -73,6 +86,7 @@ async function seedMeetingAndSummary(
 			meetingId,
 			version: 1,
 			executiveSummary:
+				options.executiveSummary ??
 				"Council reviewed a park bond and school safety staffing.",
 			keyDecisions: [
 				{
@@ -89,7 +103,7 @@ async function seedMeetingAndSummary(
 				},
 			],
 			upcomingItems: [],
-			topics: ["budget", "public safety"],
+			topics: options.topics ?? ["budget", "public safety"],
 			modelUsed: "test",
 			promptVersion: "test",
 			processingTimeMs: 1,
@@ -109,7 +123,7 @@ async function seedMeetingAndSummary(
 }
 
 describe("subscription summary matching model", () => {
-	it("returns deterministic topic and keyword match data for eligible subscriptions", async () => {
+	it("returns deterministic topic and keyword match data for eligible Pro immediate subscriptions", async () => {
 		const t = setup();
 		const municipalityId = await seedMunicipality(t, "Coventry");
 		const userId = await seedUser(t, {
@@ -129,7 +143,7 @@ describe("subscription summary matching model", () => {
 				meetingTypes: ["city_council"],
 				keywordsInclude: ["bond"],
 				keywordsExclude: ["zoning"],
-				alertFrequency: "daily" as const,
+				alertFrequency: "immediate" as const,
 				emailEnabled: true,
 				isActive: true,
 				createdAt: Date.now(),
@@ -145,7 +159,7 @@ describe("subscription summary matching model", () => {
 		).resolves.toMatchObject([
 			{
 				subscription: { _id: subscriptionId },
-				matchedTopics: ["Budget & Finance"],
+				matchedTopics: ["budget"],
 				matchedKeywords: ["bond"],
 			},
 		]);
@@ -165,15 +179,19 @@ describe("subscription summary matching model", () => {
 			subscriptionId,
 			meetingId,
 			summaryId,
-			matchedTopics: ["Budget & Finance"],
+			matchedTopics: ["budget"],
 			matchedKeywords: ["bond"],
 		});
 	});
 
-	it("filters municipality, topic, include keyword, exclude keyword, inactive, and tier-gated immediate subscriptions", async () => {
+	it("filters municipality, meeting type, topic, keywords, inactive, missing-user, and tier-gated subscriptions", async () => {
 		const t = setup();
 		const municipalityId = await seedMunicipality(t, "Coventry");
 		const otherMunicipalityId = await seedMunicipality(t, "Mansfield");
+		const missingUserId = await seedUser(t, {
+			clerkUserId: "user_deleted",
+			email: "deleted@example.test",
+		});
 		const freeUserId = await seedUser(t, {
 			clerkUserId: "user_free",
 			email: "free@example.test",
@@ -187,6 +205,7 @@ describe("subscription summary matching model", () => {
 			t,
 			municipalityId as Id<"municipalities">,
 		);
+		await t.run(async (ctx) => ctx.db.delete(missingUserId as Id<"users">));
 
 		await t.run(async (ctx) => {
 			const base = {
@@ -210,6 +229,11 @@ describe("subscription summary matching model", () => {
 				ctx.db.insert("subscriptions", {
 					...base,
 					municipalityId: municipalityId as Id<"municipalities">,
+					meetingTypes: ["school_board"],
+				}),
+				ctx.db.insert("subscriptions", {
+					...base,
+					municipalityId: municipalityId as Id<"municipalities">,
 					keywordsInclude: ["library"],
 				}),
 				ctx.db.insert("subscriptions", {
@@ -228,6 +252,11 @@ describe("subscription summary matching model", () => {
 					municipalityId: municipalityId as Id<"municipalities">,
 					alertFrequency: "immediate" as const,
 				}),
+				ctx.db.insert("subscriptions", {
+					...base,
+					userId: missingUserId as Id<"users">,
+					municipalityId: municipalityId as Id<"municipalities">,
+				}),
 			]);
 		});
 
@@ -243,7 +272,45 @@ describe("subscription summary matching model", () => {
 				meetingId,
 				summaryId,
 			}),
-		).resolves.toMatchObject({ created: 0, skipped: 5, errors: [] });
+		).resolves.toMatchObject({ created: 0, skipped: 7, errors: [] });
+	});
+
+	it("does not match topic filters on generic shared tokens", async () => {
+		const t = setup();
+		const municipalityId = await seedMunicipality(t, "Coventry");
+		const userId = await seedUser(t, {
+			clerkUserId: "user_public_safety",
+			email: "safety@example.test",
+			tier: "pro",
+		});
+		const { meetingId, summaryId } = await seedMeetingAndSummary(
+			t,
+			municipalityId as Id<"municipalities">,
+			{
+				executiveSummary:
+					"Public works crews discussed road drainage and sidewalk repairs.",
+				topics: ["public works"],
+			},
+		);
+		await t.run(async (ctx) =>
+			ctx.db.insert("subscriptions", {
+				userId: userId as Id<"users">,
+				municipalityId: municipalityId as Id<"municipalities">,
+				topicFilters: ["Public Safety"],
+				alertFrequency: "daily" as const,
+				emailEnabled: true,
+				isActive: true,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			}),
+		);
+
+		await expect(
+			t.query(internal.functions.subscriptions.queries.getMatchingForSummary, {
+				meetingId,
+				summaryId,
+			}),
+		).resolves.toEqual([]);
 	});
 
 	it("prevents duplicate summary/subscription matches", async () => {
