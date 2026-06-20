@@ -3,7 +3,7 @@ import { v } from "convex/values";
 
 export default defineSchema({
 	// ═══════════════════════════════════════════════════════════════
-	// USERS - Synced from WorkOS
+	// USERS - Synced from Clerk
 	// ═══════════════════════════════════════════════════════════════
 	users: defineTable({
 		// clerkUserId is the Clerk subject (identity key). workosUserId is a
