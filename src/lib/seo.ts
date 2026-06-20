@@ -5,6 +5,7 @@
 export const SITE_NAME = "Civic Observatory";
 export const SITE_URL = "https://civicobservatory.com";
 export const NOINDEX_ROBOTS = "noindex, nofollow";
+export const DEFAULT_SOCIAL_IMAGE = `${SITE_URL}/social-preview.png`;
 export const DEFAULT_DESCRIPTION =
 	"AI-powered summaries of local government meetings. Stay informed about city councils, school boards, and planning commissions.";
 

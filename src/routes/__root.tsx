@@ -13,6 +13,7 @@ import { AppConvexProvider } from "@/components/AppConvexProvider";
 import { ErrorBoundary, RootErrorFallback } from "@/components/error";
 import { Header } from "@/components/Header";
 import { RouteLoadingFallback } from "@/components/SuspenseFallback";
+import { DEFAULT_SOCIAL_IMAGE } from "@/lib/seo";
 import appCss from "@/styles.css?url";
 
 export const Route = createRootRoute({
@@ -22,6 +23,19 @@ export const Route = createRootRoute({
 			{ name: "viewport", content: "width=device-width, initial-scale=1" },
 			{ title: "Civic Observatory - Municipal Meeting Summarizer" },
 			{ name: "theme-color", content: "#0A0A0B" },
+			{ property: "og:image", content: DEFAULT_SOCIAL_IMAGE },
+			{ property: "og:image:width", content: "1200" },
+			{ property: "og:image:height", content: "630" },
+			{
+				property: "og:image:alt",
+				content: "Civic Observatory local government meeting alerts",
+			},
+			{ name: "twitter:card", content: "summary_large_image" },
+			{ name: "twitter:image", content: DEFAULT_SOCIAL_IMAGE },
+			{
+				name: "twitter:image:alt",
+				content: "Civic Observatory local government meeting alerts",
+			},
 			// Core Web Vitals / Performance hints
 			{ name: "format-detection", content: "telephone=no" },
 			{ httpEquiv: "x-dns-prefetch-control", content: "on" },
