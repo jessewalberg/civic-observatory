@@ -29,7 +29,7 @@ import {
 	CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { VoteDisplay } from "@/components/VoteDisplay";
-import { NOINDEX_ROBOTS } from "@/lib/seo";
+import { canonicalLink, NOINDEX_ROBOTS } from "@/lib/seo";
 import { cn } from "@/lib/utils";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -143,6 +143,7 @@ export const Route = createFileRoute("/meeting/$meetingId")({
 					children: JSON.stringify(jsonLd),
 				},
 			],
+			links: [canonicalLink(`/meeting/${meeting._id}`)],
 		};
 	},
 	notFoundComponent: MeetingNotFoundPage,

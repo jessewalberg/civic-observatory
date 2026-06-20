@@ -8,6 +8,14 @@ export const NOINDEX_ROBOTS = "noindex, nofollow";
 export const DEFAULT_DESCRIPTION =
 	"AI-powered summaries of local government meetings. Stay informed about city councils, school boards, and planning commissions.";
 
+export function canonicalUrl(path: string): string {
+	return new URL(path, SITE_URL).toString();
+}
+
+export function canonicalLink(path: string) {
+	return { rel: "canonical", href: canonicalUrl(path) };
+}
+
 /**
  * Generate meta tags for a page
  */

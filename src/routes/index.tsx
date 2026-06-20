@@ -21,6 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CompactVoteDisplay } from "@/components/VoteDisplay";
+import { canonicalLink } from "@/lib/seo";
 
 export const Route = createFileRoute("/")({
 	component: LandingPage,
@@ -78,6 +79,7 @@ export const Route = createFileRoute("/")({
 					children: JSON.stringify(jsonLd),
 				},
 			],
+			links: [canonicalLink("/")],
 		};
 	},
 });

@@ -30,6 +30,7 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { canonicalLink } from "@/lib/seo";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 
@@ -129,6 +130,7 @@ export const Route = createFileRoute("/explore/$municipalityId")({
 					children: JSON.stringify(jsonLd),
 				},
 			],
+			links: [canonicalLink(`/explore/${municipality._id}`)],
 		};
 	},
 });

@@ -17,6 +17,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { canonicalLink } from "@/lib/seo";
 import { api } from "../../../convex/_generated/api";
 
 export const Route = createFileRoute("/explore/")({
@@ -51,6 +52,7 @@ export const Route = createFileRoute("/explore/")({
 					"Browse and search local governments across the United States. Find meeting summaries.",
 			},
 		],
+		links: [canonicalLink("/explore")],
 	}),
 });
 

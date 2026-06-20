@@ -23,6 +23,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { canonicalLink } from "@/lib/seo";
 import { cn } from "@/lib/utils";
 import { api } from "../../convex/_generated/api";
 
@@ -83,6 +84,7 @@ export const Route = createFileRoute("/pricing")({
 					children: JSON.stringify(jsonLd),
 				},
 			],
+			links: [canonicalLink("/pricing")],
 		};
 	},
 	component: PricingPage,
