@@ -1,6 +1,10 @@
 import { v } from "convex/values";
 import { mutation } from "../../_generated/server";
-import { getCurrentUser, getIdentity, requireAdmin } from "../../lib/auth";
+import {
+	ensureCurrentUserFromIdentity,
+	getCurrentUser,
+	requireAdmin,
+} from "../../lib/auth";
 
 /**
  * Phase-2 lazy claim/create (plan §2.6 option b): on the first authenticated
@@ -11,34 +15,7 @@ import { getCurrentUser, getIdentity, requireAdmin } from "../../lib/auth";
 export const ensureFromIdentity = mutation({
 	args: {},
 	handler: async (ctx) => {
-		const identity = await getIdentity(ctx);
-		if (!identity) {
-			throw new Error("Not authenticated");
-		}
-		const now = Date.now();
-
-		const byClerkId = await ctx.db
-			.query("users")
-			.withIndex("by_clerk_id", (q) => q.eq("clerkUserId", identity.subject))
-			.unique();
-		if (byClerkId) {
-			await ctx.db.patch(byClerkId._id, { lastLoginAt: now });
-			return byClerkId._id;
-		}
-
-		// CREATE-ONLY, keyed on the Clerk subject. No claim-by-email (that would
-		// be a row-takeover primitive). First Clerk login always makes a FRESH
-		// user; WorkOS-era history is not carried over — owner accepted, no
-		// backwards compat (ADR-0001 / migration plan 2026-06-06).
-		const email = identity.email;
-		return await ctx.db.insert("users", {
-			clerkUserId: identity.subject,
-			email: email ?? "",
-			name: typeof identity.name === "string" ? identity.name : undefined,
-			tier: "free",
-			createdAt: now,
-			lastLoginAt: now,
-		});
+		return (await ensureCurrentUserFromIdentity(ctx))._id;
 	},
 });
 
