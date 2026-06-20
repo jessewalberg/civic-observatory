@@ -22,13 +22,6 @@ export const Route = createRootRoute({
 			{ name: "viewport", content: "width=device-width, initial-scale=1" },
 			{ title: "Civic Observatory - Municipal Meeting Summarizer" },
 			{ name: "theme-color", content: "#0A0A0B" },
-			// SEO essentials
-			{ name: "robots", content: "index, follow" },
-			{
-				name: "googlebot",
-				content:
-					"index, follow, max-video-preview:-1, max-image-preview:large, max-snippet:-1",
-			},
 			// Core Web Vitals / Performance hints
 			{ name: "format-detection", content: "telephone=no" },
 			{ httpEquiv: "x-dns-prefetch-control", content: "on" },

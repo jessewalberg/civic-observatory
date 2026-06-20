@@ -26,6 +26,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
+import { NOINDEX_ROBOTS } from "@/lib/seo";
 import { requireAuth } from "@/lib/serverAuth";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -42,6 +43,7 @@ export const Route = createFileRoute("/dashboard/subscriptions")({
 				name: "description",
 				content: "Manage your municipality subscriptions",
 			},
+			{ name: "robots", content: NOINDEX_ROBOTS },
 		],
 	}),
 	component: SubscriptionsPage,

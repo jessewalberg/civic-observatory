@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { LoadingButton } from "@/components/ui/loading-button";
+import { NOINDEX_ROBOTS } from "@/lib/seo";
 import { requireAuth } from "@/lib/serverAuth";
 import { cn } from "@/lib/utils";
 import { api } from "../../../convex/_generated/api";
@@ -34,6 +35,7 @@ export const Route = createFileRoute("/dashboard/")({
 				name: "description",
 				content: "Your personalized feed of local government updates",
 			},
+			{ name: "robots", content: NOINDEX_ROBOTS },
 		],
 	}),
 	component: DashboardPage,

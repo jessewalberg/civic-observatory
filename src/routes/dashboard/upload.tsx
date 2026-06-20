@@ -27,6 +27,7 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { NOINDEX_ROBOTS } from "@/lib/seo";
 import { requireAuth } from "@/lib/serverAuth";
 import { cn } from "@/lib/utils";
 import { api } from "../../../convex/_generated/api";
@@ -43,6 +44,7 @@ export const Route = createFileRoute("/dashboard/upload")({
 				name: "description",
 				content: "Upload a meeting document for AI summarization",
 			},
+			{ name: "robots", content: NOINDEX_ROBOTS },
 		],
 	}),
 	component: UploadPage,

@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { ConvexHttpClient } from "convex/browser";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import {
@@ -29,6 +29,7 @@ import {
 	CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { VoteDisplay } from "@/components/VoteDisplay";
+import { NOINDEX_ROBOTS } from "@/lib/seo";
 import { cn } from "@/lib/utils";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -39,26 +40,35 @@ export const Route = createFileRoute("/meeting/$meetingId")({
 	loader: async ({ params }) => {
 		const convexUrl = import.meta.env.VITE_CONVEX_URL;
 		if (!convexUrl) {
-			return { meeting: null };
+			throw notFound();
 		}
+		let meeting: MeetingData | null;
 		try {
 			const convex = new ConvexHttpClient(convexUrl);
-			const meeting = await convex.query(
+			meeting = await convex.query(
 				api.functions.meetings.queries.getWithSummary,
 				{
 					id: params.meetingId as Id<"meetings">,
 				},
 			);
-			return { meeting };
 		} catch {
-			return { meeting: null };
+			throw notFound();
 		}
+
+		if (!meeting) {
+			throw notFound();
+		}
+
+		return { meeting };
 	},
 	head: ({ loaderData }) => {
 		const meeting = loaderData?.meeting;
 		if (!meeting) {
 			return {
-				meta: [{ title: "Meeting Not Found | Civic Observatory" }],
+				meta: [
+					{ title: "Meeting Not Found | Civic Observatory" },
+					{ name: "robots", content: NOINDEX_ROBOTS },
+				],
 			};
 		}
 
@@ -135,6 +145,7 @@ export const Route = createFileRoute("/meeting/$meetingId")({
 			],
 		};
 	},
+	notFoundComponent: MeetingNotFoundPage,
 });
 
 const meetingTypeLabels: Record<string, string> = {
@@ -260,28 +271,7 @@ function MeetingDetailPage() {
 	}
 
 	if (meeting === null) {
-		return (
-			<div className="min-h-screen bg-background flex items-center justify-center">
-				<motion.div
-					initial={{ opacity: 0, y: 20 }}
-					animate={{ opacity: 1, y: 0 }}
-					className="text-center"
-				>
-					<div className="rounded-full bg-muted p-4 mb-4 mx-auto w-fit">
-						<FileText className="h-8 w-8 text-muted-foreground" />
-					</div>
-					<h1 className="font-display text-2xl font-bold text-foreground mb-2">
-						Meeting not found
-					</h1>
-					<p className="text-muted-foreground mb-6">
-						The meeting you're looking for doesn't exist.
-					</p>
-					<Link to="/explore">
-						<Button variant="outline">Back to Explore</Button>
-					</Link>
-				</motion.div>
-			</div>
-		);
+		return <MeetingNotFoundPage />;
 	}
 
 	// Show rate limit exceeded for summarized meetings with summary content
@@ -657,6 +647,31 @@ function MeetingDetailPage() {
 					)}
 				</motion.div>
 			</div>
+		</div>
+	);
+}
+
+function MeetingNotFoundPage() {
+	return (
+		<div className="min-h-screen bg-background flex items-center justify-center">
+			<motion.div
+				initial={{ opacity: 0, y: 20 }}
+				animate={{ opacity: 1, y: 0 }}
+				className="text-center"
+			>
+				<div className="rounded-full bg-muted p-4 mb-4 mx-auto w-fit">
+					<FileText className="h-8 w-8 text-muted-foreground" />
+				</div>
+				<h1 className="font-display text-2xl font-bold text-foreground mb-2">
+					Meeting not found
+				</h1>
+				<p className="text-muted-foreground mb-6">
+					The meeting you're looking for doesn't exist.
+				</p>
+				<Link to="/explore">
+					<Button variant="outline">Back to Explore</Button>
+				</Link>
+			</motion.div>
 		</div>
 	);
 }
