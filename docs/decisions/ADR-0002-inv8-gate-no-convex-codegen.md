@@ -69,6 +69,10 @@ gate-path one:
   (~"`pnpm build` = convex codegen … + vite build + tsc") is now **stale** — `build` no
   longer runs codegen. Correct that comment so the workflow doc matches this ADR.
 
+  **2026-06-19 update:** resolved in the workflow comment. The gate comment now
+  states that `pnpm build` is keyless (`vite build` + `tsc --noEmit`) and that
+  `convex deploy` regenerates committed `_generated/` files on the deploy path.
+
 ## Scope — portfolio-wide convention
 
 This is **not** civic-observatory-specific. **Any repo whose `build` script runs

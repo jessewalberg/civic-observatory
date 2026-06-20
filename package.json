@@ -15,9 +15,9 @@
 		"audit:municipality": "node scripts/municipality-data-audit.mjs",
 		"requeue:municipality": "node scripts/requeue-municipality-meetings.mjs",
 		"unstick:processing": "node scripts/unstick-processing-meetings.mjs",
-		"convex:push": "bunx convex dev --once",
-		"deploy": "npx convex deploy && pnpm run build",
-		"deploy:convex": "npx convex deploy"
+		"convex:push": "pnpm exec convex dev --once",
+		"deploy": "pnpm exec convex deploy && pnpm run build",
+		"deploy:convex": "pnpm exec convex deploy"
 	},
 	"dependencies": {
 		"@clerk/clerk-react": "^5.61.3",

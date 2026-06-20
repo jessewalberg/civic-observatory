@@ -42,8 +42,9 @@ jobs:
       - name: Test
         run: pnpm test
 
-      # `pnpm build` = convex codegen (local schema only, no deploy key needed)
-      # + vite build + tsc --noEmit, so this is the typecheck gate too.
+      # `pnpm build` intentionally stays keyless: vite build + tsc --noEmit
+      # against committed convex/_generated files. convex deploy regenerates
+      # those files on the deploy path where the deploy key exists.
       - name: Build
         run: pnpm build
 
