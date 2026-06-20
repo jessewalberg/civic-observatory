@@ -129,6 +129,39 @@ describe("structured data model", () => {
 		expect(jsonLd).not.toMatchObject({ "@type": "GovernmentService" });
 	});
 
+	it("uses summary provenance as the meeting citation when available", () => {
+		const jsonLd = firstJsonLd(MeetingRoute, {
+			loaderData: {
+				meeting: {
+					_id: "meeting_123",
+					slug: "coventry-ct-2026-06-15-town-council-meeting",
+					_creationTime: Date.UTC(2026, 5, 16),
+					title: "Town Council Meeting and Public Hearing",
+					meetingType: "city_council",
+					meetingDate: Date.UTC(2026, 5, 15),
+					summary: {
+						executiveSummary: "Council reviewed budget and grant items.",
+						topics: ["budget", "safety"],
+						keyDecisions: [],
+						sourceUrl:
+							"https://www.coventry-ct.gov/AgendaCenter/ViewFile/Agenda/_06152026-4545?packet=true",
+					},
+					municipality: {
+						_id: "municipality_123",
+						slug: "coventry-ct",
+						name: "Coventry",
+						state: "Connecticut",
+					},
+				},
+			},
+		});
+
+		expect(jsonLd).toMatchObject({
+			citation:
+				"https://www.coventry-ct.gov/AgendaCenter/ViewFile/Agenda/_06152026-4545?packet=true",
+		});
+	});
+
 	it("models pricing as a webpage for software application offers", () => {
 		const jsonLd = firstJsonLd(PricingRoute);
 

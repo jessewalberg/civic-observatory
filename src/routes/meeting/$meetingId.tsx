@@ -18,6 +18,7 @@ import {
 	Loader2,
 	MapPin,
 	MessageSquare,
+	ShieldCheck,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
@@ -34,6 +35,11 @@ import {
 	CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { VoteDisplay } from "@/components/VoteDisplay";
+import {
+	formatMeetingDate,
+	formatMeetingScheduleDate,
+} from "@/lib/meetingDates";
+import { getMeetingSourceTrust } from "@/lib/meetingTrust";
 import { meetingPath, publicIdentifier } from "@/lib/publicUrls";
 import {
 	canonicalLink,
@@ -97,11 +103,7 @@ export const Route = createFileRoute("/meeting/$meetingId")({
 		const typeLabel =
 			meetingTypeLabels[meeting.meetingType] ?? meeting.meetingType;
 		const date = new Date(meeting.meetingDate);
-		const formattedDate = date.toLocaleDateString("en-US", {
-			year: "numeric",
-			month: "long",
-			day: "numeric",
-		});
+		const formattedDate = formatMeetingDate(meeting.meetingDate);
 
 		const description = meeting.summary?.executiveSummary
 			? meeting.summary.executiveSummary.slice(0, 160) +
@@ -112,6 +114,7 @@ export const Route = createFileRoute("/meeting/$meetingId")({
 		const municipalityName = meeting.municipality?.name || "Local Government";
 
 		const meetingUrl = canonicalUrl(meetingPath(meeting));
+		const sourceUrl = meeting.summary?.sourceUrl ?? meeting.sourceUrl;
 
 		return {
 			meta: [
@@ -148,7 +151,7 @@ export const Route = createFileRoute("/meeting/$meetingId")({
 							},
 							meetingType: typeLabel,
 							url: meetingUrl,
-							sourceUrl: meeting.sourceUrl,
+							sourceUrl,
 							topics: meeting.summary?.topics,
 						}),
 					),
@@ -199,6 +202,8 @@ interface MeetingData {
 	meetingDate: number;
 	status: "pending" | "processing" | "summarized" | "failed" | "skipped";
 	sourceUrl?: string;
+	sourceType?: "scraped" | "uploaded" | "manual_entry";
+	contentHash?: string;
 	rawContent?: string;
 	processingError?: string;
 	summary: {
@@ -229,6 +234,11 @@ interface MeetingData {
 		upcomingItems: Array<{ title: string; expectedDate?: string }>;
 		topics: string[];
 		sentiment?: "routine" | "contentious" | "celebratory" | "urgent";
+		sourceUrl?: string;
+		sourceType?: "scraped" | "uploaded" | "manual_entry";
+		sourceContentHash?: string;
+		status?: "summarized" | "failed" | "skipped";
+		error?: string;
 	} | null;
 	municipality: {
 		_id: Id<"municipalities">;
@@ -313,7 +323,6 @@ function MeetingDetailPage() {
 		);
 	}
 
-	const date = new Date(meeting.meetingDate);
 	const typeLabel =
 		meetingTypeLabels[meeting.meetingType] ?? meeting.meetingType;
 	const canRetry = isAuthenticated;
@@ -341,7 +350,8 @@ function MeetingDetailPage() {
 			<div className="min-h-screen bg-background">
 				<div className="container mx-auto px-4 py-8 max-w-4xl">
 					<Breadcrumb meeting={meeting} />
-					<MeetingHeader meeting={meeting} date={date} typeLabel={typeLabel} />
+					<MeetingHeader meeting={meeting} typeLabel={typeLabel} />
+					<SummaryTrustPanel meeting={meeting} />
 
 					<motion.div
 						initial={{ opacity: 0, y: 20 }}
@@ -389,7 +399,8 @@ function MeetingDetailPage() {
 			<div className="min-h-screen bg-background">
 				<div className="container mx-auto px-4 py-8 max-w-4xl">
 					<Breadcrumb meeting={meeting} />
-					<MeetingHeader meeting={meeting} date={date} typeLabel={typeLabel} />
+					<MeetingHeader meeting={meeting} typeLabel={typeLabel} />
+					<SummaryTrustPanel meeting={meeting} />
 
 					{isFuture && meeting.rawContent ? (
 						<motion.div
@@ -427,12 +438,8 @@ function MeetingDetailPage() {
 							</h2>
 							<p className="text-muted-foreground max-w-md">
 								This meeting is scheduled for{" "}
-								{date.toLocaleDateString("en-US", {
-									weekday: "long",
-									month: "long",
-									day: "numeric",
-								})}
-								. A summary will be generated after it takes place.
+								{formatMeetingScheduleDate(meeting.meetingDate)}. A summary will
+								be generated after it takes place.
 							</p>
 						</motion.div>
 					) : (
@@ -468,7 +475,8 @@ function MeetingDetailPage() {
 			<div className="min-h-screen bg-background">
 				<div className="container mx-auto px-4 py-8 max-w-4xl">
 					<Breadcrumb meeting={meeting} />
-					<MeetingHeader meeting={meeting} date={date} typeLabel={typeLabel} />
+					<MeetingHeader meeting={meeting} typeLabel={typeLabel} />
+					<SummaryTrustPanel meeting={meeting} />
 
 					<motion.div
 						initial={{ opacity: 0, y: 20 }}
@@ -530,7 +538,8 @@ function MeetingDetailPage() {
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ duration: 0.4 }}
 				>
-					<MeetingHeader meeting={meeting} date={date} typeLabel={typeLabel} />
+					<MeetingHeader meeting={meeting} typeLabel={typeLabel} />
+					<SummaryTrustPanel meeting={meeting} />
 
 					{meeting.summary ? (
 						<div className="space-y-10">
@@ -726,14 +735,14 @@ function Breadcrumb({ meeting }: { meeting: MeetingData }) {
 // Meeting header component
 interface MeetingHeaderProps {
 	meeting: MeetingData;
-	date: Date;
 	typeLabel: string;
 }
 
-function MeetingHeader({ meeting, date, typeLabel }: MeetingHeaderProps) {
+function MeetingHeader({ meeting, typeLabel }: MeetingHeaderProps) {
 	const sentiment = meeting.summary?.sentiment;
 	const sentimentInfo = sentiment ? sentimentConfig[sentiment] : null;
 	const isFutureMeeting = meeting.meetingDate > Date.now();
+	const sourceTrust = getMeetingSourceTrust(meeting);
 
 	const shareDescription = meeting.summary?.executiveSummary
 		? `${meeting.summary.executiveSummary.slice(0, 150)}...`
@@ -760,12 +769,7 @@ function MeetingHeader({ meeting, date, typeLabel }: MeetingHeaderProps) {
 					<Calendar className="h-4 w-4" />
 					<span>
 						{isFutureMeeting ? "Scheduled for " : ""}
-						{date.toLocaleDateString("en-US", {
-							weekday: "long",
-							year: "numeric",
-							month: "long",
-							day: "numeric",
-						})}
+						{formatMeetingDate(meeting.meetingDate)}
 					</span>
 				</div>
 				{meeting.meetingType !== "other" && (
@@ -793,9 +797,9 @@ function MeetingHeader({ meeting, date, typeLabel }: MeetingHeaderProps) {
 					</div>
 				)}
 				<div className="flex items-center gap-2">
-					{meeting.sourceUrl && (
+					{sourceTrust.sourceUrl && (
 						<a
-							href={meeting.sourceUrl}
+							href={sourceTrust.sourceUrl}
 							target="_blank"
 							rel="noopener noreferrer"
 						>
@@ -811,6 +815,88 @@ function MeetingHeader({ meeting, date, typeLabel }: MeetingHeaderProps) {
 		</header>
 	);
 }
+
+function SummaryTrustPanel({ meeting }: { meeting: MeetingData }) {
+	const trust = getMeetingSourceTrust(meeting);
+	const tone = trustTone[trust.state];
+
+	return (
+		<Card className={cn("mb-8 border p-4", tone.className)}>
+			<div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+				<div className="flex gap-3">
+					<div className={cn("mt-0.5 rounded-full p-2", tone.iconClassName)}>
+						{trust.state === "source-backed" ? (
+							<ShieldCheck className="h-4 w-4" />
+						) : (
+							<AlertCircle className="h-4 w-4" />
+						)}
+					</div>
+					<div className="space-y-2">
+						<div>
+							<h2 className="font-display text-base font-semibold text-foreground">
+								{trust.label}
+							</h2>
+							<p className="text-sm text-muted-foreground">
+								{trust.description}
+							</p>
+						</div>
+						<div className="flex flex-wrap gap-2">
+							{trust.sourceTypeLabel && (
+								<Badge variant="outline">{trust.sourceTypeLabel}</Badge>
+							)}
+							<Badge variant={trust.hasContentHash ? "secondary" : "outline"}>
+								{trust.hasContentHash
+									? "Source hash recorded"
+									: "No source hash"}
+							</Badge>
+						</div>
+						{trust.error && (
+							<p className="text-xs text-red-400">{trust.error}</p>
+						)}
+					</div>
+				</div>
+
+				{trust.sourceUrl ? (
+					<a
+						href={trust.sourceUrl}
+						target="_blank"
+						rel="noopener noreferrer"
+						className="shrink-0"
+					>
+						<Button variant="outline" size="sm">
+							<ExternalLink className="mr-2 h-4 w-4" />
+							Open source
+						</Button>
+					</a>
+				) : (
+					<Button variant="outline" size="sm" disabled className="shrink-0">
+						<FileText className="mr-2 h-4 w-4" />
+						Source missing
+					</Button>
+				)}
+			</div>
+		</Card>
+	);
+}
+
+const trustTone = {
+	"source-backed": {
+		className: "border-emerald-500/20 bg-emerald-500/5",
+		iconClassName: "bg-emerald-500/10 text-emerald-500",
+	},
+	"source-linked": {
+		className: "border-amber-500/20 bg-amber-500/5",
+		iconClassName: "bg-amber-500/10 text-amber-500",
+	},
+	"missing-source": {
+		className: "border-amber-500/20 bg-amber-500/5",
+		iconClassName: "bg-amber-500/10 text-amber-500",
+	},
+	failed: {
+		className: "border-red-500/20 bg-red-500/5",
+		iconClassName: "bg-red-500/10 text-red-500",
+	},
+} as const;
 
 // Decision card component
 interface DecisionCardProps {
