@@ -14,6 +14,7 @@
 		"check": "biome check",
 		"audit:municipality": "node scripts/municipality-data-audit.mjs",
 		"requeue:municipality": "node scripts/requeue-municipality-meetings.mjs",
+		"smoke:core-loop": "bun scripts/core-loop-smoke.mjs",
 		"unstick:processing": "node scripts/unstick-processing-meetings.mjs",
 		"convex:push": "pnpm exec convex dev --once",
 		"deploy": "pnpm exec convex deploy && pnpm run build",
