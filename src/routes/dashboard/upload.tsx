@@ -27,8 +27,8 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils";
 import { requireAuth } from "@/lib/serverAuth";
+import { cn } from "@/lib/utils";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 
@@ -82,17 +82,15 @@ function UploadPage() {
 		activeOnly: true,
 	});
 
-	const usageCheck = useQuery(
-		api.functions.usage.queries.checkLimit,
-		{ action: "meeting_upload" },
-	);
+	const usageCheck = useQuery(api.functions.usage.queries.checkLimit, {
+		action: "meeting_upload",
+	});
 
 	// Mutations
 	const createMeeting = useMutation(api.functions.meetings.mutations.create);
 	const generateUploadUrl = useMutation(
 		api.functions.storage.mutations.generateUploadUrl,
 	);
-
 
 	// Usage limit check
 	if (usageCheck && !usageCheck.allowed) {
@@ -236,7 +234,9 @@ function UploadPage() {
 
 			xhr.upload.addEventListener("progress", (event) => {
 				if (event.lengthComputable) {
-					const percentComplete = Math.round((event.loaded / event.total) * 100);
+					const percentComplete = Math.round(
+						(event.loaded / event.total) * 100,
+					);
 					setUploadProgress(percentComplete);
 				}
 			});

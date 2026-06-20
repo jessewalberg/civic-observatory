@@ -10,7 +10,10 @@ import type { Doc } from "../../convex/_generated/dataModel";
  */
 export function useConvexUser(): Doc<"users"> | null | undefined {
 	const { isAuthenticated } = useConvexAuth();
-	return useQuery(api.functions.users.queries.current, isAuthenticated ? {} : "skip");
+	return useQuery(
+		api.functions.users.queries.current,
+		isAuthenticated ? {} : "skip",
+	);
 }
 
 /**

@@ -150,6 +150,14 @@ const meetingTypeLabels: Record<MeetingType, string> = {
 	other: "Other",
 };
 
+const MEETING_SKELETON_KEYS = [
+	"meeting-skeleton-1",
+	"meeting-skeleton-2",
+	"meeting-skeleton-3",
+	"meeting-skeleton-4",
+	"meeting-skeleton-5",
+];
+
 function MunicipalityDetailPage() {
 	const { municipalityId } = Route.useParams();
 	const { isAuthenticated } = useConvexAuth();
@@ -453,8 +461,8 @@ function MunicipalityDetailPage() {
 				{/* Loading State */}
 				{meetingsData === undefined && (
 					<div className="space-y-4">
-						{Array.from({ length: 5 }).map((_, i) => (
-							<MeetingCardSkeleton key={i} />
+						{MEETING_SKELETON_KEYS.map((key) => (
+							<MeetingCardSkeleton key={key} />
 						))}
 					</div>
 				)}
@@ -582,8 +590,8 @@ function MunicipalityDetailSkeleton() {
 			<div className="container mx-auto px-4 py-8">
 				<Skeleton className="h-4 w-40 mb-6" />
 				<div className="space-y-4">
-					{Array.from({ length: 5 }).map((_, i) => (
-						<MeetingCardSkeleton key={i} />
+					{MEETING_SKELETON_KEYS.map((key) => (
+						<MeetingCardSkeleton key={key} />
 					))}
 				</div>
 			</div>

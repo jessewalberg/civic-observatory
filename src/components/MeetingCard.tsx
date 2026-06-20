@@ -1,6 +1,10 @@
 import { ChevronRight, FileText } from "lucide-react";
 import { motion } from "motion/react";
-import { type Topic, TopicBadge, normalizeTopics } from "@/components/TopicBadge";
+import {
+	normalizeTopics,
+	type Topic,
+	TopicBadge,
+} from "@/components/TopicBadge";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -83,7 +87,10 @@ export function MeetingCard({
 	const isFutureMeeting = meetingDate > Date.now();
 
 	const statusInfo = isFutureMeeting
-		? { label: "Upcoming", className: "bg-blue-500/10 text-blue-400 border-blue-500/30" }
+		? {
+				label: "Upcoming",
+				className: "bg-blue-500/10 text-blue-400 border-blue-500/30",
+			}
 		: statusConfig[status];
 
 	// Normalize and deduplicate topics, then show first 3
@@ -126,10 +133,10 @@ export function MeetingCard({
 										{title}
 									</h3>
 									{meetingType !== "other" && (
-									<div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
-										<span>{typeLabel}</span>
-									</div>
-								)}
+										<div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
+											<span>{typeLabel}</span>
+										</div>
+									)}
 								</div>
 								<Badge
 									variant="outline"

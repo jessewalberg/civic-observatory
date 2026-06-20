@@ -4,7 +4,6 @@ import { useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
 import {
 	Dialog,
 	DialogContent,
@@ -13,6 +12,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
 	Select,
@@ -129,8 +129,12 @@ export function SubscriptionModal({
 			setSelectedMeetingTypes(existingSubscription.meetingTypes ?? []);
 			setAlertFrequency(existingSubscription.alertFrequency);
 			setEmailEnabled(existingSubscription.emailEnabled);
-			setKeywordsInclude(existingSubscription.keywordsInclude?.join(", ") ?? "");
-			setKeywordsExclude(existingSubscription.keywordsExclude?.join(", ") ?? "");
+			setKeywordsInclude(
+				existingSubscription.keywordsInclude?.join(", ") ?? "",
+			);
+			setKeywordsExclude(
+				existingSubscription.keywordsExclude?.join(", ") ?? "",
+			);
 		} else {
 			// Reset to defaults for new subscription
 			setSelectedTopics([]);

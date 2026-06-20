@@ -1,9 +1,9 @@
 "use node";
 
 import { v } from "convex/values";
+import { extractText } from "unpdf";
 import { internal } from "../../_generated/api";
 import { internalAction } from "../../_generated/server";
-import { extractText } from "unpdf";
 import { htmlToText, normalizeUrl } from "../../scrapers/utils";
 import { ocrPdf } from "./ocrPdf";
 
@@ -94,9 +94,7 @@ export const summarizeMeeting = internalAction({
 					);
 
 					if (!meeting) {
-						throw new Error(
-							"Meeting not found after source URL hydration",
-						);
+						throw new Error("Meeting not found after source URL hydration");
 					}
 				}
 			}
@@ -721,7 +719,9 @@ function parseAndValidateSummary(response: string): ParsedSummary {
 		const result: ParsedSummary["keyDecisions"][0] = {
 			title: String(d.title ?? "Untitled Decision"),
 			description: String(d.description ?? ""),
-			topics: Array.isArray(d.topics) ? d.topics.map((t: unknown) => normalizeTopic(String(t))) : [],
+			topics: Array.isArray(d.topics)
+				? d.topics.map((t: unknown) => normalizeTopic(String(t)))
+				: [],
 		};
 
 		if (d.voteResult && typeof d.voteResult === "object") {
@@ -819,7 +819,11 @@ function parseAndValidateSummary(response: string): ParsedSummary {
 		discussionTopics,
 		publicComments,
 		upcomingItems,
-		topics: [...new Set((obj.topics as unknown[]).map((t) => normalizeTopic(String(t))))],
+		topics: [
+			...new Set(
+				(obj.topics as unknown[]).map((t) => normalizeTopic(String(t))),
+			),
+		],
 		sentiment,
 	};
 }

@@ -18,7 +18,7 @@ import { motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { ShareButton } from "@/components/ShareButton";
 import { MeetingDetailSkeleton } from "@/components/skeletons";
-import { TopicBadge, normalizeTopics } from "@/components/TopicBadge";
+import { normalizeTopics, TopicBadge } from "@/components/TopicBadge";
 import { UsageLimitExceeded } from "@/components/UsageLimitExceeded";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -396,8 +396,9 @@ function MeetingDetailPage() {
 									</h2>
 								</div>
 								<p className="text-muted-foreground text-sm mb-4">
-									This meeting hasn't taken place yet. Below is the published agenda.
-									A full AI summary will be generated after the meeting date.
+									This meeting hasn't taken place yet. Below is the published
+									agenda. A full AI summary will be generated after the meeting
+									date.
 								</p>
 								<div className="prose prose-invert prose-sm max-w-none whitespace-pre-wrap text-muted-foreground">
 									{meeting.rawContent}
@@ -540,8 +541,11 @@ function MeetingDetailPage() {
 										Key Decisions
 									</h2>
 									<div className="space-y-4">
-										{meeting.summary.keyDecisions.map((decision, i) => (
-											<DecisionCard key={i} decision={decision} />
+										{meeting.summary.keyDecisions.map((decision) => (
+											<DecisionCard
+												key={`${decision.title}-${decision.description}`}
+												decision={decision}
+											/>
 										))}
 									</div>
 								</section>
@@ -580,9 +584,9 @@ function MeetingDetailPage() {
 										Upcoming Items
 									</h2>
 									<Card className="divide-y divide-border">
-										{meeting.summary.upcomingItems.map((item, i) => (
+										{meeting.summary.upcomingItems.map((item) => (
 											<div
-												key={i}
+												key={`${item.title}-${item.expectedDate ?? "unscheduled"}`}
 												className="flex items-center justify-between py-3 first:pt-0 last:pb-0"
 											>
 												<div className="flex items-center gap-3">
@@ -831,11 +835,7 @@ function DecisionCard({ decision }: DecisionCardProps) {
 				{decision.topics.length > 0 && (
 					<div className="flex flex-wrap gap-1.5 pt-2">
 						{normalizeTopics(decision.topics).map((topic) => (
-							<TopicBadge
-								key={topic}
-								topic={topic}
-								className="text-xs"
-							/>
+							<TopicBadge key={topic} topic={topic} className="text-xs" />
 						))}
 					</div>
 				)}
@@ -877,8 +877,11 @@ function DiscussionTopics({ topics }: DiscussionTopicsProps) {
 						{category}
 					</h3>
 					<div className="space-y-3">
-						{grouped[category].map((topic, i) => (
-							<Card key={i} className="bg-surface/50">
+						{grouped[category].map((topic) => (
+							<Card
+								key={`${category}-${topic.topic}-${topic.summary}`}
+								className="bg-surface/50"
+							>
 								<h4 className="font-medium text-foreground mb-1">
 									{topic.topic}
 								</h4>

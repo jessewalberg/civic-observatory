@@ -1,11 +1,21 @@
 // convex/seedMunicipalities.ts
 // Bulk seed municipalities from static data files
-// Run with: bun convex run seedMunicipalities:seedAllStates
+// Run with: pnpm exec convex run seedMunicipalities:seedAllStates
 
 import { v } from "convex/values";
-import { internalMutation, internalAction, query } from "./_generated/server";
 import { internal } from "./_generated/api";
+import { internalAction, internalMutation, query } from "./_generated/server";
 
+type InsertStateBatchResult = {
+	inserted: number;
+	skipped: number;
+	total: number;
+};
+
+type SyncUrlsBatchResult = {
+	updated: number;
+	total: number;
+};
 
 // Platform validator matching schema.ts
 const platformValidator = v.union(
@@ -82,7 +92,17 @@ export const seedState = internalAction({
 	args: {
 		state: v.string(),
 	},
-	handler: async (ctx, args): Promise<{ success: boolean; state?: string; error?: string; inserted?: number; skipped?: number; total?: number }> => {
+	handler: async (
+		ctx,
+		args,
+	): Promise<{
+		success: boolean;
+		state?: string;
+		error?: string;
+		inserted?: number;
+		skipped?: number;
+		total?: number;
+	}> => {
 		// Dynamic import of state data
 		const { ALL_STATES } = await import("./data/index");
 		const stateData = ALL_STATES[args.state];
@@ -91,10 +111,10 @@ export const seedState = internalAction({
 			return { success: false, error: `No data for state: ${args.state}` };
 		}
 
-		const result: any = await ctx.runMutation(
+		const result = (await ctx.runMutation(
 			internal.seedMunicipalities.insertStateBatch,
 			{ municipalities: stateData },
-		);
+		)) as InsertStateBatchResult;
 
 		return { success: true, state: args.state, ...result };
 	},
@@ -156,7 +176,10 @@ export const syncUrls = internalAction({
 			const stateData = ALL_STATES[state];
 			if (!stateData || stateData.length === 0) continue;
 
-			const dataByName: Record<string, { websiteUrl?: string; meetingsPageUrl?: string }> = {};
+			const dataByName: Record<
+				string,
+				{ websiteUrl?: string; meetingsPageUrl?: string }
+			> = {};
 			for (const m of stateData) {
 				dataByName[m.name] = {
 					websiteUrl: m.websiteUrl,
@@ -164,10 +187,10 @@ export const syncUrls = internalAction({
 				};
 			}
 
-			const result: any = await ctx.runMutation(
+			const result = (await ctx.runMutation(
 				internal.seedMunicipalities.syncUrlsBatch,
 				{ state, dataByName },
-			);
+			)) as SyncUrlsBatchResult;
 			totalUpdated += result.updated;
 			if (result.updated > 0) {
 				console.log(`${state}: ${result.updated} URLs updated`);
@@ -195,13 +218,19 @@ export const syncUrlsBatch = internalMutation({
 			if (!data) continue;
 
 			let needsUpdate = false;
-			if (data.meetingsPageUrl && data.meetingsPageUrl !== m.meetingsPageUrl) needsUpdate = true;
-			if (data.websiteUrl && data.websiteUrl !== m.websiteUrl) needsUpdate = true;
+			if (data.meetingsPageUrl && data.meetingsPageUrl !== m.meetingsPageUrl)
+				needsUpdate = true;
+			if (data.websiteUrl && data.websiteUrl !== m.websiteUrl)
+				needsUpdate = true;
 
 			if (needsUpdate) {
 				await ctx.db.patch(m._id, {
-					...(data.meetingsPageUrl && data.meetingsPageUrl !== m.meetingsPageUrl ? { meetingsPageUrl: data.meetingsPageUrl } : {}),
-					...(data.websiteUrl && data.websiteUrl !== m.websiteUrl ? { websiteUrl: data.websiteUrl } : {}),
+					...(data.meetingsPageUrl && data.meetingsPageUrl !== m.meetingsPageUrl
+						? { meetingsPageUrl: data.meetingsPageUrl }
+						: {}),
+					...(data.websiteUrl && data.websiteUrl !== m.websiteUrl
+						? { websiteUrl: data.websiteUrl }
+						: {}),
 					updatedAt: Date.now(),
 				});
 				updated++;
@@ -264,34 +293,41 @@ export const analyzeBroken = query({
 
 		// Has URL, not manual, never probed
 		const neverProbed = all.filter(
-			(m) =>
-				m.meetingsPageUrl &&
-				m.platform !== "manual" &&
-				!m.lastScrapedAt,
+			(m) => m.meetingsPageUrl && m.platform !== "manual" && !m.lastScrapedAt,
 		);
 
 		// Group by error
 		const errorCounts: Record<string, number> = {};
-		const samplesByError: Record<string, Array<{ name: string; state: string; platform: string; url: string }>> = {};
+		const samplesByError: Record<
+			string,
+			Array<{ name: string; state: string; platform: string; url: string }>
+		> = {};
 
 		for (const m of broken) {
 			const err = m.lastScrapeError || "no error recorded (0 meetings found)";
 			errorCounts[err] = (errorCounts[err] || 0) + 1;
 			if (!samplesByError[err]) samplesByError[err] = [];
-			if (samplesByError[err].length < 3) {
+			const meetingsPageUrl = m.meetingsPageUrl;
+			if (samplesByError[err].length < 3 && meetingsPageUrl) {
 				samplesByError[err].push({
 					name: m.name,
 					state: m.state,
 					platform: m.platform,
-					url: m.meetingsPageUrl!,
+					url: meetingsPageUrl,
 				});
 			}
 		}
 
 		// Group by platform
-		const byPlatform: Record<string, { total: number; broken: number; active: number }> = {};
-		for (const m of all.filter((m) => m.meetingsPageUrl && m.platform !== "manual")) {
-			if (!byPlatform[m.platform]) byPlatform[m.platform] = { total: 0, broken: 0, active: 0 };
+		const byPlatform: Record<
+			string,
+			{ total: number; broken: number; active: number }
+		> = {};
+		for (const m of all.filter(
+			(m) => m.meetingsPageUrl && m.platform !== "manual",
+		)) {
+			if (!byPlatform[m.platform])
+				byPlatform[m.platform] = { total: 0, broken: 0, active: 0 };
 			byPlatform[m.platform].total++;
 			if (m.isActive) byPlatform[m.platform].active++;
 			else if (m.lastScrapedAt) byPlatform[m.platform].broken++;

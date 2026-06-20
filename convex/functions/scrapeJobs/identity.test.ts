@@ -14,7 +14,12 @@ const setup = () => convexTest(schema, modules);
 
 async function seedUser(
 	t: ReturnType<typeof convexTest>,
-	o: { workosUserId?: string; clerkUserId?: string; email: string; isAdmin?: boolean },
+	o: {
+		workosUserId?: string;
+		clerkUserId?: string;
+		email: string;
+		isAdmin?: boolean;
+	},
 ) {
 	return await t.run(async (ctx) =>
 		ctx.db.insert("users", {
@@ -53,28 +58,46 @@ async function seedJob(t: ReturnType<typeof convexTest>) {
 describe("scrapeJobs cancel under the identity bridge", () => {
 	it("FIXED: a non-admin Clerk caller cannot cancel a job (was unauthenticated)", async () => {
 		const t = setup();
-		await seedUser(t, { clerkUserId: "user_clerk_peon", email: "peon@example.com" });
+		await seedUser(t, {
+			clerkUserId: "user_clerk_peon",
+			email: "peon@example.com",
+		});
 		const jobId = await seedJob(t);
-		const asPeon = t.withIdentity({ subject: "user_clerk_peon", issuer: ISSUER, email: "peon@example.com" });
+		const asPeon = t.withIdentity({
+			subject: "user_clerk_peon",
+			issuer: ISSUER,
+			email: "peon@example.com",
+		});
 		await expect(
 			asPeon.mutation(api.functions.scrapeJobs.mutations.cancel, {
 				jobId: jobId as Id<"scrapeJobs">,
 			}),
 		).rejects.toThrow(/Admin access required/);
-		const job = await t.run(async (ctx) => ctx.db.get(jobId as Id<"scrapeJobs">));
+		const job = await t.run(async (ctx) =>
+			ctx.db.get(jobId as Id<"scrapeJobs">),
+		);
 		expect(job?.status).toBe("running"); // untouched
 	});
 
 	it("an identity-resolved admin can cancel", async () => {
 		const t = setup();
-		await seedUser(t, { clerkUserId: "user_clerk_root", email: "root@example.com", isAdmin: true });
+		await seedUser(t, {
+			clerkUserId: "user_clerk_root",
+			email: "root@example.com",
+			isAdmin: true,
+		});
 		const jobId = await seedJob(t);
-		const asRoot = t.withIdentity({ subject: "user_clerk_root", issuer: ISSUER, email: "root@example.com" });
+		const asRoot = t.withIdentity({
+			subject: "user_clerk_root",
+			issuer: ISSUER,
+			email: "root@example.com",
+		});
 		await asRoot.mutation(api.functions.scrapeJobs.mutations.cancel, {
 			jobId: jobId as Id<"scrapeJobs">,
 		});
-		const job = await t.run(async (ctx) => ctx.db.get(jobId as Id<"scrapeJobs">));
+		const job = await t.run(async (ctx) =>
+			ctx.db.get(jobId as Id<"scrapeJobs">),
+		);
 		expect(job?.status).toBe("failed");
 	});
-
 });

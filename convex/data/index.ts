@@ -1,5 +1,3 @@
-import type { MunicipalityData } from "./types";
-
 import { ALABAMA } from "./states/alabama";
 import { ALASKA } from "./states/alaska";
 import { ARIZONA } from "./states/arizona";
@@ -50,6 +48,7 @@ import { WASHINGTON } from "./states/washington";
 import { WEST_VIRGINIA } from "./states/west_virginia";
 import { WISCONSIN } from "./states/wisconsin";
 import { WYOMING } from "./states/wyoming";
+import type { MunicipalityData } from "./types";
 
 export const ALL_STATES: Record<string, MunicipalityData[]> = {
 	Alabama: ALABAMA,
@@ -104,6 +103,7 @@ export const ALL_STATES: Record<string, MunicipalityData[]> = {
 	Wyoming: WYOMING,
 };
 
-export const ALL_MUNICIPALITIES: MunicipalityData[] = Object.values(ALL_STATES).flat();
+export const ALL_MUNICIPALITIES: MunicipalityData[] =
+	Object.values(ALL_STATES).flat();
 
 export const STATE_NAMES = Object.keys(ALL_STATES);

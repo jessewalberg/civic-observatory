@@ -30,7 +30,10 @@ export const Route = createFileRoute("/explore/")({
 				content:
 					"Browse and search local governments across the United States. Find meeting summaries from city councils, school boards, and planning commissions.",
 			},
-			{ property: "og:title", content: "Explore Municipalities | Civic Observatory" },
+			{
+				property: "og:title",
+				content: "Explore Municipalities | Civic Observatory",
+			},
 			{
 				property: "og:description",
 				content:
@@ -103,6 +106,17 @@ const US_STATES = [
 	"West Virginia",
 	"Wisconsin",
 	"Wyoming",
+];
+
+const MUNICIPALITY_SKELETON_KEYS = [
+	"municipality-skeleton-1",
+	"municipality-skeleton-2",
+	"municipality-skeleton-3",
+	"municipality-skeleton-4",
+	"municipality-skeleton-5",
+	"municipality-skeleton-6",
+	"municipality-skeleton-7",
+	"municipality-skeleton-8",
 ];
 
 function ExplorePage() {
@@ -269,7 +283,9 @@ function ExplorePage() {
 								key={state}
 								variant={selectedState === state ? "default" : "outline"}
 								size="sm"
-								onClick={() => setSelectedState(state === selectedState ? "" : state)}
+								onClick={() =>
+									setSelectedState(state === selectedState ? "" : state)
+								}
 								className="h-8"
 							>
 								{state}
@@ -298,8 +314,8 @@ function ExplorePage() {
 				{/* Loading State */}
 				{isLoading && (
 					<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-						{Array.from({ length: 8 }).map((_, i) => (
-							<MunicipalityCardSkeleton key={i} />
+						{MUNICIPALITY_SKELETON_KEYS.map((key) => (
+							<MunicipalityCardSkeleton key={key} />
 						))}
 					</div>
 				)}

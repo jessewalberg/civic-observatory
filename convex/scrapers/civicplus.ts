@@ -37,7 +37,8 @@ const CIVICPLUS_PATTERNS = [
 /** Default selectors for CivicPlus AgendaCenter pages */
 const AGENDA_CENTER_SELECTORS = {
 	meetingList: ".agendaRow, .minutesRow, .agenda-item, tr.catAgendaRow",
-	meetingTitle: "p a[href*='ViewFile'], p a[href*='View.ashx'], .agendaTitle, .title, h4",
+	meetingTitle:
+		"p a[href*='ViewFile'], p a[href*='View.ashx'], .agendaTitle, .title, h4",
 	meetingDate: "h3 strong, .agendaDate, .date",
 	documentLink:
 		"a[href*='.pdf'], a[href*='ViewFile'], a[href*='View.ashx'], a.pdf-link",
@@ -159,7 +160,7 @@ export const civicplusScraper: Scraper = {
 				});
 			}
 
-				// Handle pagination if present
+			// Handle pagination if present
 			const nextPage = findNextPage($, url);
 			if (nextPage && meetings.length > 0) {
 				try {

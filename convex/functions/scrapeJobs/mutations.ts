@@ -132,7 +132,14 @@ export const retry = action({
 	args: {
 		jobId: v.id("scrapeJobs"),
 	},
-	handler: async (ctx, args): Promise<{ scheduled: boolean; municipalityId?: Id<"municipalities">; error?: string }> => {
+	handler: async (
+		ctx,
+		args,
+	): Promise<{
+		scheduled: boolean;
+		municipalityId?: Id<"municipalities">;
+		error?: string;
+	}> => {
 		// Verify admin
 		const user = await ctx.runQuery(
 			internal.functions.users.queries.getCurrentInternal,
@@ -143,15 +150,17 @@ export const retry = action({
 		}
 
 		// Get the failed job
-		const job = await ctx.runQuery(
-			internal.functions.scrapers.queries.getJob,
-			{ jobId: args.jobId },
-		);
+		const job = await ctx.runQuery(internal.functions.scrapers.queries.getJob, {
+			jobId: args.jobId,
+		});
 		if (!job) {
 			return { scheduled: false, error: "Job not found" };
 		}
 		if (job.status !== "failed" && job.status !== "partial") {
-			return { scheduled: false, error: `Cannot retry job with status: ${job.status}` };
+			return {
+				scheduled: false,
+				error: `Cannot retry job with status: ${job.status}`,
+			};
 		}
 
 		// Schedule the scraper

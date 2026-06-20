@@ -18,8 +18,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { LoadingButton } from "@/components/ui/loading-button";
-import { cn } from "@/lib/utils";
 import { requireAuth } from "@/lib/serverAuth";
+import { cn } from "@/lib/utils";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 
@@ -46,8 +46,7 @@ function DashboardPage() {
 
 function DashboardContent() {
 	// Get user
-	const user = useQuery(api.functions.users.queries.current, {
-	});
+	const user = useQuery(api.functions.users.queries.current, {});
 
 	// Get feed
 	const feed = useQuery(

@@ -1,8 +1,8 @@
 import { v } from "convex/values";
-import { internalMutation, mutation } from "../../_generated/server";
-import { requireAdmin as requireAdminBridge } from "../../lib/auth";
 import type { MutationCtx } from "../../_generated/server";
+import { internalMutation, mutation } from "../../_generated/server";
 import { STATE_NAMES } from "../../data/index";
+import { requireAdmin as requireAdminBridge } from "../../lib/auth";
 
 // Valid US state names for validation
 const VALID_STATES = new Set(STATE_NAMES);

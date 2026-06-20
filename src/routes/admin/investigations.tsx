@@ -74,8 +74,7 @@ function InvestigationContent() {
 		timestamp: Date.now(),
 	});
 
-	const isAdmin = useQuery(api.functions.users.queries.isAdmin, {
-	});
+	const isAdmin = useQuery(api.functions.users.queries.isAdmin, {});
 	const municipalities = useQuery(api.functions.municipalities.queries.list, {
 		activeOnly: true,
 	});
@@ -662,7 +661,8 @@ function MeetingTable({
 							const isExpanded = expandedIds.has(row.id);
 							const diag = row.diagnosis;
 							const severityStyle = diag
-								? SEVERITY_STYLES[diag.severity] ?? SEVERITY_STYLES.investigate
+								? (SEVERITY_STYLES[diag.severity] ??
+									SEVERITY_STYLES.investigate)
 								: null;
 
 							return (
@@ -748,9 +748,7 @@ function MeetingTable({
 													)}
 												</Button>
 											) : (
-												<span className="text-xs text-muted-foreground">
-													-
-												</span>
+												<span className="text-xs text-muted-foreground">-</span>
 											)}
 										</TableCell>
 									</TableRow>

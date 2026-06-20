@@ -228,7 +228,9 @@ function PricingPage() {
 								</div>
 							</div>
 							<Button variant="outline" asChild>
-								<a href="mailto:enterprise@civicobservatory.com">Contact Sales</a>
+								<a href="mailto:enterprise@civicobservatory.com">
+									Contact Sales
+								</a>
 							</Button>
 						</div>
 					</Card>
@@ -298,10 +300,7 @@ function PricingPage() {
 }
 
 function CurrentUsage() {
-	const usageStats = useQuery(
-		api.functions.usage.queries.getUsageStats,
-		{},
-	);
+	const usageStats = useQuery(api.functions.usage.queries.getUsageStats, {});
 
 	if (!usageStats) return null;
 

@@ -173,8 +173,7 @@ function MunicipalitiesContent() {
 	const [isSubmitting, setIsSubmitting] = useState(false);
 
 	// Queries
-	const isAdmin = useQuery(api.functions.users.queries.isAdmin, {
-	});
+	const isAdmin = useQuery(api.functions.users.queries.isAdmin, {});
 	const municipalities = useQuery(
 		api.functions.municipalities.queries.list,
 		{},
@@ -277,7 +276,9 @@ function MunicipalitiesContent() {
 			(filterScrapeStatus === "failed" && m.lastScrapeStatus === "failed") ||
 			(filterScrapeStatus === "partial" && m.lastScrapeStatus === "partial") ||
 			(filterScrapeStatus === "never" && !m.lastScrapedAt);
-		return matchesSearch && matchesPlatform && matchesStatus && matchesScrapeStatus;
+		return (
+			matchesSearch && matchesPlatform && matchesStatus && matchesScrapeStatus
+		);
 	});
 
 	const handleCreate = async () => {
@@ -495,7 +496,10 @@ function MunicipalitiesContent() {
 									<SelectItem value="verified">Verified</SelectItem>
 								</SelectContent>
 							</Select>
-							<Select value={filterScrapeStatus} onValueChange={setFilterScrapeStatus}>
+							<Select
+								value={filterScrapeStatus}
+								onValueChange={setFilterScrapeStatus}
+							>
 								<SelectTrigger className="w-[150px]">
 									<SelectValue placeholder="Scrape Status" />
 								</SelectTrigger>

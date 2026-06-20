@@ -165,7 +165,6 @@ const audiences = [
 ];
 
 function LandingPage() {
-
 	return (
 		<div className="min-h-screen bg-background text-foreground overflow-hidden">
 			{/* Animated background */}
@@ -255,22 +254,25 @@ function LandingPage() {
 								transition={{ delay: 0.4 }}
 							>
 								<Button size="lg" className="gap-2 text-base px-8" asChild>
-								<Link to="/explore">
-									Explore Meetings
-									<ArrowRight className="h-4 w-4" />
-								</Link>
-							</Button>
-							<Button
-								size="lg"
-								variant="outline"
-								className="gap-2 text-base"
-								asChild
-							>
-								<Link to="/pricing" search={{ success: false, canceled: false }}>
-									View Pricing
-									<ChevronRight className="h-4 w-4" />
-								</Link>
-							</Button>
+									<Link to="/explore">
+										Explore Meetings
+										<ArrowRight className="h-4 w-4" />
+									</Link>
+								</Button>
+								<Button
+									size="lg"
+									variant="outline"
+									className="gap-2 text-base"
+									asChild
+								>
+									<Link
+										to="/pricing"
+										search={{ success: false, canceled: false }}
+									>
+										View Pricing
+										<ChevronRight className="h-4 w-4" />
+									</Link>
+								</Button>
 							</motion.div>
 
 							<motion.div
@@ -408,47 +410,53 @@ function LandingPage() {
 									transition={{ delay: index * 0.1 }}
 								>
 									<Link to="/explore" className="block h-full">
-									<Card className="h-full border-border/50 bg-card/80 backdrop-blur hover:bg-card hover:border-border transition-all duration-300 group cursor-pointer">
-										<CardHeader className="pb-3">
-											<div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
-												<div className="flex items-center gap-1">
-													<MapPin className="h-3 w-3" />
-													{meeting.municipality}, {meeting.state}
+										<Card className="h-full border-border/50 bg-card/80 backdrop-blur hover:bg-card hover:border-border transition-all duration-300 group cursor-pointer">
+											<CardHeader className="pb-3">
+												<div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
+													<div className="flex items-center gap-1">
+														<MapPin className="h-3 w-3" />
+														{meeting.municipality}, {meeting.state}
+													</div>
+													<div className="flex items-center gap-1">
+														<Calendar className="h-3 w-3" />
+														{new Date(meeting.date).toLocaleDateString(
+															"en-US",
+															{
+																month: "short",
+																day: "numeric",
+															},
+														)}
+													</div>
 												</div>
-												<div className="flex items-center gap-1">
-													<Calendar className="h-3 w-3" />
-													{new Date(meeting.date).toLocaleDateString("en-US", {
-														month: "short",
-														day: "numeric",
-													})}
+												<Badge
+													variant="secondary"
+													className="w-fit text-xs mb-2"
+												>
+													{meeting.type}
+												</Badge>
+												<CardTitle className="text-base leading-snug group-hover:text-primary transition-colors">
+													{meeting.title}
+												</CardTitle>
+											</CardHeader>
+											<CardContent className="space-y-4">
+												<p className="text-sm text-muted-foreground line-clamp-2">
+													{meeting.summary}
+												</p>
+												<div className="flex flex-wrap gap-1.5">
+													{meeting.topics.map((topic) => (
+														<TopicBadge
+															key={topic}
+															topic={topic}
+															className="text-xs py-0"
+														/>
+													))}
 												</div>
-											</div>
-											<Badge variant="secondary" className="w-fit text-xs mb-2">
-												{meeting.type}
-											</Badge>
-											<CardTitle className="text-base leading-snug group-hover:text-primary transition-colors">
-												{meeting.title}
-											</CardTitle>
-										</CardHeader>
-										<CardContent className="space-y-4">
-											<p className="text-sm text-muted-foreground line-clamp-2">
-												{meeting.summary}
-											</p>
-											<div className="flex flex-wrap gap-1.5">
-												{meeting.topics.map((topic) => (
-													<TopicBadge
-														key={topic}
-														topic={topic}
-														className="text-xs py-0"
-													/>
-												))}
-											</div>
-											<CompactVoteDisplay
-												yea={meeting.vote.yea}
-												nay={meeting.vote.nay}
-											/>
-										</CardContent>
-									</Card>
+												<CompactVoteDisplay
+													yea={meeting.vote.yea}
+													nay={meeting.vote.nay}
+												/>
+											</CardContent>
+										</Card>
 									</Link>
 								</motion.div>
 							))}
@@ -479,7 +487,8 @@ function LandingPage() {
 						viewport={{ once: true }}
 					>
 						<h2 className="text-3xl md:text-4xl font-semibold mb-4">
-							Your Local Government, <span className="text-primary">Summarized</span>
+							Your Local Government,{" "}
+							<span className="text-primary">Summarized</span>
 						</h2>
 						<p className="text-muted-foreground text-lg max-w-2xl mx-auto">
 							No more skimming 200-page agendas or watching 4-hour recordings.
@@ -531,13 +540,17 @@ function LandingPage() {
 							>
 								<Card className="h-full border-border/50 bg-gradient-to-b from-card to-card/50 hover:border-primary/30 transition-colors">
 									<CardHeader>
-										<div className={`h-12 w-12 rounded-xl ${item.bg} flex items-center justify-center mb-3`}>
+										<div
+											className={`h-12 w-12 rounded-xl ${item.bg} flex items-center justify-center mb-3`}
+										>
 											<item.icon className={`h-6 w-6 ${item.color}`} />
 										</div>
 										<CardTitle className="text-xl">{item.title}</CardTitle>
 									</CardHeader>
 									<CardContent>
-										<p className="text-muted-foreground text-sm">{item.description}</p>
+										<p className="text-muted-foreground text-sm">
+											{item.description}
+										</p>
 									</CardContent>
 								</Card>
 							</motion.div>
@@ -641,7 +654,10 @@ function LandingPage() {
 										className="gap-2 text-base"
 										asChild
 									>
-										<Link to="/pricing" search={{ success: false, canceled: false }}>
+										<Link
+											to="/pricing"
+											search={{ success: false, canceled: false }}
+										>
 											View Pricing
 										</Link>
 									</Button>
@@ -660,7 +676,9 @@ function LandingPage() {
 						<div className="flex flex-col md:flex-row items-center justify-between gap-6">
 							<div className="flex items-center gap-2">
 								<Building2 className="h-5 w-5 text-primary" />
-								<span className="font-display font-semibold">Civic Observatory</span>
+								<span className="font-display font-semibold">
+									Civic Observatory
+								</span>
 							</div>
 							<div className="flex items-center gap-8 text-sm text-muted-foreground">
 								<Link
@@ -684,7 +702,8 @@ function LandingPage() {
 								</span>
 							</div>
 							<p className="text-sm text-muted-foreground">
-								© {new Date().getFullYear()} Civic Observatory. All rights reserved.
+								© {new Date().getFullYear()} Civic Observatory. All rights
+								reserved.
 							</p>
 						</div>
 					</div>

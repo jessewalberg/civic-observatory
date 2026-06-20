@@ -1,8 +1,4 @@
-import {
-	SignInButton,
-	UserButton,
-	useUser,
-} from "@clerk/tanstack-react-start";
+import { SignInButton, UserButton, useUser } from "@clerk/tanstack-react-start";
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { Bell, Building2, Shield } from "lucide-react";

@@ -551,16 +551,15 @@ function findMeetingsByHeuristic(
 				if (!title || title.length < 3) return;
 
 				let documentUrl: string | undefined;
-				$row.find('a[href*=".pdf"], a[href*="agenda"], a[href*="minutes"]').each(
-					(_, a) => {
+				$row
+					.find('a[href*=".pdf"], a[href*="agenda"], a[href*="minutes"]')
+					.each((_, a) => {
 						const href = $content(a).attr("href");
 						if (href) documentUrl = resolveUrl(baseUrl, href);
-					},
-				);
+					});
 
-				const sourceUrl = link.attr("href")
-					? resolveUrl(baseUrl, link.attr("href")!)
-					: baseUrl;
+				const href = link.attr("href");
+				const sourceUrl = href ? resolveUrl(baseUrl, href) : baseUrl;
 
 				meetings.push({
 					title: cleanTitle(title),
@@ -604,9 +603,8 @@ function findMeetingsByHeuristic(
 				const title = link.text().trim() || text.replace(DATE_REGEX, "").trim();
 				if (!title || title.length < 3) return;
 
-				const sourceUrl = link.attr("href")
-					? resolveUrl(baseUrl, link.attr("href")!)
-					: baseUrl;
+				const href = link.attr("href");
+				const sourceUrl = href ? resolveUrl(baseUrl, href) : baseUrl;
 
 				meetings.push({
 					title: cleanTitle(title),
@@ -674,16 +672,17 @@ function findMeetingsByHeuristic(
 				if (!title || title.length < 3) return;
 
 				let documentUrl: string | undefined;
-				$el.find('a[href*=".pdf"], a[href*="agenda"], a[href*="minutes"], a[href*="download"]').each(
-					(___, a) => {
+				$el
+					.find(
+						'a[href*=".pdf"], a[href*="agenda"], a[href*="minutes"], a[href*="download"]',
+					)
+					.each((___, a) => {
 						const href = $content(a).attr("href");
 						if (href) documentUrl = resolveUrl(baseUrl, href);
-					},
-				);
+					});
 
-				const sourceUrl = link.attr("href")
-					? resolveUrl(baseUrl, link.attr("href")!)
-					: baseUrl;
+				const href = link.attr("href");
+				const sourceUrl = href ? resolveUrl(baseUrl, href) : baseUrl;
 
 				meetings.push({
 					title: cleanTitle(title),
@@ -702,7 +701,9 @@ function findMeetingsByHeuristic(
 	if (meetings.length > 0) return meetings;
 
 	// Strategy 4: Broadest fallback — find ANY links with dates in their text or nearby text
-	const allLinks = $content("main a, #content a, .content a, article a, .page-content a");
+	const allLinks = $content(
+		"main a, #content a, .content a, article a, .page-content a",
+	);
 	const linkMeetings: ScrapedMeeting[] = [];
 
 	allLinks.each((_, a) => {
@@ -732,7 +733,7 @@ function findMeetingsByHeuristic(
 		)
 			return;
 
-		let title = linkText.replace(DATE_REGEX, "").trim();
+		const title = linkText.replace(DATE_REGEX, "").trim();
 		if (!title || title.length < 3) return;
 
 		linkMeetings.push({

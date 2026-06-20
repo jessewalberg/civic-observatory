@@ -1,8 +1,8 @@
 "use node";
 
-import sharp from "sharp";
-import { inflate } from "node:zlib";
 import { promisify } from "node:util";
+import { inflate } from "node:zlib";
+import sharp from "sharp";
 
 const inflateAsync = promisify(inflate);
 
@@ -141,16 +141,21 @@ async function extractFirstImageAsPng(
 	// Resolve indirect length references (e.g., "/Length 7 0 R" → actual number)
 	const objectValues: Record<string, string> = {};
 	const simpleObjRegex = /(\d+)\s+0\s+obj\s*\n?(\d+)\s*\n?endobj/g;
-	let m: RegExpExecArray | null;
-	while ((m = simpleObjRegex.exec(text)) !== null) {
+	for (
+		let m = simpleObjRegex.exec(text);
+		m !== null;
+		m = simpleObjRegex.exec(text)
+	) {
 		objectValues[m[1]] = m[2];
 	}
 
 	// Scan for "N M obj" markers and check each object
 	const objRegex = /(\d+)\s+\d+\s+obj\b/g;
-	let objMatch: RegExpExecArray | null;
-
-	while ((objMatch = objRegex.exec(text)) !== null) {
+	for (
+		let objMatch = objRegex.exec(text);
+		objMatch !== null;
+		objMatch = objRegex.exec(text)
+	) {
 		const afterObj = objMatch.index + objMatch[0].length;
 
 		// Find the dictionary << ... >>

@@ -1,7 +1,7 @@
 import { convexTest } from "convex-test";
-import type { Id } from "../../_generated/dataModel";
 import { describe, expect, it } from "vitest";
 import { api } from "../../_generated/api";
+import type { Id } from "../../_generated/dataModel";
 import schema from "../../schema";
 import { modules } from "../../test.setup";
 
@@ -88,7 +88,9 @@ describe("ensureFromIdentity (lazy claim/create)", () => {
 		const fresh = await t.run(async (ctx) => ctx.db.get(id as Id<"users">));
 		expect(fresh?.clerkUserId).toBe("user_clerk_alice");
 		expect(fresh?.workosUserId).toBeUndefined();
-		const legacy = await t.run(async (ctx) => ctx.db.get(existing as Id<"users">));
+		const legacy = await t.run(async (ctx) =>
+			ctx.db.get(existing as Id<"users">),
+		);
 		expect(legacy?.clerkUserId).toBeUndefined();
 	});
 
@@ -108,8 +110,8 @@ describe("ensureFromIdentity (lazy claim/create)", () => {
 			{},
 		);
 		expect(second).toBe(first);
-		const count = await t.run(async (ctx) =>
-			(await ctx.db.query("users").collect()).length,
+		const count = await t.run(
+			async (ctx) => (await ctx.db.query("users").collect()).length,
 		);
 		expect(count).toBe(1);
 	});
@@ -129,13 +131,17 @@ describe("ensureFromIdentity (lazy claim/create)", () => {
 			api.functions.users.mutations.ensureFromIdentity,
 			{},
 		);
-		const intruderRow = await t.run(async (ctx) => ctx.db.get(id as Id<"users">));
+		const intruderRow = await t.run(async (ctx) =>
+			ctx.db.get(id as Id<"users">),
+		);
 		// A NEW row is created; the owner's row is untouched.
 		expect(intruderRow?.clerkUserId).toBe("user_clerk_intruder");
 		const owner = await t.run(async (ctx) =>
 			ctx.db
 				.query("users")
-				.withIndex("by_clerk_id", (q) => q.eq("clerkUserId", "user_clerk_owner"))
+				.withIndex("by_clerk_id", (q) =>
+					q.eq("clerkUserId", "user_clerk_owner"),
+				)
 				.unique(),
 		);
 		expect(owner?.clerkUserId).toBe("user_clerk_owner");
@@ -183,8 +189,6 @@ describe("identity overrides client-supplied ids (the security fix)", () => {
 		);
 		expect(stats).toBeNull();
 	});
-
-
 
 	it("FIXED: isAdmin ignores a spoofed admin id under identity", async () => {
 		const t = setup();
@@ -350,14 +354,13 @@ describe("identity overrides client-supplied ids (the security fix)", () => {
 			issuer: ISSUER,
 			email: "alice@example.com",
 		});
-		await asAlice.mutation(
-			api.functions.users.mutations.claimInitialAdmin,
-			{},
-		);
+		await asAlice.mutation(api.functions.users.mutations.claimInitialAdmin, {});
 		const alice = await t.run(async (ctx) =>
 			ctx.db
 				.query("users")
-				.withIndex("by_clerk_id", (q) => q.eq("clerkUserId", "user_clerk_alice"))
+				.withIndex("by_clerk_id", (q) =>
+					q.eq("clerkUserId", "user_clerk_alice"),
+				)
 				.unique(),
 		);
 		expect(alice?.isAdmin).toBe(true);

@@ -2,6 +2,7 @@
 
 import { v } from "convex/values";
 import { api, internal } from "../../_generated/api";
+import type { Doc } from "../../_generated/dataModel";
 import { internalAction } from "../../_generated/server";
 
 // Initialize scrapers when this module loads
@@ -19,6 +20,25 @@ interface ProbeResult {
 	errors: string[];
 }
 
+type ProbeOneResult =
+	| { success: false; error: string; municipality?: string }
+	| {
+			success: true;
+			municipality: string;
+			platform: Doc<"municipalities">["platform"];
+			meetingsPageUrl: string;
+			probe: ProbeResult;
+	  };
+
+type ProbeByStateResult = {
+	state: string;
+	total: number;
+	probeable: number;
+	probed: number;
+	working: number;
+	broken: number;
+};
+
 // ═══════════════════════════════════════════════════════════════
 // ACTION: Probe scraper for a single municipality
 // ═══════════════════════════════════════════════════════════════
@@ -27,11 +47,11 @@ export const probeOne = internalAction({
 		municipalityId: v.id("municipalities"),
 		activate: v.optional(v.boolean()),
 	},
-	handler: async (ctx, args): Promise<Record<string, any>> => {
-		const municipality: any = await ctx.runQuery(
+	handler: async (ctx, args): Promise<ProbeOneResult> => {
+		const municipality = (await ctx.runQuery(
 			api.functions.municipalities.queries.get,
 			{ id: args.municipalityId },
-		);
+		)) as Doc<"municipalities"> | null;
 
 		if (!municipality) {
 			return { success: false, error: "Municipality not found" };
@@ -69,10 +89,8 @@ export const probeOne = internalAction({
 								municipality.scrapeConfig.meetingLinkSelector,
 							dateSelector: municipality.scrapeConfig.dateSelector,
 							dateFormat: municipality.scrapeConfig.dateFormat,
-							contentSelector:
-								municipality.scrapeConfig.contentSelector,
-							frequencyHours:
-								municipality.scrapeConfig.frequencyHours,
+							contentSelector: municipality.scrapeConfig.contentSelector,
+							frequencyHours: municipality.scrapeConfig.frequencyHours,
 						}
 					: undefined,
 			);
@@ -83,9 +101,7 @@ export const probeOne = internalAction({
 				titlesExtracted: result.meetings.some(
 					(m) => m.title && m.title.length > 3,
 				),
-				datesExtracted: result.meetings.some(
-					(m) => m.meetingDate > 0,
-				),
+				datesExtracted: result.meetings.some((m) => m.meetingDate > 0),
 				errors: result.errors.map((e) => e.message),
 			};
 
@@ -98,9 +114,7 @@ export const probeOne = internalAction({
 					meetingsFound: probeResult.meetingsFound,
 					activate: args.activate ?? false,
 					error:
-						probeResult.errors.length > 0
-							? probeResult.errors[0]
-							: undefined,
+						probeResult.errors.length > 0 ? probeResult.errors[0] : undefined,
 				},
 			);
 
@@ -112,8 +126,7 @@ export const probeOne = internalAction({
 				probe: probeResult,
 			};
 		} catch (error) {
-			const errorMsg =
-				error instanceof Error ? error.message : "Unknown error";
+			const errorMsg = error instanceof Error ? error.message : "Unknown error";
 
 			await ctx.runMutation(
 				internal.functions.municipalities.mutations.saveProbeResult,
@@ -144,16 +157,15 @@ export const probeByState = internalAction({
 		activate: v.optional(v.boolean()),
 		delayBetweenMs: v.optional(v.number()),
 	},
-	handler: async (ctx, args): Promise<{ state: string; total: number; probeable: number; probed: number; working: number; broken: number }> => {
-		const municipalities: any[] = await ctx.runQuery(
+	handler: async (ctx, args): Promise<ProbeByStateResult> => {
+		const municipalities = (await ctx.runQuery(
 			api.functions.municipalities.queries.list,
 			{ state: args.state },
-		);
+		)) as Doc<"municipalities">[];
 
 		// Only probe municipalities that have a meetingsPageUrl and aren't manual
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		const probeable = municipalities.filter(
-			(m: any) => m.meetingsPageUrl && m.platform !== "manual",
+			(m) => m.meetingsPageUrl && m.platform !== "manual",
 		);
 
 		let probed = 0;
@@ -162,29 +174,25 @@ export const probeByState = internalAction({
 
 		for (const muni of probeable) {
 			try {
-				const result = await ctx.runAction(
+				const result = (await ctx.runAction(
 					internal.functions.municipalities.probe.probeOne,
 					{
 						municipalityId: muni._id,
 						activate: args.activate,
 					},
-				);
+				)) as ProbeOneResult;
 
 				probed++;
-				if (
-					result.success &&
-					result.probe &&
-					result.probe.meetingsFound > 0
-				) {
+				if (result.success && result.probe && result.probe.meetingsFound > 0) {
 					working++;
 					console.log(
 						`  OK: ${muni.name} — ${result.probe.meetingsFound} meetings found`,
 					);
 				} else {
 					broken++;
-					console.log(
-						`  FAIL: ${muni.name} — ${result.error || "no meetings found"}`,
-					);
+					const errorMessage =
+						"error" in result ? result.error : "no meetings found";
+					console.log(`  FAIL: ${muni.name} — ${errorMessage}`);
 				}
 			} catch (error) {
 				broken++;
@@ -219,15 +227,12 @@ export const probeAll = internalAction({
 	},
 	handler: async (ctx, args) => {
 		// Get all states from the database
-		const allMunicipalities = await ctx.runQuery(
+		const allMunicipalities = (await ctx.runQuery(
 			api.functions.municipalities.queries.list,
 			{},
-		);
+		)) as Doc<"municipalities">[];
 
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		const states = [
-			...new Set(allMunicipalities.map((m: any) => m.state as string)),
-		].sort();
+		const states = [...new Set(allMunicipalities.map((m) => m.state))].sort();
 
 		const results: Array<{
 			state: string;
@@ -236,25 +241,23 @@ export const probeAll = internalAction({
 			total: number;
 		}> = [];
 
-		for (const state of states as string[]) {
+		for (const state of states) {
 			console.log(`\nProbing: ${state}...`);
-			const result: any = await ctx.runAction(
+			const result = (await ctx.runAction(
 				internal.functions.municipalities.probe.probeByState,
 				{
 					state,
 					activate: args.activate,
 					delayBetweenMs: args.delayBetweenMs ?? 5000,
 				},
-			);
+			)) as ProbeByStateResult;
 			results.push({
 				state,
 				working: result.working,
 				broken: result.broken,
 				total: result.probeable,
 			});
-			console.log(
-				`  ${state}: ${result.working}/${result.probeable} working`,
-			);
+			console.log(`  ${state}: ${result.working}/${result.probeable} working`);
 		}
 
 		const totalWorking = results.reduce((sum, r) => sum + r.working, 0);

@@ -56,8 +56,7 @@ function SubscriptionsContent() {
 		useState<Subscription | null>(null);
 
 	// Get user
-	const user = useQuery(api.functions.users.queries.current, {
-	});
+	const user = useQuery(api.functions.users.queries.current, {});
 
 	// Get subscriptions
 	const subscriptions = useQuery(

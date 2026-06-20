@@ -12,10 +12,7 @@ interface UsageWidgetProps {
 }
 
 export function UsageWidget({ variant = "card" }: UsageWidgetProps) {
-	const usageStats = useQuery(
-		api.functions.usage.queries.getUsageStats,
-		{},
-	);
+	const usageStats = useQuery(api.functions.usage.queries.getUsageStats, {});
 
 	if (usageStats === undefined || usageStats === null) {
 		return variant === "card" ? (

@@ -615,9 +615,7 @@ function diagnoseMeeting(args: {
 				"If links are in the HTML, the scraper selectors need updating for this site's DOM structure.",
 				"If content is loaded via JS, this site needs the headless browser scraper.",
 			],
-			investigationUrls: [
-				{ label: "Meetings page", url: args.sourceUrl },
-			],
+			investigationUrls: [{ label: "Meetings page", url: args.sourceUrl }],
 		};
 	}
 
@@ -764,7 +762,9 @@ function diagnoseMeeting(args: {
 		label: "Unknown",
 		severity: "investigate",
 		featureNeeded: null,
-		description: err || "No error details available. Check Convex logs for this meeting ID.",
+		description:
+			err ||
+			"No error details available. Check Convex logs for this meeting ID.",
 		investigationSteps: [
 			"Check the Convex dashboard logs for this meeting ID.",
 			"Open the source URL below to inspect what the page returns.",

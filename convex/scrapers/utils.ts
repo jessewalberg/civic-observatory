@@ -215,7 +215,10 @@ export function parseDate(dateStr: string, _format?: string): number | null {
 /** Keywords for each meeting type */
 // Ordered from most specific to least specific to avoid false matches.
 // "regular meeting" / "special meeting" are intentionally omitted — too generic.
-const meetingTypeKeywordsOrdered: Array<{ type: MeetingType; keywords: string[] }> = [
+const meetingTypeKeywordsOrdered: Array<{
+	type: MeetingType;
+	keywords: string[];
+}> = [
 	{
 		type: "planning_commission",
 		keywords: [
