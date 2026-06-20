@@ -78,7 +78,6 @@ interface SubscriptionModalProps {
 	onOpenChange: (open: boolean) => void;
 	municipalityId: Id<"municipalities">;
 	municipalityName: string;
-	userId: Id<"users">;
 	existingSubscription?: Subscription | null;
 }
 
@@ -87,7 +86,6 @@ export function SubscriptionModal({
 	onOpenChange,
 	municipalityId,
 	municipalityName,
-	userId,
 	existingSubscription,
 }: SubscriptionModalProps) {
 	// Generate unique IDs for form elements
@@ -108,7 +106,7 @@ export function SubscriptionModal({
 	const [isDeleting, setIsDeleting] = useState(false);
 
 	// Get user tier to check for immediate alerts
-	const user = useQuery(api.functions.users.queries.getById, { userId });
+	const user = useQuery(api.functions.users.queries.current, {});
 	const canUseImmediate = user?.tier === "pro";
 
 	// Mutations
@@ -175,7 +173,6 @@ export function SubscriptionModal({
 			if (existingSubscription) {
 				await updateSubscription({
 					subscriptionId: existingSubscription._id,
-					userId,
 					topicFilters: selectedTopics.length > 0 ? selectedTopics : undefined,
 					meetingTypes:
 						selectedMeetingTypes.length > 0 ? selectedMeetingTypes : undefined,
@@ -187,7 +184,6 @@ export function SubscriptionModal({
 				toast.success("Subscription updated");
 			} else {
 				await createSubscription({
-					userId,
 					municipalityId,
 					topicFilters: selectedTopics.length > 0 ? selectedTopics : undefined,
 					meetingTypes:
@@ -216,7 +212,6 @@ export function SubscriptionModal({
 		try {
 			await removeSubscription({
 				subscriptionId: existingSubscription._id,
-				userId,
 			});
 			toast.success("Unsubscribed");
 			onOpenChange(false);

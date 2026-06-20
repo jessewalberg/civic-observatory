@@ -29,7 +29,7 @@ export function SubscribeButton({
 	// Check if user is subscribed
 	const subscription = useQuery(
 		api.functions.subscriptions.queries.getForMunicipality,
-		userId ? { userId, municipalityId } : "skip",
+		userId ? { municipalityId } : "skip",
 	);
 
 	const isSubscribed = subscription !== null && subscription !== undefined;
@@ -85,7 +85,6 @@ export function SubscribeButton({
 				onOpenChange={setIsModalOpen}
 				municipalityId={municipalityId}
 				municipalityName={municipalityName}
-				userId={userId}
 				existingSubscription={subscription}
 			/>
 		</>
