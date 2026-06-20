@@ -200,6 +200,26 @@ export default defineSchema({
 		promptVersion: v.string(),
 		processingTimeMs: v.number(),
 
+		municipalityId: v.optional(v.id("municipalities")),
+		meetingDate: v.optional(v.number()),
+		sourceUrl: v.optional(v.string()),
+		sourceType: v.optional(
+			v.union(
+				v.literal("scraped"),
+				v.literal("uploaded"),
+				v.literal("manual_entry"),
+			),
+		),
+		sourceContentHash: v.optional(v.string()),
+		status: v.optional(
+			v.union(
+				v.literal("summarized"),
+				v.literal("failed"),
+				v.literal("skipped"),
+			),
+		),
+		error: v.optional(v.string()),
+
 		createdAt: v.number(),
 	}).index("by_meeting", ["meetingId"]),
 
