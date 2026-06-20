@@ -66,7 +66,7 @@ function DashboardContent() {
 	// Get subscription count
 	const subscriptionCount = useQuery(
 		api.functions.subscriptions.queries.countByUser,
-		user ? { userId: user._id } : "skip",
+		user ? {} : "skip",
 	);
 
 	// Mutations

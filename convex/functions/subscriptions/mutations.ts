@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation } from "../../_generated/server";
+import { getCurrentUser } from "../../lib/auth";
 import { SUBSCRIPTION_LIMITS } from "../../lib/constants/limits";
 
 // ═══════════════════════════════════════════════════════════════
@@ -7,7 +8,6 @@ import { SUBSCRIPTION_LIMITS } from "../../lib/constants/limits";
 // ═══════════════════════════════════════════════════════════════
 export const create = mutation({
 	args: {
-		userId: v.id("users"),
 		municipalityId: v.id("municipalities"),
 		topicFilters: v.optional(v.array(v.string())),
 		meetingTypes: v.optional(v.array(v.string())),
@@ -21,10 +21,9 @@ export const create = mutation({
 		emailEnabled: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
-		// Get user to check tier
-		const user = await ctx.db.get(args.userId);
+		const user = await getCurrentUser(ctx);
 		if (!user) {
-			throw new Error("User not found");
+			throw new Error("User not found. Please sign in first.");
 		}
 
 		// Get subscription limit for user's tier
@@ -34,7 +33,7 @@ export const create = mutation({
 		// Count existing subscriptions
 		const existingSubscriptions = await ctx.db
 			.query("subscriptions")
-			.withIndex("by_user", (q) => q.eq("userId", args.userId))
+			.withIndex("by_user", (q) => q.eq("userId", user._id))
 			.collect();
 
 		// Check limit
@@ -67,7 +66,7 @@ export const create = mutation({
 
 		// Create subscription
 		const subscriptionId = await ctx.db.insert("subscriptions", {
-			userId: args.userId,
+			userId: user._id,
 			municipalityId: args.municipalityId,
 			topicFilters: args.topicFilters,
 			meetingTypes: args.meetingTypes,
@@ -90,7 +89,6 @@ export const create = mutation({
 export const update = mutation({
 	args: {
 		subscriptionId: v.id("subscriptions"),
-		userId: v.id("users"), // For authorization
 		topicFilters: v.optional(v.array(v.string())),
 		meetingTypes: v.optional(v.array(v.string())),
 		keywordsInclude: v.optional(v.array(v.string())),
@@ -102,6 +100,11 @@ export const update = mutation({
 		isActive: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
+		const user = await getCurrentUser(ctx);
+		if (!user) {
+			throw new Error("User not found. Please sign in first.");
+		}
+
 		// Get subscription
 		const subscription = await ctx.db.get(args.subscriptionId);
 		if (!subscription) {
@@ -109,8 +112,12 @@ export const update = mutation({
 		}
 
 		// Verify ownership
-		if (subscription.userId !== args.userId) {
+		if (subscription.userId !== user._id) {
 			throw new Error("Not authorized to update this subscription");
+		}
+
+		if (args.alertFrequency === "immediate" && user.tier !== "pro") {
+			throw new Error("Immediate alerts are only available for Pro users");
 		}
 
 		// Build updates
@@ -152,9 +159,13 @@ export const update = mutation({
 export const remove = mutation({
 	args: {
 		subscriptionId: v.id("subscriptions"),
-		userId: v.id("users"), // For authorization
 	},
 	handler: async (ctx, args) => {
+		const user = await getCurrentUser(ctx);
+		if (!user) {
+			throw new Error("User not found. Please sign in first.");
+		}
+
 		// Get subscription
 		const subscription = await ctx.db.get(args.subscriptionId);
 		if (!subscription) {
@@ -162,7 +173,7 @@ export const remove = mutation({
 		}
 
 		// Verify ownership
-		if (subscription.userId !== args.userId) {
+		if (subscription.userId !== user._id) {
 			throw new Error("Not authorized to delete this subscription");
 		}
 
@@ -200,15 +211,19 @@ export const remove = mutation({
 export const toggleActive = mutation({
 	args: {
 		subscriptionId: v.id("subscriptions"),
-		userId: v.id("users"),
 	},
 	handler: async (ctx, args) => {
+		const user = await getCurrentUser(ctx);
+		if (!user) {
+			throw new Error("User not found. Please sign in first.");
+		}
+
 		const subscription = await ctx.db.get(args.subscriptionId);
 		if (!subscription) {
 			throw new Error("Subscription not found");
 		}
 
-		if (subscription.userId !== args.userId) {
+		if (subscription.userId !== user._id) {
 			throw new Error("Not authorized to update this subscription");
 		}
 
@@ -227,7 +242,6 @@ export const toggleActive = mutation({
 export const updateFrequency = mutation({
 	args: {
 		subscriptionId: v.id("subscriptions"),
-		userId: v.id("users"),
 		alertFrequency: v.union(
 			v.literal("immediate"),
 			v.literal("daily"),
@@ -235,21 +249,23 @@ export const updateFrequency = mutation({
 		),
 	},
 	handler: async (ctx, args) => {
+		const user = await getCurrentUser(ctx);
+		if (!user) {
+			throw new Error("User not found. Please sign in first.");
+		}
+
 		const subscription = await ctx.db.get(args.subscriptionId);
 		if (!subscription) {
 			throw new Error("Subscription not found");
 		}
 
-		if (subscription.userId !== args.userId) {
+		if (subscription.userId !== user._id) {
 			throw new Error("Not authorized to update this subscription");
 		}
 
 		// Check if user can use immediate alerts (Pro only)
-		if (args.alertFrequency === "immediate") {
-			const user = await ctx.db.get(args.userId);
-			if (user?.tier !== "pro") {
-				throw new Error("Immediate alerts are only available for Pro users");
-			}
+		if (args.alertFrequency === "immediate" && user.tier !== "pro") {
+			throw new Error("Immediate alerts are only available for Pro users");
 		}
 
 		await ctx.db.patch(args.subscriptionId, {

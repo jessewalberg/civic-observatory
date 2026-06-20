@@ -64,13 +64,13 @@ function SubscriptionsContent() {
 	// Get subscriptions
 	const subscriptions = useQuery(
 		api.functions.subscriptions.queries.listByUser,
-		user ? { userId: user._id } : "skip",
+		user ? {} : "skip",
 	);
 
 	// Get subscription count
 	const subscriptionCount = useQuery(
 		api.functions.subscriptions.queries.countByUser,
-		user ? { userId: user._id } : "skip",
+		user ? {} : "skip",
 	);
 
 	// Mutations
@@ -94,7 +94,6 @@ function SubscriptionsContent() {
 		try {
 			const result = await toggleActive({
 				subscriptionId: subscription._id,
-				userId: user._id,
 			});
 			toast.success(
 				result.isActive ? "Subscription activated" : "Subscription paused",
@@ -116,7 +115,6 @@ function SubscriptionsContent() {
 		try {
 			await removeSubscription({
 				subscriptionId: subscription._id,
-				userId: user._id,
 			});
 			toast.success("Unsubscribed");
 		} catch (_error) {
@@ -364,7 +362,6 @@ function SubscriptionsContent() {
 					onOpenChange={(open) => !open && setEditingSubscription(null)}
 					municipalityId={editingSubscription.municipalityId}
 					municipalityName={editingSubscription.municipality?.name ?? "Unknown"}
-					userId={user._id}
 					existingSubscription={editingSubscription}
 				/>
 			)}

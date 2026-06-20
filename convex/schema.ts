@@ -280,7 +280,8 @@ export default defineSchema({
 		.index("by_user", ["userId"])
 		.index("by_user_read", ["userId", "readAt"])
 		.index("by_status", ["status"])
-		.index("by_scheduled", ["status", "scheduledFor"]),
+		.index("by_scheduled", ["status", "scheduledFor"])
+		.index("by_subscription_summary", ["subscriptionId", "summaryId"]),
 
 	// ═══════════════════════════════════════════════════════════════
 	// SCRAPE JOBS - Scraper run history

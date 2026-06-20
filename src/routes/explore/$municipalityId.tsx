@@ -184,7 +184,6 @@ function MunicipalityDetailPage() {
 		api.functions.subscriptions.queries.getForMunicipality,
 		user && resolvedMunicipalityId
 			? {
-					userId: user._id,
 					municipalityId: resolvedMunicipalityId,
 				}
 			: "skip",
@@ -193,7 +192,7 @@ function MunicipalityDetailPage() {
 	// Get subscription count for limit checking
 	const subscriptionCount = useQuery(
 		api.functions.subscriptions.queries.countByUser,
-		user ? { userId: user._id } : "skip",
+		user ? {} : "skip",
 	);
 
 	// Subscription limits by tier
@@ -548,7 +547,6 @@ function MunicipalityDetailPage() {
 					onOpenChange={setShowSubscribeModal}
 					municipalityId={municipality._id}
 					municipalityName={municipality.name}
-					userId={user._id}
 					existingSubscription={existingSubscription ?? null}
 				/>
 			)}

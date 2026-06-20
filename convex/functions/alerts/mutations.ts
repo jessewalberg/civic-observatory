@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internalMutation, mutation } from "../../_generated/server";
+import { evaluateSubscriptionSummaryMatch } from "../subscriptions/matching";
 
 // ═══════════════════════════════════════════════════════════════
 // GENERATE ALERTS - Create in-app feed alerts for municipality subscriptions
@@ -39,23 +40,27 @@ export const generateAlerts = internalMutation({
 		};
 
 		for (const subscription of subscriptions) {
-			if (!subscription.isActive) {
-				results.skipped++;
-				continue;
-			}
-
 			try {
-				const existing = await ctx.db
-					.query("alerts")
-					.filter((q) =>
-						q.and(
-							q.eq(q.field("subscriptionId"), subscription._id),
-							q.eq(q.field("summaryId"), args.summaryId),
-						),
-					)
-					.first();
+				const [user, existing] = await Promise.all([
+					ctx.db.get(subscription.userId),
+					ctx.db
+						.query("alerts")
+						.withIndex("by_subscription_summary", (q) =>
+							q
+								.eq("subscriptionId", subscription._id)
+								.eq("summaryId", args.summaryId),
+						)
+						.first(),
+				]);
 
-				if (existing) {
+				const match = evaluateSubscriptionSummaryMatch({
+					subscription,
+					user,
+					meeting,
+					summary,
+					hasExistingAlert: Boolean(existing),
+				});
+				if (!match.matches) {
 					results.skipped++;
 					continue;
 				}
@@ -65,7 +70,8 @@ export const generateAlerts = internalMutation({
 					subscriptionId: subscription._id,
 					meetingId: args.meetingId,
 					summaryId: args.summaryId,
-					matchedTopics: summary.topics.slice(0, 3),
+					matchedTopics: match.matchedTopics,
+					matchedKeywords: match.matchedKeywords,
 					status: "sent",
 					sentAt: now,
 					createdAt: now,

@@ -1,17 +1,22 @@
 import { v } from "convex/values";
 import { internalQuery, query } from "../../_generated/server";
+import { getCurrentUser } from "../../lib/auth";
+import { evaluateSubscriptionSummaryMatch } from "./matching";
 
 // ═══════════════════════════════════════════════════════════════
 // LIST BY USER - Get all subscriptions for a user
 // ═══════════════════════════════════════════════════════════════
 export const listByUser = query({
-	args: {
-		userId: v.id("users"),
-	},
-	handler: async (ctx, args) => {
+	args: {},
+	handler: async (ctx) => {
+		const user = await getCurrentUser(ctx);
+		if (!user) {
+			return [];
+		}
+
 		const subscriptions = await ctx.db
 			.query("subscriptions")
-			.withIndex("by_user", (q) => q.eq("userId", args.userId))
+			.withIndex("by_user", (q) => q.eq("userId", user._id))
 			.collect();
 
 		// Get municipality info for each subscription
@@ -40,14 +45,18 @@ export const listByUser = query({
 // ═══════════════════════════════════════════════════════════════
 export const getForMunicipality = query({
 	args: {
-		userId: v.id("users"),
 		municipalityId: v.id("municipalities"),
 	},
 	handler: async (ctx, args) => {
+		const user = await getCurrentUser(ctx);
+		if (!user) {
+			return null;
+		}
+
 		return await ctx.db
 			.query("subscriptions")
 			.withIndex("by_user_municipality", (q) =>
-				q.eq("userId", args.userId).eq("municipalityId", args.municipalityId),
+				q.eq("userId", user._id).eq("municipalityId", args.municipalityId),
 			)
 			.first();
 	},
@@ -61,8 +70,14 @@ export const getById = query({
 		subscriptionId: v.id("subscriptions"),
 	},
 	handler: async (ctx, args) => {
+		const user = await getCurrentUser(ctx);
+		if (!user) {
+			return null;
+		}
+
 		const subscription = await ctx.db.get(args.subscriptionId);
 		if (!subscription) return null;
+		if (subscription.userId !== user._id) return null;
 
 		const municipality = await ctx.db.get(subscription.municipalityId);
 
@@ -83,13 +98,16 @@ export const getById = query({
 // COUNT BY USER - Get subscription count for limit checking
 // ═══════════════════════════════════════════════════════════════
 export const countByUser = query({
-	args: {
-		userId: v.id("users"),
-	},
-	handler: async (ctx, args) => {
+	args: {},
+	handler: async (ctx) => {
+		const user = await getCurrentUser(ctx);
+		if (!user) {
+			return { total: 0, active: 0 };
+		}
+
 		const subscriptions = await ctx.db
 			.query("subscriptions")
-			.withIndex("by_user", (q) => q.eq("userId", args.userId))
+			.withIndex("by_user", (q) => q.eq("userId", user._id))
 			.collect();
 
 		return {
@@ -116,7 +134,6 @@ export const getMatchingForSummary = internalQuery({
 		const summary = await ctx.db.get(args.summaryId);
 		if (!summary) return [];
 
-		// Get all active subscriptions for this municipality
 		const subscriptions = await ctx.db
 			.query("subscriptions")
 			.withIndex("by_municipality", (q) =>
@@ -124,95 +141,37 @@ export const getMatchingForSummary = internalQuery({
 			)
 			.collect();
 
-		// Filter to active subscriptions that match
-		const matchingSubscriptions = subscriptions.filter((sub) => {
-			// Must be active
-			if (!sub.isActive) return false;
-
-			// Check meeting type filter
-			if (sub.meetingTypes && sub.meetingTypes.length > 0) {
-				if (!sub.meetingTypes.includes(meeting.meetingType)) {
-					return false;
-				}
-			}
-
-			// Check topic filter
-			if (sub.topicFilters && sub.topicFilters.length > 0) {
-				const hasMatchingTopic = sub.topicFilters.some((filter) =>
-					summary.topics.some((topic) =>
-						topic.toLowerCase().includes(filter.toLowerCase()),
-					),
-				);
-				if (!hasMatchingTopic) return false;
-			}
-
-			// Check exclude keywords
-			if (sub.keywordsExclude && sub.keywordsExclude.length > 0) {
-				const contentToSearch = [
-					summary.executiveSummary,
-					...summary.topics,
-					...summary.keyDecisions.map((d) => `${d.title} ${d.description}`),
-				]
-					.join(" ")
-					.toLowerCase();
-
-				const hasExcludedKeyword = sub.keywordsExclude.some((keyword) =>
-					contentToSearch.includes(keyword.toLowerCase()),
-				);
-				if (hasExcludedKeyword) return false;
-			}
-
-			// Check include keywords (if specified, must match at least one)
-			if (sub.keywordsInclude && sub.keywordsInclude.length > 0) {
-				const contentToSearch = [
-					summary.executiveSummary,
-					...summary.topics,
-					...summary.keyDecisions.map((d) => `${d.title} ${d.description}`),
-				]
-					.join(" ")
-					.toLowerCase();
-
-				const hasIncludedKeyword = sub.keywordsInclude.some((keyword) =>
-					contentToSearch.includes(keyword.toLowerCase()),
-				);
-				if (!hasIncludedKeyword) return false;
-			}
-
-			return true;
-		});
-
-		// Build results with matched info
-		return matchingSubscriptions.map((sub) => {
-			// Find matched topics
-			const matchedTopics = sub.topicFilters
-				? sub.topicFilters.filter((filter) =>
-						summary.topics.some((topic) =>
-							topic.toLowerCase().includes(filter.toLowerCase()),
-						),
+		const results = [];
+		for (const subscription of subscriptions) {
+			const [user, existingAlert] = await Promise.all([
+				ctx.db.get(subscription.userId),
+				ctx.db
+					.query("alerts")
+					.withIndex("by_subscription_summary", (q) =>
+						q
+							.eq("subscriptionId", subscription._id)
+							.eq("summaryId", args.summaryId),
 					)
-				: summary.topics.slice(0, 3); // Default to first 3 topics if no filter
+					.first(),
+			]);
+			const match = evaluateSubscriptionSummaryMatch({
+				subscription,
+				user,
+				meeting,
+				summary,
+				hasExistingAlert: Boolean(existingAlert),
+			});
+			if (!match.matches) {
+				continue;
+			}
+			results.push({
+				subscription,
+				matchedTopics: match.matchedTopics,
+				matchedKeywords: match.matchedKeywords,
+			});
+		}
 
-			// Find matched keywords
-			const contentToSearch = [
-				summary.executiveSummary,
-				...summary.topics,
-				...summary.keyDecisions.map((d) => `${d.title} ${d.description}`),
-			]
-				.join(" ")
-				.toLowerCase();
-
-			const matchedKeywords = sub.keywordsInclude
-				? sub.keywordsInclude.filter((keyword) =>
-						contentToSearch.includes(keyword.toLowerCase()),
-					)
-				: undefined;
-
-			return {
-				subscription: sub,
-				matchedTopics,
-				matchedKeywords,
-			};
-		});
+		return results;
 	},
 });
 
