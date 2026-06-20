@@ -1,9 +1,8 @@
 import { v } from "convex/values";
-import { internal } from "../../_generated/api";
 import { internalMutation, mutation } from "../../_generated/server";
 
 // ═══════════════════════════════════════════════════════════════
-// GENERATE ALERTS - Create alerts for matching subscriptions
+// GENERATE ALERTS - Create in-app feed alerts for municipality subscriptions
 // Called after a summary is created
 // ═══════════════════════════════════════════════════════════════
 export const generateAlerts = internalMutation({
@@ -12,14 +11,25 @@ export const generateAlerts = internalMutation({
 		meetingId: v.id("meetings"),
 	},
 	handler: async (ctx, args) => {
-		// Get matching subscriptions using the existing query
-		const matches = await ctx.runQuery(
-			internal.functions.subscriptions.queries.getMatchingForSummary,
-			{
-				summaryId: args.summaryId,
-				meetingId: args.meetingId,
-			},
-		);
+		const [meeting, summary] = await Promise.all([
+			ctx.db.get(args.meetingId),
+			ctx.db.get(args.summaryId),
+		]);
+
+		if (!meeting || !summary) {
+			return {
+				created: 0,
+				skipped: 0,
+				errors: [!meeting ? "Meeting not found" : "Summary not found"],
+			};
+		}
+
+		const subscriptions = await ctx.db
+			.query("subscriptions")
+			.withIndex("by_municipality", (q) =>
+				q.eq("municipalityId", meeting.municipalityId),
+			)
+			.collect();
 
 		const now = Date.now();
 		const results = {
@@ -28,38 +38,36 @@ export const generateAlerts = internalMutation({
 			errors: [] as string[],
 		};
 
-		for (const match of matches) {
-			try {
-				// Check for duplicate alert
-				const isDuplicate = await ctx.runQuery(
-					internal.functions.alerts.queries.checkDuplicate,
-					{
-						subscriptionId: match.subscription._id,
-						summaryId: args.summaryId,
-					},
-				);
+		for (const subscription of subscriptions) {
+			if (!subscription.isActive) {
+				results.skipped++;
+				continue;
+			}
 
-				if (isDuplicate) {
+			try {
+				const existing = await ctx.db
+					.query("alerts")
+					.filter((q) =>
+						q.and(
+							q.eq(q.field("subscriptionId"), subscription._id),
+							q.eq(q.field("summaryId"), args.summaryId),
+						),
+					)
+					.first();
+
+				if (existing) {
 					results.skipped++;
 					continue;
 				}
 
-				// Calculate scheduledFor based on frequency
-				const scheduledFor = calculateScheduledFor(
-					match.subscription.alertFrequency,
-					now,
-				);
-
-				// Create the alert
 				await ctx.db.insert("alerts", {
-					userId: match.subscription.userId,
-					subscriptionId: match.subscription._id,
+					userId: subscription.userId,
+					subscriptionId: subscription._id,
 					meetingId: args.meetingId,
 					summaryId: args.summaryId,
-					matchedTopics: match.matchedTopics,
-					matchedKeywords: match.matchedKeywords,
-					status: "pending",
-					scheduledFor,
+					matchedTopics: summary.topics.slice(0, 3),
+					status: "sent",
+					sentAt: now,
 					createdAt: now,
 				});
 
@@ -68,7 +76,7 @@ export const generateAlerts = internalMutation({
 				const errorMessage =
 					error instanceof Error ? error.message : "Unknown error";
 				results.errors.push(
-					`Subscription ${match.subscription._id}: ${errorMessage}`,
+					`Subscription ${subscription._id}: ${errorMessage}`,
 				);
 			}
 		}
@@ -273,50 +281,3 @@ export const markAllAsRead = mutation({
 		return { updated: unreadAlerts.length };
 	},
 });
-
-// ═══════════════════════════════════════════════════════════════
-// Helper: Calculate scheduled time based on frequency
-// ═══════════════════════════════════════════════════════════════
-function calculateScheduledFor(
-	frequency: "immediate" | "daily" | "weekly",
-	now: number,
-): number {
-	switch (frequency) {
-		case "immediate":
-			// Schedule for now (will be picked up by immediate cron)
-			return now;
-
-		case "daily": {
-			// Schedule for next 8am UTC
-			const date = new Date(now);
-			date.setUTCHours(8, 0, 0, 0);
-
-			// If it's already past 8am UTC today, schedule for tomorrow
-			if (date.getTime() <= now) {
-				date.setUTCDate(date.getUTCDate() + 1);
-			}
-
-			return date.getTime();
-		}
-
-		case "weekly": {
-			// Schedule for next Monday 8am UTC
-			const date = new Date(now);
-			date.setUTCHours(8, 0, 0, 0);
-
-			// Find next Monday (day 1)
-			const daysUntilMonday = (8 - date.getUTCDay()) % 7 || 7;
-			date.setUTCDate(date.getUTCDate() + daysUntilMonday);
-
-			// If today is Monday and it's before 8am, use today
-			if (new Date(now).getUTCDay() === 1 && new Date(now).getUTCHours() < 8) {
-				date.setUTCDate(date.getUTCDate() - 7);
-			}
-
-			return date.getTime();
-		}
-
-		default:
-			return now;
-	}
-}
