@@ -5,8 +5,7 @@ import {
 	Scripts,
 	useRouter,
 } from "@tanstack/react-router";
-import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
-import { Suspense } from "react";
+import { lazy, Suspense } from "react";
 import { Toaster } from "sonner";
 
 import { AppConvexProvider } from "@/components/AppConvexProvider";
@@ -15,6 +14,14 @@ import { Header } from "@/components/Header";
 import { RouteLoadingFallback } from "@/components/SuspenseFallback";
 import { DEFAULT_SOCIAL_IMAGE } from "@/lib/seo";
 import appCss from "@/styles.css?url";
+
+const RouterDevtools = import.meta.env.DEV
+	? lazy(() =>
+			import("@tanstack/react-router-devtools").then((module) => ({
+				default: module.TanStackRouterDevtools,
+			})),
+		)
+	: null;
 
 export const Route = createRootRoute({
 	head: () => ({
@@ -136,7 +143,11 @@ function RootComponent() {
 					<Suspense fallback={<RouteLoadingFallback />}>
 						<Outlet />
 					</Suspense>
-					<TanStackRouterDevtools position="bottom-right" />
+					{RouterDevtools ? (
+						<Suspense fallback={null}>
+							<RouterDevtools position="bottom-right" />
+						</Suspense>
+					) : null}
 					<Toaster richColors position="top-center" />
 				</AppConvexProvider>
 			</ErrorBoundary>
