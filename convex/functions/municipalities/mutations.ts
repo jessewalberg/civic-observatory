@@ -45,7 +45,6 @@ const scrapeStatusValidator = v.union(
 );
 
 // Identity-first admin check via the shared bridge.
-// only consulted when no Clerk identity is present (removed in Phase 5).
 async function requireAdmin(ctx: MutationCtx) {
 	return await requireAdminBridge(ctx, "Admin access required");
 }

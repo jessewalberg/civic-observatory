@@ -7,10 +7,9 @@ import {
 } from "../../lib/auth";
 
 /**
- * Phase-2 lazy claim/create (plan §2.6 option b): on the first authenticated
- * Clerk call, link the identity to an existing row (matched by email, only if
- * that row is not already owned by another Clerk user) or create a fresh one.
- * Identity-only — there is deliberately NO legacy fallback here.
+ * Phase-2/6 identity bootstrap: on the first authenticated Clerk call, create
+ * a fresh app user keyed by the Clerk subject. There is deliberately no
+ * claim-by-email and no WorkOS-era fallback.
  */
 export const ensureFromIdentity = mutation({
 	args: {},
