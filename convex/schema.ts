@@ -3,7 +3,7 @@ import { v } from "convex/values";
 
 export default defineSchema({
 	// ═══════════════════════════════════════════════════════════════
-	// USERS - Synced from WorkOS
+	// USERS - Synced from Clerk
 	// ═══════════════════════════════════════════════════════════════
 	users: defineTable({
 		// clerkUserId is the Clerk subject (identity key). workosUserId is a
@@ -33,6 +33,7 @@ export default defineSchema({
 	municipalities: defineTable({
 		name: v.string(),
 		state: v.string(),
+		slug: v.optional(v.string()),
 		county: v.optional(v.string()),
 		population: v.optional(v.number()),
 		timezone: v.optional(v.string()),
@@ -70,6 +71,7 @@ export default defineSchema({
 		updatedAt: v.number(),
 	})
 		.index("by_state", ["state"])
+		.index("by_slug", ["slug"])
 		.index("by_platform", ["platform"])
 		.index("by_active", ["isActive"])
 		.searchIndex("search_name", { searchField: "name" }),
@@ -80,6 +82,7 @@ export default defineSchema({
 	meetings: defineTable({
 		municipalityId: v.id("municipalities"),
 		title: v.string(),
+		slug: v.optional(v.string()),
 		meetingType: v.union(
 			v.literal("city_council"),
 			v.literal("school_board"),
@@ -119,6 +122,7 @@ export default defineSchema({
 	})
 		.index("by_municipality", ["municipalityId"])
 		.index("by_municipality_date", ["municipalityId", "meetingDate"])
+		.index("by_slug", ["slug"])
 		.index("by_date", ["meetingDate"])
 		.index("by_status", ["status"])
 		.index("by_content_hash", ["contentHash"]),
@@ -195,6 +199,26 @@ export default defineSchema({
 		modelUsed: v.string(),
 		promptVersion: v.string(),
 		processingTimeMs: v.number(),
+
+		municipalityId: v.optional(v.id("municipalities")),
+		meetingDate: v.optional(v.number()),
+		sourceUrl: v.optional(v.string()),
+		sourceType: v.optional(
+			v.union(
+				v.literal("scraped"),
+				v.literal("uploaded"),
+				v.literal("manual_entry"),
+			),
+		),
+		sourceContentHash: v.optional(v.string()),
+		status: v.optional(
+			v.union(
+				v.literal("summarized"),
+				v.literal("failed"),
+				v.literal("skipped"),
+			),
+		),
+		error: v.optional(v.string()),
 
 		createdAt: v.number(),
 	}).index("by_meeting", ["meetingId"]),

@@ -77,18 +77,16 @@ function UsersContent() {
 	const [isSubmitting, setIsSubmitting] = useState(false);
 
 	// Queries
-	const isAdmin = useQuery(api.functions.users.queries.isAdmin, {
-	});
+	const isAdmin = useQuery(api.functions.users.queries.isAdmin, {});
 	const usersResult = useQuery(api.functions.users.queries.listAll, {
 		limit: 500,
 	});
-	const stats = useQuery(api.functions.users.queries.getAdminStats, {
-	});
+	const stats = useQuery(api.functions.users.queries.getAdminStats, {});
 
 	// Handle the paginated users result
 	const users = Array.isArray(usersResult)
 		? usersResult
-		: usersResult?.users ?? [];
+		: (usersResult?.users ?? []);
 
 	// Mutations
 	const adminUpdateUser = useMutation(

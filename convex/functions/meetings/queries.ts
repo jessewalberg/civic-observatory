@@ -1,5 +1,6 @@
 import { v } from "convex/values";
-import { query } from "../../_generated/server";
+import type { Id } from "../../_generated/dataModel";
+import { type QueryCtx, query } from "../../_generated/server";
 import { getCurrentUser } from "../../lib/auth";
 
 // Meeting type validator
@@ -137,6 +138,43 @@ export const getWithSummary = query({
 		};
 	},
 });
+
+export const getWithSummaryByIdentifier = query({
+	args: {
+		identifier: v.string(),
+	},
+	handler: async (ctx, args) => {
+		const bySlug = await ctx.db
+			.query("meetings")
+			.withIndex("by_slug", (q) => q.eq("slug", args.identifier))
+			.first();
+
+		const meeting =
+			bySlug ?? (await getMeetingByLegacyId(ctx, args.identifier));
+		if (!meeting) return null;
+
+		const summary = await ctx.db
+			.query("summaries")
+			.withIndex("by_meeting", (q) => q.eq("meetingId", meeting._id))
+			.first();
+
+		const municipality = await ctx.db.get(meeting.municipalityId);
+
+		return {
+			...meeting,
+			summary,
+			municipality,
+		};
+	},
+});
+
+async function getMeetingByLegacyId(ctx: QueryCtx, identifier: string) {
+	try {
+		return await ctx.db.get(identifier as Id<"meetings">);
+	} catch {
+		return null;
+	}
+}
 
 // ═══════════════════════════════════════════════════════════════
 // GET RECENT - Recent meetings across all municipalities
@@ -615,9 +653,7 @@ function diagnoseMeeting(args: {
 				"If links are in the HTML, the scraper selectors need updating for this site's DOM structure.",
 				"If content is loaded via JS, this site needs the headless browser scraper.",
 			],
-			investigationUrls: [
-				{ label: "Meetings page", url: args.sourceUrl },
-			],
+			investigationUrls: [{ label: "Meetings page", url: args.sourceUrl }],
 		};
 	}
 
@@ -764,7 +800,9 @@ function diagnoseMeeting(args: {
 		label: "Unknown",
 		severity: "investigate",
 		featureNeeded: null,
-		description: err || "No error details available. Check Convex logs for this meeting ID.",
+		description:
+			err ||
+			"No error details available. Check Convex logs for this meeting ID.",
 		investigationSteps: [
 			"Check the Convex dashboard logs for this meeting ID.",
 			"Open the source URL below to inspect what the page returns.",

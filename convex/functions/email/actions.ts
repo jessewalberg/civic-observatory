@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internal } from "../../_generated/api";
+import type { Doc, Id } from "../../_generated/dataModel";
 import { internalAction } from "../../_generated/server";
 import {
 	dailyDigestTemplate,
@@ -15,6 +16,46 @@ import {
 const FROM_ADDRESS = "alerts@civicobservatory.com";
 const FROM_NAME = "Civic Observatory";
 const BASE_URL = process.env.SITE_URL ?? "https://civicobservatory.com";
+
+type PendingAlert = {
+	alert: Doc<"alerts">;
+	user: {
+		_id: Id<"users">;
+		email: string;
+		name?: string;
+	};
+	meeting: Pick<
+		Doc<"meetings">,
+		"_id" | "slug" | "title" | "meetingType" | "meetingDate"
+	>;
+	municipality: Pick<
+		Doc<"municipalities">,
+		"_id" | "slug" | "name" | "state"
+	> | null;
+	summary: Pick<
+		Doc<"summaries">,
+		"_id" | "executiveSummary" | "topics" | "keyDecisions"
+	> | null;
+};
+
+type DigestAlert = {
+	alert: Doc<"alerts">;
+	meeting: Pick<
+		Doc<"meetings">,
+		"_id" | "slug" | "title" | "meetingType" | "meetingDate"
+	>;
+	municipality: Pick<Doc<"municipalities">, "slug" | "name" | "state"> | null;
+	summary: Pick<Doc<"summaries">, "executiveSummary" | "topics"> | null;
+};
+
+type UserDigest = {
+	user: {
+		_id: Id<"users">;
+		email: string;
+		name?: string;
+	};
+	alerts: DigestAlert[];
+};
 
 /** Minimal HTML→text fallback so Cloudflare Email Sending has a text part
  * (improves deliverability; CF accepts html-only but spam filters prefer both). */
@@ -121,13 +162,13 @@ export const sendImmediateAlert = internalAction({
 	},
 	handler: async (ctx, args): Promise<{ success: boolean; error?: string }> => {
 		// Get alert with all related data
-		const alertData = await ctx.runQuery(
+		const alertData = (await ctx.runQuery(
 			internal.functions.alerts.queries.getPendingByFrequency,
 			{ frequency: "immediate" },
-		);
+		)) as PendingAlert[];
 
 		// Find our specific alert
-		const alertInfo = alertData.find((a: any) => a.alert._id === args.alertId);
+		const alertInfo = alertData.find((a) => a.alert._id === args.alertId);
 
 		if (!alertInfo) {
 			return { success: false, error: "Alert not found or not ready" };
@@ -159,7 +200,7 @@ export const sendImmediateAlert = internalAction({
 			topics: summary.topics,
 			matchedTopics: alert.matchedTopics,
 			keyDecisions: summary.keyDecisions.slice(0, 3),
-			meetingUrl: `${BASE_URL}/meeting/${meeting._id}`,
+			meetingUrl: meetingUrl(meeting),
 		};
 
 		const emailParams: EmailParams = {
@@ -218,10 +259,10 @@ export const sendDailyDigest = internalAction({
 		const results = { sent: 0, failed: 0, errors: [] as string[] };
 
 		// Get all pending alerts grouped by user
-		const userDigests = await ctx.runQuery(
+		const userDigests = (await ctx.runQuery(
 			internal.functions.alerts.queries.getPendingForUserDigest,
 			{ frequency: "daily" },
-		);
+		)) as UserDigest[];
 
 		for (const digest of userDigests) {
 			const { user, alerts: userAlerts } = digest;
@@ -237,7 +278,7 @@ export const sendDailyDigest = internalAction({
 
 			// Build meeting data for all alerts
 			const meetings: MeetingData[] = userAlerts.map(
-				({ alert, meeting, municipality, summary }: any) => ({
+				({ alert, meeting, municipality, summary }) => ({
 					title: meeting.title,
 					meetingType: meeting.meetingType,
 					meetingDate: meeting.meetingDate,
@@ -247,7 +288,7 @@ export const sendDailyDigest = internalAction({
 					topics: summary?.topics ?? [],
 					matchedTopics: alert.matchedTopics,
 					keyDecisions: [],
-					meetingUrl: `${BASE_URL}/meeting/${alert.meetingId}`,
+					meetingUrl: meetingUrl(meeting, alert.meetingId),
 				}),
 			);
 
@@ -272,7 +313,7 @@ export const sendDailyDigest = internalAction({
 			);
 
 			// Update alert statuses
-			const alertIds = userAlerts.map(({ alert }: any) => alert._id);
+			const alertIds = userAlerts.map(({ alert }) => alert._id);
 
 			if (result.success) {
 				await ctx.runMutation(
@@ -325,10 +366,10 @@ export const sendWeeklyDigest = internalAction({
 		const results = { sent: 0, failed: 0, errors: [] as string[] };
 
 		// Get all pending alerts grouped by user
-		const userDigests = await ctx.runQuery(
+		const userDigests = (await ctx.runQuery(
 			internal.functions.alerts.queries.getPendingForUserDigest,
 			{ frequency: "weekly" },
-		);
+		)) as UserDigest[];
 
 		for (const digest of userDigests) {
 			const { user, alerts: userAlerts } = digest;
@@ -344,7 +385,7 @@ export const sendWeeklyDigest = internalAction({
 
 			// Build meeting data for all alerts
 			const meetings: MeetingData[] = userAlerts.map(
-				({ alert, meeting, municipality, summary }: any) => ({
+				({ alert, meeting, municipality, summary }) => ({
 					title: meeting.title,
 					meetingType: meeting.meetingType,
 					meetingDate: meeting.meetingDate,
@@ -354,7 +395,7 @@ export const sendWeeklyDigest = internalAction({
 					topics: summary?.topics ?? [],
 					matchedTopics: alert.matchedTopics,
 					keyDecisions: [],
-					meetingUrl: `${BASE_URL}/meeting/${alert.meetingId}`,
+					meetingUrl: meetingUrl(meeting, alert.meetingId),
 				}),
 			);
 
@@ -390,7 +431,7 @@ export const sendWeeklyDigest = internalAction({
 			);
 
 			// Update alert statuses
-			const alertIds = userAlerts.map(({ alert }: any) => alert._id);
+			const alertIds = userAlerts.map(({ alert }) => alert._id);
 
 			if (result.success) {
 				await ctx.runMutation(
@@ -467,3 +508,10 @@ export const processImmediateAlerts = internalAction({
 		return results;
 	},
 });
+
+function meetingUrl(
+	meeting: { _id?: string; slug?: string },
+	fallbackId?: string,
+): string {
+	return `${BASE_URL}/meeting/${meeting.slug ?? meeting._id ?? fallbackId}`;
+}

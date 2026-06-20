@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import type { Id } from "../../_generated/dataModel";
 import { query } from "../../_generated/server";
 
 // ═══════════════════════════════════════════════════════════════
@@ -36,6 +37,40 @@ export const get = query({
 	},
 	handler: async (ctx, args) => {
 		return await ctx.db.get(args.id);
+	},
+});
+
+export const getBySlug = query({
+	args: {
+		slug: v.string(),
+	},
+	handler: async (ctx, args) => {
+		return await ctx.db
+			.query("municipalities")
+			.withIndex("by_slug", (q) => q.eq("slug", args.slug))
+			.first();
+	},
+});
+
+export const getByIdentifier = query({
+	args: {
+		identifier: v.string(),
+	},
+	handler: async (ctx, args) => {
+		const bySlug = await ctx.db
+			.query("municipalities")
+			.withIndex("by_slug", (q) => q.eq("slug", args.identifier))
+			.first();
+
+		if (bySlug) {
+			return bySlug;
+		}
+
+		try {
+			return await ctx.db.get(args.identifier as Id<"municipalities">);
+		} catch {
+			return null;
+		}
 	},
 });
 

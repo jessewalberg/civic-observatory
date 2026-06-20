@@ -8,16 +8,16 @@ Execute these prompts in order. Each builds on the previous. Test after each pro
 
 ### Prompt 1.1: Project Scaffold
 ```
-Initialize Civic Pulse from the reference repo https://github.com/jessewalberg/aita
+Initialize Civic Observatory from the reference repo https://github.com/jessewalberg/aita
 
 1. Read CLAUDE.md and ARCHITECTURE.md thoroughly first
 2. Set up project with same patterns:
    - TanStack Start with file-based routing
    - Convex for backend
-   - WorkOS AuthKit for auth
+   - Clerk for auth
    - shadcn/ui + Tailwind v4
    - Biome for linting
-3. Rename from "aita" to "civic-pulse"
+3. Rename from "aita" to "civic-observatory"
 4. Create directory structure from CLAUDE.md
 5. Set up .env.example
 6. Verify dev server starts
@@ -30,7 +30,7 @@ Don't implement features - just get the skeleton working.
 Implement the complete Convex schema from ARCHITECTURE.md.
 
 Create convex/schema.ts with all 8 tables:
-1. users - WorkOS sync, tier, Stripe
+1. users - Clerk identity, tier, Stripe
 2. municipalities - places, scrape config
 3. meetings - documents, status
 4. summaries - AI output
@@ -39,7 +39,7 @@ Create convex/schema.ts with all 8 tables:
 7. scrapeJobs - scraper history
 8. usageRecords - rate limiting
 
-Include ALL indexes. Run `npx convex dev` to verify.
+Include ALL indexes. Run `pnpm exec convex dev` to verify.
 ```
 
 ### Prompt 1.3: User Management
@@ -47,20 +47,18 @@ Include ALL indexes. Run `npx convex dev` to verify.
 Implement user management:
 
 convex/users.ts:
-- upsertFromWorkOS: Create/update on login
-- getByWorkosId: Find by WorkOS ID
-- getCurrentUser: Get from auth context
+- ensureFromIdentity: Create the Clerk-backed user row on first login
+- current: Resolve the current user from Convex auth context
 - updateTier: For Stripe webhook
 
 src/lib/auth.ts:
-- getAuth(): Get user from session
+- useConvexUser(): Get current Convex user
 - requireAuth(): Throw if not authenticated
 - useAuth(): Client hook
 
-src/routes/api/auth/callback.ts:
-- Handle WorkOS callback
-- Upsert user
-- Redirect
+src/components/UserBootstrap.tsx:
+- Ensure signed-in Clerk users have a Convex user row
+- Never trust client-supplied user IDs
 
 Test sign in/out flow works.
 ```
@@ -253,7 +251,7 @@ summarize action:
 2. Get meeting + municipality
 3. Extract text from PDF if needed
 4. Build prompt
-5. Call Claude API
+5. Call OpenRouter Claude model
 6. Parse JSON response
 7. Validate schema
 8. Create summary
@@ -579,9 +577,10 @@ Webhooks:
 - subscription.updated → update period
 - subscription.deleted → downgrade
 
-src/routes/api/webhooks/stripe.ts:
-- Verify signature
-- Route to handler
+convex/http.ts:
+- Receive Stripe webhook
+- Verify signature in Convex
+- Route to internal handler
 ```
 
 ### Prompt 6.5: Pricing Page
@@ -661,7 +660,7 @@ Full test pass:
 Deploy to production:
 
 1. Production Convex, Clerk, Stripe, Cloudflare Email
-2. npx convex deploy --prod
+2. pnpm exec convex deploy
 3. Cloudflare setup
 4. DNS configuration
 5. Verify all flows

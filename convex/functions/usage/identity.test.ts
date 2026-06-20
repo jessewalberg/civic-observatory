@@ -72,7 +72,10 @@ describe("usage domain under the identity bridge", () => {
 
 	it("getUsageStats returns the CALLER's tier/usage, ignoring a spoofed id", async () => {
 		const t = setup();
-		await seedUser(t, { workosUserId: "user_wos_other", email: "other@example.com" });
+		await seedUser(t, {
+			workosUserId: "user_wos_other",
+			email: "other@example.com",
+		});
 		await seedUser(t, {
 			clerkUserId: "user_clerk_caller",
 			email: "caller@example.com",
@@ -90,5 +93,4 @@ describe("usage domain under the identity bridge", () => {
 		expect(stats).not.toBeNull();
 		expect(stats?.tier).toBe("free");
 	});
-
 });

@@ -5,15 +5,23 @@ import {
 	Scripts,
 	useRouter,
 } from "@tanstack/react-router";
-import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
-import { Suspense } from "react";
+import { lazy, Suspense } from "react";
 import { Toaster } from "sonner";
 
 import { AppConvexProvider } from "@/components/AppConvexProvider";
 import { ErrorBoundary, RootErrorFallback } from "@/components/error";
 import { Header } from "@/components/Header";
 import { RouteLoadingFallback } from "@/components/SuspenseFallback";
+import { DEFAULT_SOCIAL_IMAGE } from "@/lib/seo";
 import appCss from "@/styles.css?url";
+
+const RouterDevtools = import.meta.env.DEV
+	? lazy(() =>
+			import("@tanstack/react-router-devtools").then((module) => ({
+				default: module.TanStackRouterDevtools,
+			})),
+		)
+	: null;
 
 export const Route = createRootRoute({
 	head: () => ({
@@ -22,12 +30,18 @@ export const Route = createRootRoute({
 			{ name: "viewport", content: "width=device-width, initial-scale=1" },
 			{ title: "Civic Observatory - Municipal Meeting Summarizer" },
 			{ name: "theme-color", content: "#0A0A0B" },
-			// SEO essentials
-			{ name: "robots", content: "index, follow" },
+			{ property: "og:image", content: DEFAULT_SOCIAL_IMAGE },
+			{ property: "og:image:width", content: "1200" },
+			{ property: "og:image:height", content: "630" },
 			{
-				name: "googlebot",
-				content:
-					"index, follow, max-video-preview:-1, max-image-preview:large, max-snippet:-1",
+				property: "og:image:alt",
+				content: "Civic Observatory local government meeting alerts",
+			},
+			{ name: "twitter:card", content: "summary_large_image" },
+			{ name: "twitter:image", content: DEFAULT_SOCIAL_IMAGE },
+			{
+				name: "twitter:image:alt",
+				content: "Civic Observatory local government meeting alerts",
 			},
 			// Core Web Vitals / Performance hints
 			{ name: "format-detection", content: "telephone=no" },
@@ -129,7 +143,11 @@ function RootComponent() {
 					<Suspense fallback={<RouteLoadingFallback />}>
 						<Outlet />
 					</Suspense>
-					<TanStackRouterDevtools position="bottom-right" />
+					{RouterDevtools ? (
+						<Suspense fallback={null}>
+							<RouterDevtools position="bottom-right" />
+						</Suspense>
+					) : null}
 					<Toaster richColors position="top-center" />
 				</AppConvexProvider>
 			</ErrorBoundary>

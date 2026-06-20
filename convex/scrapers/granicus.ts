@@ -2,6 +2,11 @@
 
 import * as cheerio from "cheerio";
 import type { AnyNode, Element } from "domhandler";
+import {
+	extractLegistarSlug,
+	isLegistarUrl,
+	tryLegistarApi,
+} from "./legistarApi";
 import type {
 	ScrapedMeeting,
 	Scraper,
@@ -9,11 +14,6 @@ import type {
 	ScraperError,
 	ScraperResult,
 } from "./types";
-import {
-	extractLegistarSlug,
-	isLegistarUrl,
-	tryLegistarApi,
-} from "./legistarApi";
 import {
 	fetchWithRetry,
 	hashContent,

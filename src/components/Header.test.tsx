@@ -31,7 +31,9 @@ vi.mock("../../convex/_generated/api", () => ({
 	},
 }));
 vi.mock("@tanstack/react-router", () => ({
-	Link: ({ children }: { children: React.ReactNode }) => <a>{children}</a>,
+	Link: ({ children, to }: { children: React.ReactNode; to?: string }) => (
+		<a href={to ?? "/"}>{children}</a>
+	),
 }));
 
 import { Header } from "./Header";

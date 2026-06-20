@@ -119,7 +119,8 @@ export function mapToScrapedMeeting(
 		`https://${slug}.legistar.com/MeetingDetail.aspx?ID=${event.EventId}`;
 
 	// Document URL — prefer agenda PDF, then minutes PDF
-	const documentUrl = event.EventAgendaFile || event.EventMinutesFile || undefined;
+	const documentUrl =
+		event.EventAgendaFile || event.EventMinutesFile || undefined;
 
 	return {
 		title,

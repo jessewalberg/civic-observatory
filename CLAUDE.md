@@ -59,7 +59,7 @@ civic-observatory/
 │   │   ├── index.tsx             # Landing page
 │   │   ├── explore/
 │   │   │   ├── index.tsx         # Municipality grid + search
-│   │   │   └── $slug.tsx         # Municipality detail
+│   │   │   └── $municipalityId.tsx # Municipality detail
 │   │   ├── meeting/
 │   │   │   └── $meetingId.tsx    # Meeting summary (KEY PAGE)
 │   │   ├── dashboard/
@@ -74,7 +74,7 @@ civic-observatory/
 │   │   ├── pricing.tsx
 │   │   └── api/
 │   │       ├── sign-in.$.tsx     # Clerk sign-in (catch-all)
-│   │       ├── stripe/webhook.ts # Stripe webhook
+│   │       ├── webhooks/stripe.tsx # Gone stub; Convex handles Stripe webhook
 │   │       ├── sitemap.tsx
 │   │       └── robots.tsx
 │   ├── components/
@@ -123,12 +123,12 @@ civic-observatory/
 
 | Table | Purpose | Key Fields |
 |-------|---------|------------|
-| `users` | User accounts | workosUserId, email, tier, role, stripeCustomerId |
-| `municipalities` | Locations to scrape | name, slug, state, platform, scrapeConfig |
-| `meetings` | Raw meeting documents | municipalityId, title, meetingType, processingStatus |
+| `users` | User accounts | clerkUserId, email, tier, isAdmin, stripeCustomerId |
+| `municipalities` | Locations to scrape | name, state, platform, scrapeConfig |
+| `meetings` | Raw meeting documents | municipalityId, title, meetingType, status |
 | `summaries` | AI-generated summaries | meetingId, executiveSummary, keyDecisions, discussionTopics |
 | `subscriptions` | Alert preferences | userId, municipalityId, topics, frequency |
-| `alerts` | Pending/sent alerts | userId, meetingId, matchedTopics, isSent |
+| `alerts` | Pending/sent alerts | userId, meetingId, matchedTopics, status |
 | `scrapeJobs` | Scraper run history | municipalityId, status, stats, errors |
 | `usageRecords` | Rate limiting | userId, action, timestamp |
 
@@ -202,7 +202,7 @@ This is the sequence of work. Do NOT skip ahead. Each phase corresponds to a pro
 40. Admin access control (isAdmin check)
 41. Admin overview with stats
 42. Municipality CRUD admin
-43. User management (tier, role changes)
+43. User management (tier, admin changes)
 44. Scraper monitoring and manual triggers
 
 ### Phase 7: Polish + Production (`prompts/07-polish-production.md`)
@@ -219,43 +219,20 @@ This is the sequence of work. Do NOT skip ahead. Each phase corresponds to a pro
 ```bash
 # Development
 pnpm dev               # Start frontend dev server
-pnpm convex dev        # Start Convex dev server (run in separate terminal)
+pnpm exec convex dev   # Start Convex dev server (run in separate terminal)
 
 # Code Quality
 pnpm typecheck         # TypeScript check
 pnpm lint              # Biome lint
 
 # Production
-pnpm run build         # Build for production
-pnpm convex deploy --prod   # Deploy Convex
-pnpm wrangler deploy        # Deploy to Cloudflare
+pnpm build             # Build for production
+pnpm exec convex deploy     # Deploy Convex
+pnpm exec wrangler deploy --env production # Deploy to Cloudflare
 ```
 
-## Environment Variables
+## Environment Variables / Secrets
 
-```env
-# Convex
-CONVEX_DEPLOYMENT=dev:your-deployment
-VITE_CONVEX_URL=https://your-deployment.convex.cloud
-
-# Clerk (server = Worker secrets, client = Vite bundle)
-CLERK_SECRET_KEY=sk_...
-CLERK_JWT_ISSUER_DOMAIN=https://<your-subdomain>.clerk.accounts.dev
-VITE_CLERK_PUBLISHABLE_KEY=pk_...
-
-# OpenRouter (AI API routing)
-OPENROUTER_API_KEY=sk-or-...
-
-# Cloudflare Email Sending (sendEmail action) — token needs email-send perm,
-# domain civicobservatory.com onboarded to CF Email Sending
-CLOUDFLARE_API_TOKEN=...
-CLOUDFLARE_ACCOUNT_ID=...
-
-# Stripe
-STRIPE_SECRET_KEY=sk_test_...
-STRIPE_WEBHOOK_SECRET=whsec_...
-STRIPE_PRO_PRICE_ID=price_...
-
-# App
-SITE_URL=http://localhost:3000
-```
+Secret metadata is declared in `secrets.manifest.json`; values live in 1Password
+and are synced out-of-band via SecretKit. Do not duplicate secret values in docs,
+issues, commits, or CI logs. Public bundle variables must use the `VITE_` prefix.

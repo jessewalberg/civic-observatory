@@ -2,6 +2,7 @@
 
 import { v } from "convex/values";
 import { api, internal } from "../../_generated/api";
+import type { Doc } from "../../_generated/dataModel";
 import { internalAction } from "../../_generated/server";
 
 // ═══════════════════════════════════════════════════════════════
@@ -60,7 +61,8 @@ const STATE_ABBREVS: Record<string, string> = {
 	Wyoming: "wy",
 };
 
-const UA = "Mozilla/5.0 (compatible; CivicObservatory/1.0; +https://civicobservatory.com)";
+const UA =
+	"Mozilla/5.0 (compatible; CivicObservatory/1.0; +https://civicobservatory.com)";
 const TIMEOUT_MS = 8000;
 
 // ═══════════════════════════════════════════════════════════════
@@ -84,14 +86,14 @@ function generateSlugs(name: string, state: string): string[] {
 
 	const slugs = [clean];
 	if (words.length > 1) slugs.push(hyphenated);
-	slugs.push("cityof" + clean);
-	slugs.push(clean + abbr);
+	slugs.push(`cityof${clean}`);
+	slugs.push(`${clean}${abbr}`);
 
 	if (name.startsWith("St. ")) {
-		slugs.push("st" + clean.slice(2));
-		slugs.push("saint" + clean.slice(2));
+		slugs.push(`st${clean.slice(2)}`);
+		slugs.push(`saint${clean.slice(2)}`);
 	}
-	if (name.startsWith("Fort ")) slugs.push("ft" + clean.slice(4));
+	if (name.startsWith("Fort ")) slugs.push(`ft${clean.slice(4)}`);
 	if (name.includes("North ")) slugs.push(clean.replace("north", "n"));
 	if (name.includes("South ")) slugs.push(clean.replace("south", "s"));
 	if (name.includes("West ")) slugs.push(clean.replace("west", "w"));
@@ -136,7 +138,7 @@ async function checkLegistarHtml(slug: string): Promise<string | null> {
 	const resp = await fetchWithTimeout(url);
 	if (!resp || !resp.ok) return null;
 	const cl = resp.headers.get("content-length");
-	if (cl && parseInt(cl) > 5000) return url;
+	if (cl && parseInt(cl, 10) > 5000) return url;
 	// If no content-length header, read a chunk to check size
 	const body = await resp.text();
 	if (body.length > 5000) return url;
@@ -144,14 +146,11 @@ async function checkLegistarHtml(slug: string): Promise<string | null> {
 }
 
 /** Check a URL returns 200 with enough content to be real. */
-async function probeUrl(
-	url: string,
-	minSize: number = 500,
-): Promise<boolean> {
+async function probeUrl(url: string, minSize: number = 500): Promise<boolean> {
 	const resp = await fetchWithTimeout(url);
 	if (!resp || !resp.ok) return false;
 	const cl = resp.headers.get("content-length");
-	if (cl && parseInt(cl) > minSize) return true;
+	if (cl && parseInt(cl, 10) > minSize) return true;
 	const body = await resp.text();
 	return body.length > minSize;
 }
@@ -331,15 +330,23 @@ export const discoverByState = internalAction({
 		state: v.string(),
 		delayBetweenMs: v.optional(v.number()),
 	},
-	handler: async (ctx, args): Promise<{ state: string; total: number; needsDiscovery: number; discovered: number; failed: number }> => {
-		const municipalities: any[] = await ctx.runQuery(
+	handler: async (
+		ctx,
+		args,
+	): Promise<{
+		state: string;
+		total: number;
+		needsDiscovery: number;
+		discovered: number;
+		failed: number;
+	}> => {
+		const municipalities = (await ctx.runQuery(
 			api.functions.municipalities.queries.list,
 			{ state: args.state },
-		);
+		)) as Doc<"municipalities">[];
 
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		const needsDiscovery = municipalities.filter(
-			(m: any) => !m.meetingsPageUrl && m.platform === "manual",
+			(m) => !m.meetingsPageUrl && m.platform === "manual",
 		);
 
 		let discovered = 0;
@@ -369,10 +376,7 @@ export const discoverByState = internalAction({
 				}
 			} catch (error) {
 				failed++;
-				console.error(
-					`  ERROR: ${muni.name}, ${muni.state}:`,
-					error,
-				);
+				console.error(`  ERROR: ${muni.name}, ${muni.state}:`, error);
 			}
 
 			// Polite delay between probes
@@ -426,10 +430,7 @@ export const discoverAll = internalAction({
 			);
 		}
 
-		const totalDiscovered = results.reduce(
-			(sum, r) => sum + r.discovered,
-			0,
-		);
+		const totalDiscovered = results.reduce((sum, r) => sum + r.discovered, 0);
 		const totalNeeded = results.reduce((sum, r) => sum + r.total, 0);
 
 		return {

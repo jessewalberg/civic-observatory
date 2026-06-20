@@ -3,24 +3,21 @@ import {
 	ArrowRight,
 	Bell,
 	Building2,
-	Calendar,
 	ChevronRight,
 	Clock,
 	FileText,
 	MapPin,
 	Newspaper,
 	Shield,
-	TrendingUp,
 	Users,
 	Vote,
 	Zap,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { TopicBadge } from "@/components/TopicBadge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CompactVoteDisplay } from "@/components/VoteDisplay";
+import { canonicalLink, generateHomeJsonLd } from "@/lib/seo";
 
 export const Route = createFileRoute("/")({
 	component: LandingPage,
@@ -28,32 +25,6 @@ export const Route = createFileRoute("/")({
 		const title = "Civic Observatory - Municipal Meeting Summarizer";
 		const description =
 			"AI-powered summaries of local government meetings. Stay informed about city councils, school boards, and planning commissions in your community.";
-
-		const jsonLd = {
-			"@context": "https://schema.org",
-			"@type": "WebApplication",
-			name: "Civic Observatory",
-			description,
-			applicationCategory: "GovernmentApplication",
-			operatingSystem: "Web",
-			offers: {
-				"@type": "Offer",
-				price: "0",
-				priceCurrency: "USD",
-				description: "Free tier with 50 daily summary views",
-			},
-			featureList: [
-				"AI-powered meeting summaries",
-				"Real-time alerts",
-				"Municipal tracking",
-				"Email digests",
-			],
-			creator: {
-				"@type": "Organization",
-				name: "Civic Observatory",
-				description: "Making local government accessible to everyone",
-			},
-		};
 
 		return {
 			meta: [
@@ -75,64 +46,13 @@ export const Route = createFileRoute("/")({
 			scripts: [
 				{
 					type: "application/ld+json",
-					children: JSON.stringify(jsonLd),
+					children: JSON.stringify(generateHomeJsonLd()),
 				},
 			],
+			links: [canonicalLink("/")],
 		};
 	},
 });
-
-// Mock data for recent meetings
-const recentMeetings = [
-	{
-		id: "1",
-		municipality: "San Francisco",
-		state: "CA",
-		type: "City Council",
-		date: "2024-01-18",
-		title: "Budget Approval for Fiscal Year 2024-25",
-		summary:
-			"Council approved $14.6B budget with increased funding for homeless services and public transit.",
-		topics: ["budget", "housing", "transportation"] as const,
-		vote: { yea: 8, nay: 3 },
-	},
-	{
-		id: "2",
-		municipality: "Austin",
-		state: "TX",
-		type: "Planning Commission",
-		date: "2024-01-17",
-		title: "Downtown Zoning Amendments",
-		summary:
-			"Commission voted to allow mixed-use development in previously commercial-only zones.",
-		topics: ["zoning", "housing"] as const,
-		vote: { yea: 6, nay: 1 },
-	},
-	{
-		id: "3",
-		municipality: "Denver",
-		state: "CO",
-		type: "School Board",
-		date: "2024-01-16",
-		title: "New Elementary School Construction",
-		summary:
-			"Board approved $45M bond for new school in growing northeast corridor neighborhood.",
-		topics: ["education", "budget", "infrastructure"] as const,
-		vote: { yea: 7, nay: 0 },
-	},
-	{
-		id: "4",
-		municipality: "Seattle",
-		state: "WA",
-		type: "City Council",
-		date: "2024-01-15",
-		title: "Climate Action Plan Update",
-		summary:
-			"Council adopted ambitious 2030 emissions targets with focus on building efficiency.",
-		topics: ["environment", "infrastructure"] as const,
-		vote: { yea: 7, nay: 2 },
-	},
-];
 
 const audiences = [
 	{
@@ -165,7 +85,6 @@ const audiences = [
 ];
 
 function LandingPage() {
-
 	return (
 		<div className="min-h-screen bg-background text-foreground overflow-hidden">
 			{/* Animated background */}
@@ -255,22 +174,25 @@ function LandingPage() {
 								transition={{ delay: 0.4 }}
 							>
 								<Button size="lg" className="gap-2 text-base px-8" asChild>
-								<Link to="/explore">
-									Explore Meetings
-									<ArrowRight className="h-4 w-4" />
-								</Link>
-							</Button>
-							<Button
-								size="lg"
-								variant="outline"
-								className="gap-2 text-base"
-								asChild
-							>
-								<Link to="/pricing" search={{ success: false, canceled: false }}>
-									View Pricing
-									<ChevronRight className="h-4 w-4" />
-								</Link>
-							</Button>
+									<Link to="/explore">
+										Explore Meetings
+										<ArrowRight className="h-4 w-4" />
+									</Link>
+								</Button>
+								<Button
+									size="lg"
+									variant="outline"
+									className="gap-2 text-base"
+									asChild
+								>
+									<Link
+										to="/pricing"
+										search={{ success: false, canceled: false }}
+									>
+										View Pricing
+										<ChevronRight className="h-4 w-4" />
+									</Link>
+								</Button>
 							</motion.div>
 
 							<motion.div
@@ -296,7 +218,7 @@ function LandingPage() {
 							</motion.div>
 						</motion.div>
 
-						{/* Right column - Stats/Visual */}
+						{/* Right column - Workflow visual */}
 						<motion.div
 							className="relative"
 							initial={{ opacity: 0, scale: 0.95 }}
@@ -314,46 +236,50 @@ function LandingPage() {
 											<div className="h-3 w-3 rounded-full bg-green-500" />
 										</div>
 										<Badge variant="secondary" className="text-xs">
-											Live Feed
+											Civic Signal Pipeline
 										</Badge>
 									</div>
 								</CardHeader>
 								<CardContent className="space-y-4">
-									{recentMeetings.slice(0, 3).map((meeting, index) => (
+									{[
+										{
+											title: "Collect public records",
+											description:
+												"Agendas, packets, minutes, and transcripts from supported municipalities.",
+											icon: FileText,
+										},
+										{
+											title: "Summarize decisions",
+											description:
+												"Key votes, discussion themes, and action items in a scan-friendly brief.",
+											icon: Zap,
+										},
+										{
+											title: "Send topic alerts",
+											description:
+												"Subscribers hear about housing, budgets, zoning, and other tracked issues.",
+											icon: Bell,
+										},
+									].map((item, index) => (
 										<motion.div
-											key={meeting.id}
+											key={item.title}
 											className="p-4 rounded-xl bg-muted/50 border border-border/50 space-y-3"
 											initial={{ opacity: 0, x: 20 }}
 											animate={{ opacity: 1, x: 0 }}
 											transition={{ delay: 0.5 + index * 0.1 }}
 										>
 											<div className="flex items-start justify-between gap-4">
-												<div className="space-y-1 flex-1 min-w-0">
-													<div className="flex items-center gap-2 text-xs text-muted-foreground">
-														<MapPin className="h-3 w-3" />
-														<span>
-															{meeting.municipality}, {meeting.state}
-														</span>
-														<span className="text-border">•</span>
-														<span>{meeting.type}</span>
-													</div>
-													<p className="font-medium text-sm leading-snug truncate">
-														{meeting.title}
+												<div className="rounded-lg bg-primary/10 p-2">
+													<item.icon className="h-4 w-4 text-primary" />
+												</div>
+												<div className="space-y-1 flex-1">
+													<p className="font-medium text-sm leading-snug">
+														{item.title}
+													</p>
+													<p className="text-xs text-muted-foreground leading-relaxed">
+														{item.description}
 													</p>
 												</div>
-												<CompactVoteDisplay
-													yea={meeting.vote.yea}
-													nay={meeting.vote.nay}
-												/>
-											</div>
-											<div className="flex gap-2 flex-wrap">
-												{meeting.topics.slice(0, 2).map((topic) => (
-													<TopicBadge
-														key={topic}
-														topic={topic}
-														className="text-xs py-0.5"
-													/>
-												))}
 											</div>
 										</motion.div>
 									))}
@@ -376,100 +302,6 @@ function LandingPage() {
 					</div>
 				</section>
 
-				{/* Recent Meetings Section */}
-				<section className="border-t border-border/50 bg-muted/30">
-					<div className="mx-auto max-w-7xl px-6 py-24">
-						<motion.div
-							className="text-center mb-12"
-							initial={{ opacity: 0, y: 20 }}
-							whileInView={{ opacity: 1, y: 0 }}
-							viewport={{ once: true }}
-						>
-							<Badge variant="outline" className="mb-4">
-								<TrendingUp className="h-3 w-3 mr-2" />
-								Trending This Week
-							</Badge>
-							<h2 className="text-3xl md:text-4xl font-semibold mb-4">
-								Recent Meeting Summaries
-							</h2>
-							<p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-								From coast to coast, local governments are making decisions that
-								affect your daily life. Here's what you might have missed.
-							</p>
-						</motion.div>
-
-						<div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-							{recentMeetings.map((meeting, index) => (
-								<motion.div
-									key={meeting.id}
-									initial={{ opacity: 0, y: 30 }}
-									whileInView={{ opacity: 1, y: 0 }}
-									viewport={{ once: true }}
-									transition={{ delay: index * 0.1 }}
-								>
-									<Link to="/explore" className="block h-full">
-									<Card className="h-full border-border/50 bg-card/80 backdrop-blur hover:bg-card hover:border-border transition-all duration-300 group cursor-pointer">
-										<CardHeader className="pb-3">
-											<div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
-												<div className="flex items-center gap-1">
-													<MapPin className="h-3 w-3" />
-													{meeting.municipality}, {meeting.state}
-												</div>
-												<div className="flex items-center gap-1">
-													<Calendar className="h-3 w-3" />
-													{new Date(meeting.date).toLocaleDateString("en-US", {
-														month: "short",
-														day: "numeric",
-													})}
-												</div>
-											</div>
-											<Badge variant="secondary" className="w-fit text-xs mb-2">
-												{meeting.type}
-											</Badge>
-											<CardTitle className="text-base leading-snug group-hover:text-primary transition-colors">
-												{meeting.title}
-											</CardTitle>
-										</CardHeader>
-										<CardContent className="space-y-4">
-											<p className="text-sm text-muted-foreground line-clamp-2">
-												{meeting.summary}
-											</p>
-											<div className="flex flex-wrap gap-1.5">
-												{meeting.topics.map((topic) => (
-													<TopicBadge
-														key={topic}
-														topic={topic}
-														className="text-xs py-0"
-													/>
-												))}
-											</div>
-											<CompactVoteDisplay
-												yea={meeting.vote.yea}
-												nay={meeting.vote.nay}
-											/>
-										</CardContent>
-									</Card>
-									</Link>
-								</motion.div>
-							))}
-						</div>
-
-						<motion.div
-							className="text-center mt-10"
-							initial={{ opacity: 0 }}
-							whileInView={{ opacity: 1 }}
-							viewport={{ once: true }}
-						>
-							<Button variant="outline" size="lg" className="gap-2" asChild>
-								<Link to="/explore">
-									Explore All Municipalities
-									<ArrowRight className="h-4 w-4" />
-								</Link>
-							</Button>
-						</motion.div>
-					</div>
-				</section>
-
 				{/* Features Grid */}
 				<section className="mx-auto max-w-7xl px-6 py-24">
 					<motion.div
@@ -479,7 +311,8 @@ function LandingPage() {
 						viewport={{ once: true }}
 					>
 						<h2 className="text-3xl md:text-4xl font-semibold mb-4">
-							Your Local Government, <span className="text-primary">Summarized</span>
+							Your Local Government,{" "}
+							<span className="text-primary">Summarized</span>
 						</h2>
 						<p className="text-muted-foreground text-lg max-w-2xl mx-auto">
 							No more skimming 200-page agendas or watching 4-hour recordings.
@@ -531,13 +364,17 @@ function LandingPage() {
 							>
 								<Card className="h-full border-border/50 bg-gradient-to-b from-card to-card/50 hover:border-primary/30 transition-colors">
 									<CardHeader>
-										<div className={`h-12 w-12 rounded-xl ${item.bg} flex items-center justify-center mb-3`}>
+										<div
+											className={`h-12 w-12 rounded-xl ${item.bg} flex items-center justify-center mb-3`}
+										>
 											<item.icon className={`h-6 w-6 ${item.color}`} />
 										</div>
 										<CardTitle className="text-xl">{item.title}</CardTitle>
 									</CardHeader>
 									<CardContent>
-										<p className="text-muted-foreground text-sm">{item.description}</p>
+										<p className="text-muted-foreground text-sm">
+											{item.description}
+										</p>
 									</CardContent>
 								</Card>
 							</motion.div>
@@ -641,7 +478,10 @@ function LandingPage() {
 										className="gap-2 text-base"
 										asChild
 									>
-										<Link to="/pricing" search={{ success: false, canceled: false }}>
+										<Link
+											to="/pricing"
+											search={{ success: false, canceled: false }}
+										>
 											View Pricing
 										</Link>
 									</Button>
@@ -660,7 +500,9 @@ function LandingPage() {
 						<div className="flex flex-col md:flex-row items-center justify-between gap-6">
 							<div className="flex items-center gap-2">
 								<Building2 className="h-5 w-5 text-primary" />
-								<span className="font-display font-semibold">Civic Observatory</span>
+								<span className="font-display font-semibold">
+									Civic Observatory
+								</span>
 							</div>
 							<div className="flex items-center gap-8 text-sm text-muted-foreground">
 								<Link
@@ -684,7 +526,8 @@ function LandingPage() {
 								</span>
 							</div>
 							<p className="text-sm text-muted-foreground">
-								© {new Date().getFullYear()} Civic Observatory. All rights reserved.
+								© {new Date().getFullYear()} Civic Observatory. All rights
+								reserved.
 							</p>
 						</div>
 					</div>

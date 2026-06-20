@@ -1,4 +1,9 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import {
+	createFileRoute,
+	Link,
+	notFound,
+	redirect,
+} from "@tanstack/react-router";
 import { ConvexHttpClient } from "convex/browser";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import {
@@ -18,7 +23,7 @@ import { motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { ShareButton } from "@/components/ShareButton";
 import { MeetingDetailSkeleton } from "@/components/skeletons";
-import { TopicBadge, normalizeTopics } from "@/components/TopicBadge";
+import { normalizeTopics, TopicBadge } from "@/components/TopicBadge";
 import { UsageLimitExceeded } from "@/components/UsageLimitExceeded";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,6 +34,13 @@ import {
 	CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { VoteDisplay } from "@/components/VoteDisplay";
+import { meetingPath, publicIdentifier } from "@/lib/publicUrls";
+import {
+	canonicalLink,
+	canonicalUrl,
+	generateMeetingJsonLd,
+	NOINDEX_ROBOTS,
+} from "@/lib/seo";
 import { cn } from "@/lib/utils";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -39,26 +51,46 @@ export const Route = createFileRoute("/meeting/$meetingId")({
 	loader: async ({ params }) => {
 		const convexUrl = import.meta.env.VITE_CONVEX_URL;
 		if (!convexUrl) {
-			return { meeting: null };
+			throw notFound();
 		}
+		let meeting: MeetingData | null;
 		try {
 			const convex = new ConvexHttpClient(convexUrl);
-			const meeting = await convex.query(
-				api.functions.meetings.queries.getWithSummary,
+			meeting = await convex.query(
+				api.functions.meetings.queries.getWithSummaryByIdentifier,
 				{
-					id: params.meetingId as Id<"meetings">,
+					identifier: params.meetingId,
 				},
 			);
-			return { meeting };
-		} catch {
-			return { meeting: null };
+			if (meeting && params.meetingId !== publicIdentifier(meeting)) {
+				throw redirect({
+					to: "/meeting/$meetingId",
+					params: { meetingId: publicIdentifier(meeting) },
+					statusCode: 301,
+					replace: true,
+				});
+			}
+		} catch (error) {
+			if (error instanceof Response) {
+				throw error;
+			}
+			throw notFound();
 		}
+
+		if (!meeting) {
+			throw notFound();
+		}
+
+		return { meeting };
 	},
 	head: ({ loaderData }) => {
 		const meeting = loaderData?.meeting;
 		if (!meeting) {
 			return {
-				meta: [{ title: "Meeting Not Found | Civic Observatory" }],
+				meta: [
+					{ title: "Meeting Not Found | Civic Observatory" },
+					{ name: "robots", content: NOINDEX_ROBOTS },
+				],
 			};
 		}
 
@@ -79,35 +111,7 @@ export const Route = createFileRoute("/meeting/$meetingId")({
 		const title = `${meeting.title} | Civic Observatory`;
 		const municipalityName = meeting.municipality?.name || "Local Government";
 
-		// JSON-LD structured data
-		const jsonLd = {
-			"@context": "https://schema.org",
-			"@type": "GovernmentService",
-			name: meeting.title,
-			description: description,
-			serviceType: typeLabel,
-			provider: {
-				"@type": "GovernmentOrganization",
-				name: municipalityName,
-				address: {
-					"@type": "PostalAddress",
-					addressRegion: meeting.municipality?.state || "",
-				},
-			},
-			datePublished: date.toISOString(),
-			...(meeting.summary?.topics &&
-				meeting.summary.topics.length > 0 && {
-					keywords: meeting.summary.topics.join(", "),
-				}),
-			...(meeting.summary?.keyDecisions &&
-				meeting.summary.keyDecisions.length > 0 && {
-					mainEntity: meeting.summary.keyDecisions.map((decision) => ({
-						"@type": "Action",
-						name: decision.title,
-						description: decision.description,
-					})),
-				}),
-		};
+		const meetingUrl = canonicalUrl(meetingPath(meeting));
 
 		return {
 			meta: [
@@ -130,11 +134,30 @@ export const Route = createFileRoute("/meeting/$meetingId")({
 			scripts: [
 				{
 					type: "application/ld+json",
-					children: JSON.stringify(jsonLd),
+					children: JSON.stringify(
+						generateMeetingJsonLd({
+							title: meeting.title,
+							description,
+							datePublished: new Date(
+								meeting._creationTime ?? meeting.meetingDate,
+							).toISOString(),
+							meetingDate: date.toISOString(),
+							municipality: {
+								name: municipalityName,
+								state: meeting.municipality?.state || "",
+							},
+							meetingType: typeLabel,
+							url: meetingUrl,
+							sourceUrl: meeting.sourceUrl,
+							topics: meeting.summary?.topics,
+						}),
+					),
 				},
 			],
+			links: [canonicalLink(meetingPath(meeting))],
 		};
 	},
+	notFoundComponent: MeetingNotFoundPage,
 });
 
 const meetingTypeLabels: Record<string, string> = {
@@ -171,6 +194,7 @@ interface MeetingData {
 	_creationTime: number;
 	municipalityId: Id<"municipalities">;
 	title: string;
+	slug?: string;
 	meetingType: string;
 	meetingDate: number;
 	status: "pending" | "processing" | "summarized" | "failed" | "skipped";
@@ -210,11 +234,13 @@ interface MeetingData {
 		_id: Id<"municipalities">;
 		name: string;
 		state: string;
+		slug?: string;
 	} | null;
 }
 
 function MeetingDetailPage() {
 	const { meetingId } = Route.useParams();
+	const loaderData = Route.useLoaderData();
 	const { isAuthenticated } = useConvexAuth();
 	const [showRawContent, setShowRawContent] = useState(false);
 	const [isRetrying, setIsRetrying] = useState(false);
@@ -222,9 +248,12 @@ function MeetingDetailPage() {
 	const hasTrackedView = useRef(false);
 
 	// Real-time updates via useQuery
-	const meeting = useQuery(api.functions.meetings.queries.getWithSummary, {
-		id: meetingId as Id<"meetings">,
-	});
+	const queriedMeeting = useQuery(
+		api.functions.meetings.queries.getWithSummaryByIdentifier,
+		{ identifier: meetingId },
+	);
+	const meeting =
+		queriedMeeting === undefined ? loaderData.meeting : queriedMeeting;
 	const retryProcessing = useMutation(
 		api.functions.meetings.mutations.retryProcessing,
 	);
@@ -260,28 +289,7 @@ function MeetingDetailPage() {
 	}
 
 	if (meeting === null) {
-		return (
-			<div className="min-h-screen bg-background flex items-center justify-center">
-				<motion.div
-					initial={{ opacity: 0, y: 20 }}
-					animate={{ opacity: 1, y: 0 }}
-					className="text-center"
-				>
-					<div className="rounded-full bg-muted p-4 mb-4 mx-auto w-fit">
-						<FileText className="h-8 w-8 text-muted-foreground" />
-					</div>
-					<h1 className="font-display text-2xl font-bold text-foreground mb-2">
-						Meeting not found
-					</h1>
-					<p className="text-muted-foreground mb-6">
-						The meeting you're looking for doesn't exist.
-					</p>
-					<Link to="/explore">
-						<Button variant="outline">Back to Explore</Button>
-					</Link>
-				</motion.div>
-			</div>
-		);
+		return <MeetingNotFoundPage />;
 	}
 
 	// Show rate limit exceeded for summarized meetings with summary content
@@ -396,8 +404,9 @@ function MeetingDetailPage() {
 									</h2>
 								</div>
 								<p className="text-muted-foreground text-sm mb-4">
-									This meeting hasn't taken place yet. Below is the published agenda.
-									A full AI summary will be generated after the meeting date.
+									This meeting hasn't taken place yet. Below is the published
+									agenda. A full AI summary will be generated after the meeting
+									date.
 								</p>
 								<div className="prose prose-invert prose-sm max-w-none whitespace-pre-wrap text-muted-foreground">
 									{meeting.rawContent}
@@ -540,8 +549,11 @@ function MeetingDetailPage() {
 										Key Decisions
 									</h2>
 									<div className="space-y-4">
-										{meeting.summary.keyDecisions.map((decision, i) => (
-											<DecisionCard key={i} decision={decision} />
+										{meeting.summary.keyDecisions.map((decision) => (
+											<DecisionCard
+												key={`${decision.title}-${decision.description}`}
+												decision={decision}
+											/>
 										))}
 									</div>
 								</section>
@@ -580,9 +592,9 @@ function MeetingDetailPage() {
 										Upcoming Items
 									</h2>
 									<Card className="divide-y divide-border">
-										{meeting.summary.upcomingItems.map((item, i) => (
+										{meeting.summary.upcomingItems.map((item) => (
 											<div
-												key={i}
+												key={`${item.title}-${item.expectedDate ?? "unscheduled"}`}
 												className="flex items-center justify-between py-3 first:pt-0 last:pb-0"
 											>
 												<div className="flex items-center gap-3">
@@ -657,6 +669,31 @@ function MeetingDetailPage() {
 	);
 }
 
+function MeetingNotFoundPage() {
+	return (
+		<div className="min-h-screen bg-background flex items-center justify-center">
+			<motion.div
+				initial={{ opacity: 0, y: 20 }}
+				animate={{ opacity: 1, y: 0 }}
+				className="text-center"
+			>
+				<div className="rounded-full bg-muted p-4 mb-4 mx-auto w-fit">
+					<FileText className="h-8 w-8 text-muted-foreground" />
+				</div>
+				<h1 className="font-display text-2xl font-bold text-foreground mb-2">
+					Meeting not found
+				</h1>
+				<p className="text-muted-foreground mb-6">
+					The meeting you're looking for doesn't exist.
+				</p>
+				<Link to="/explore">
+					<Button variant="outline">Back to Explore</Button>
+				</Link>
+			</motion.div>
+		</div>
+	);
+}
+
 // Breadcrumb component
 function Breadcrumb({ meeting }: { meeting: MeetingData }) {
 	return (
@@ -669,7 +706,9 @@ function Breadcrumb({ meeting }: { meeting: MeetingData }) {
 				<>
 					<Link
 						to="/explore/$municipalityId"
-						params={{ municipalityId: meeting.municipalityId }}
+						params={{
+							municipalityId: publicIdentifier(meeting.municipality),
+						}}
 						className="hover:text-foreground transition-colors"
 					>
 						{meeting.municipality.name}
@@ -831,11 +870,7 @@ function DecisionCard({ decision }: DecisionCardProps) {
 				{decision.topics.length > 0 && (
 					<div className="flex flex-wrap gap-1.5 pt-2">
 						{normalizeTopics(decision.topics).map((topic) => (
-							<TopicBadge
-								key={topic}
-								topic={topic}
-								className="text-xs"
-							/>
+							<TopicBadge key={topic} topic={topic} className="text-xs" />
 						))}
 					</div>
 				)}
@@ -877,8 +912,11 @@ function DiscussionTopics({ topics }: DiscussionTopicsProps) {
 						{category}
 					</h3>
 					<div className="space-y-3">
-						{grouped[category].map((topic, i) => (
-							<Card key={i} className="bg-surface/50">
+						{grouped[category].map((topic) => (
+							<Card
+								key={`${category}-${topic.topic}-${topic.summary}`}
+								className="bg-surface/50"
+							>
 								<h4 className="font-medium text-foreground mb-1">
 									{topic.topic}
 								</h4>

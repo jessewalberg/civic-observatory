@@ -12,7 +12,7 @@ AI-powered summaries of local government meetings.
 | Backend | Convex |
 | Auth | Clerk |
 | UI | shadcn/ui + Tailwind v4 |
-| AI | Claude API |
+| AI | OpenRouter (Claude) |
 | Email | Cloudflare Email Sending |
 | Deploy | Cloudflare Workers |
 

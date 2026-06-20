@@ -1,5 +1,5 @@
 // convex/seed.ts
-// Run with: npx convex run seed:seedAll
+// Run with: pnpm exec convex run seed:seedAll
 
 import type { Id } from "./_generated/dataModel";
 import { mutation } from "./_generated/server";

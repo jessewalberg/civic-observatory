@@ -18,8 +18,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { LoadingButton } from "@/components/ui/loading-button";
-import { cn } from "@/lib/utils";
+import { meetingPath } from "@/lib/publicUrls";
+import { NOINDEX_ROBOTS } from "@/lib/seo";
 import { requireAuth } from "@/lib/serverAuth";
+import { cn } from "@/lib/utils";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 
@@ -34,6 +36,7 @@ export const Route = createFileRoute("/dashboard/")({
 				name: "description",
 				content: "Your personalized feed of local government updates",
 			},
+			{ name: "robots", content: NOINDEX_ROBOTS },
 		],
 	}),
 	component: DashboardPage,
@@ -46,8 +49,7 @@ function DashboardPage() {
 
 function DashboardContent() {
 	// Get user
-	const user = useQuery(api.functions.users.queries.current, {
-	});
+	const user = useQuery(api.functions.users.queries.current, {});
 
 	// Get feed
 	const feed = useQuery(
@@ -236,6 +238,7 @@ interface FeedItemType {
 	isNew: boolean;
 	meeting: {
 		_id: Id<"meetings">;
+		slug?: string;
 		title: string;
 		meetingType: string;
 		meetingDate: number;
@@ -291,7 +294,7 @@ function FeedItem({
 
 	return (
 		<a
-			href={`/meeting/${item.meeting._id}`}
+			href={meetingPath(item.meeting)}
 			className={cn(
 				"block p-4 hover:bg-muted/50 transition-colors",
 				item.isNew && "bg-primary/5 border-l-2 border-l-primary",

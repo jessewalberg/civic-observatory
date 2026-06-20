@@ -38,8 +38,8 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
-import { cn } from "@/lib/utils";
 import { requireAuth } from "@/lib/serverAuth";
+import { cn } from "@/lib/utils";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 
@@ -72,8 +72,7 @@ function ScrapersContent() {
 	const [tableScrapeStatus, setTableScrapeStatus] = useState<string>("all");
 
 	// Queries
-	const isAdmin = useQuery(api.functions.users.queries.isAdmin, {
-	});
+	const isAdmin = useQuery(api.functions.users.queries.isAdmin, {});
 	const stats = useQuery(api.functions.scrapeJobs.queries.getStats, {});
 	const recentJobs = useQuery(api.functions.scrapeJobs.queries.getRecent, {
 		limit: 20,
@@ -91,9 +90,7 @@ function ScrapersContent() {
 	const triggerScrape = useAction(
 		api.functions.scrapeJobs.mutations.triggerScrape,
 	);
-	const batchRescrape = useAction(
-		api.functions.scrapers.actions.batchRescrape,
-	);
+	const batchRescrape = useAction(api.functions.scrapers.actions.batchRescrape);
 	const triggerScrapeAllDue = useAction(
 		api.functions.scrapers.actions.triggerScrapeAllDue,
 	);
@@ -383,10 +380,7 @@ function ScrapersContent() {
 
 							<div className="h-6 w-px bg-border" />
 
-							<Select
-								value={platformFilter}
-								onValueChange={setPlatformFilter}
-							>
+							<Select value={platformFilter} onValueChange={setPlatformFilter}>
 								<SelectTrigger className="w-[140px] h-8 text-xs">
 									<SelectValue placeholder="Platform" />
 								</SelectTrigger>
@@ -447,7 +441,8 @@ function ScrapersContent() {
 											Municipalities
 										</h2>
 										<span className="text-xs text-muted-foreground">
-											{filteredMunicipalities?.length ?? 0} of {totalMunicipalities}
+											{filteredMunicipalities?.length ?? 0} of{" "}
+											{totalMunicipalities}
 										</span>
 									</div>
 									<div className="flex flex-wrap gap-2">
@@ -460,7 +455,10 @@ function ScrapersContent() {
 												className="pl-8 h-8 text-xs"
 											/>
 										</div>
-										<Select value={tablePlatform} onValueChange={setTablePlatform}>
+										<Select
+											value={tablePlatform}
+											onValueChange={setTablePlatform}
+										>
 											<SelectTrigger className="w-[120px] h-8 text-xs">
 												<SelectValue placeholder="Platform" />
 											</SelectTrigger>
@@ -471,7 +469,10 @@ function ScrapersContent() {
 												<SelectItem value="generic">Generic</SelectItem>
 											</SelectContent>
 										</Select>
-										<Select value={tableScrapeStatus} onValueChange={setTableScrapeStatus}>
+										<Select
+											value={tableScrapeStatus}
+											onValueChange={setTableScrapeStatus}
+										>
 											<SelectTrigger className="w-[130px] h-8 text-xs">
 												<SelectValue placeholder="Scrape Status" />
 											</SelectTrigger>
@@ -650,7 +651,8 @@ function ScrapersContent() {
 													</Fragment>
 												);
 											})}
-											{(!filteredMunicipalities || filteredMunicipalities.length === 0) && (
+											{(!filteredMunicipalities ||
+												filteredMunicipalities.length === 0) && (
 												<TableRow>
 													<TableCell
 														colSpan={5}

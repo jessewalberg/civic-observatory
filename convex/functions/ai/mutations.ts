@@ -114,6 +114,11 @@ export const createSummary = internalMutation({
 		}),
 	},
 	handler: async (ctx, args) => {
+		const meeting = await ctx.db.get(args.meetingId);
+		if (!meeting) {
+			throw new Error("Meeting not found");
+		}
+
 		// Check for existing summary
 		const existing = await ctx.db
 			.query("summaries")
@@ -142,6 +147,12 @@ export const createSummary = internalMutation({
 			modelUsed: args.summary.modelUsed,
 			promptVersion: args.summary.promptVersion,
 			processingTimeMs: args.summary.processingTimeMs,
+			municipalityId: meeting.municipalityId,
+			meetingDate: meeting.meetingDate,
+			sourceUrl: meeting.sourceUrl,
+			sourceType: meeting.sourceType,
+			sourceContentHash: meeting.contentHash,
+			status: "summarized",
 			createdAt: Date.now(),
 		});
 

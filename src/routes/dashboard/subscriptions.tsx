@@ -26,6 +26,8 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
+import { municipalityPath } from "@/lib/publicUrls";
+import { NOINDEX_ROBOTS } from "@/lib/seo";
 import { requireAuth } from "@/lib/serverAuth";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -42,6 +44,7 @@ export const Route = createFileRoute("/dashboard/subscriptions")({
 				name: "description",
 				content: "Manage your municipality subscriptions",
 			},
+			{ name: "robots", content: NOINDEX_ROBOTS },
 		],
 	}),
 	component: SubscriptionsPage,
@@ -56,8 +59,7 @@ function SubscriptionsContent() {
 		useState<Subscription | null>(null);
 
 	// Get user
-	const user = useQuery(api.functions.users.queries.current, {
-	});
+	const user = useQuery(api.functions.users.queries.current, {});
 
 	// Get subscriptions
 	const subscriptions = useQuery(
@@ -223,7 +225,11 @@ function SubscriptionsContent() {
 											<TableCell>
 												<div className="flex flex-col">
 													<a
-														href={`/explore/${subscription.municipalityId}`}
+														href={
+															subscription.municipality
+																? municipalityPath(subscription.municipality)
+																: `/explore/${subscription.municipalityId}`
+														}
 														className="font-medium text-foreground hover:text-primary"
 													>
 														{subscription.municipality?.name ?? "Unknown"}
@@ -380,6 +386,7 @@ interface Subscription {
 	isActive: boolean;
 	municipality?: {
 		_id: Id<"municipalities">;
+		slug?: string;
 		name: string;
 		state: string;
 	} | null;

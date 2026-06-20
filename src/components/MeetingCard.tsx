@@ -1,9 +1,14 @@
 import { ChevronRight, FileText } from "lucide-react";
 import { motion } from "motion/react";
-import { type Topic, TopicBadge, normalizeTopics } from "@/components/TopicBadge";
+import {
+	normalizeTopics,
+	type Topic,
+	TopicBadge,
+} from "@/components/TopicBadge";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { meetingPath } from "@/lib/publicUrls";
 import { cn } from "@/lib/utils";
 import type { Id } from "../../convex/_generated/dataModel";
 
@@ -59,6 +64,7 @@ const statusConfig: Record<
 
 interface MeetingCardProps {
 	id: Id<"meetings">;
+	slug?: string;
 	title: string;
 	meetingDate: number;
 	meetingType: MeetingType;
@@ -70,6 +76,7 @@ interface MeetingCardProps {
 
 export function MeetingCard({
 	id,
+	slug,
 	title,
 	meetingDate,
 	meetingType,
@@ -83,7 +90,10 @@ export function MeetingCard({
 	const isFutureMeeting = meetingDate > Date.now();
 
 	const statusInfo = isFutureMeeting
-		? { label: "Upcoming", className: "bg-blue-500/10 text-blue-400 border-blue-500/30" }
+		? {
+				label: "Upcoming",
+				className: "bg-blue-500/10 text-blue-400 border-blue-500/30",
+			}
 		: statusConfig[status];
 
 	// Normalize and deduplicate topics, then show first 3
@@ -92,7 +102,7 @@ export function MeetingCard({
 	const hasMoreTopics = normalized.length > 3;
 
 	return (
-		<a href={`/meeting/${id}`} className="block">
+		<a href={meetingPath({ _id: id, slug })} className="block">
 			<motion.div
 				whileHover={{ x: 4 }}
 				transition={{ type: "spring", stiffness: 400, damping: 30 }}
@@ -126,10 +136,10 @@ export function MeetingCard({
 										{title}
 									</h3>
 									{meetingType !== "other" && (
-									<div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
-										<span>{typeLabel}</span>
-									</div>
-								)}
+										<div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
+											<span>{typeLabel}</span>
+										</div>
+									)}
 								</div>
 								<Badge
 									variant="outline"
@@ -210,6 +220,7 @@ export function MeetingCardSkeleton() {
 // Compact version for lists
 interface CompactMeetingCardProps {
 	id: Id<"meetings">;
+	slug?: string;
 	title: string;
 	meetingDate: number;
 	meetingType: MeetingType;
@@ -218,6 +229,7 @@ interface CompactMeetingCardProps {
 
 export function CompactMeetingCard({
 	id,
+	slug,
 	title,
 	meetingDate,
 	meetingType,
@@ -227,7 +239,7 @@ export function CompactMeetingCard({
 	const date = new Date(meetingDate);
 
 	return (
-		<a href={`/meeting/${id}`} className="block">
+		<a href={meetingPath({ _id: id, slug })} className="block">
 			<div className="group flex items-center gap-3 p-3 rounded-lg hover:bg-surface/80 transition-colors cursor-pointer">
 				<div className="flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 text-primary">
 					<FileText className="h-5 w-5" />
