@@ -8,7 +8,11 @@ export default defineConfig({
 	plugins: [tsconfigPaths({ projects: ["./tsconfig.json"] })],
 	test: {
 		environment: "node",
-		include: ["src/**/*.test.{ts,tsx}", "convex/**/*.test.{ts,tsx}"],
+		include: [
+			"src/**/*.test.{ts,tsx}",
+			"convex/**/*.test.{ts,tsx}",
+			"scripts/**/*.test.{js,mjs}",
+		],
 		// convex-test ships TS sources that must be transformed by vite, not
 		// required from node_modules as-is.
 		server: { deps: { inline: ["convex-test"] } },
