@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { municipalityPath, publicIdentifier } from "@/lib/publicUrls";
-import { canonicalLink } from "@/lib/seo";
+import { canonicalLink, generateMunicipalityJsonLd } from "@/lib/seo";
 import { api } from "../../../convex/_generated/api";
 
 export const Route = createFileRoute("/explore/$municipalityId")({
@@ -88,33 +88,6 @@ export const Route = createFileRoute("/explore/$municipalityId")({
 
 		const title = `${municipality.name}, ${municipality.state} | Civic Observatory`;
 
-		// JSON-LD structured data for government organization
-		const jsonLd = {
-			"@context": "https://schema.org",
-			"@type": "GovernmentOrganization",
-			name: municipality.name,
-			description: description,
-			address: {
-				"@type": "PostalAddress",
-				addressLocality: municipality.name,
-				addressRegion: municipality.state,
-				addressCountry: "US",
-				...(municipality.county && {
-					addressRegion: `${municipality.county}, ${municipality.state}`,
-				}),
-			},
-			...(municipality.websiteUrl && {
-				url: municipality.websiteUrl,
-			}),
-			...(municipality.population && {
-				numberOfEmployees: {
-					"@type": "QuantitativeValue",
-					name: "Population",
-					value: municipality.population,
-				},
-			}),
-		};
-
 		return {
 			meta: [
 				{ title },
@@ -141,7 +114,14 @@ export const Route = createFileRoute("/explore/$municipalityId")({
 			scripts: [
 				{
 					type: "application/ld+json",
-					children: JSON.stringify(jsonLd),
+					children: JSON.stringify(
+						generateMunicipalityJsonLd({
+							name: municipality.name,
+							state: municipality.state,
+							websiteUrl: municipality.websiteUrl,
+							description,
+						}),
+					),
 				},
 			],
 			links: [canonicalLink(municipalityPath(municipality))],

@@ -17,6 +17,10 @@ export function canonicalLink(path: string) {
 	return { rel: "canonical", href: canonicalUrl(path) };
 }
 
+const ORGANIZATION_ID = `${SITE_URL}/#organization`;
+const WEBSITE_ID = `${SITE_URL}/#website`;
+const SOFTWARE_ID = `${SITE_URL}/#software`;
+
 /**
  * Generate meta tags for a page
  */
@@ -73,46 +77,53 @@ export function generateMeetingJsonLd({
 	title,
 	description,
 	datePublished,
+	meetingDate,
 	municipality,
 	meetingType,
+	url,
+	sourceUrl,
 	topics,
-	decisions,
 }: {
 	title: string;
 	description: string;
 	datePublished: string;
+	meetingDate: string;
 	municipality: { name: string; state: string };
 	meetingType: string;
+	url: string;
+	sourceUrl?: string;
 	topics?: string[];
-	decisions?: { title: string; description: string }[];
 }) {
 	return {
 		"@context": "https://schema.org",
-		"@type": "GovernmentService",
+		"@type": "Report",
+		headline: title,
 		name: title,
-		description,
-		serviceType: meetingType,
-		provider: {
-			"@type": "GovernmentOrganization",
-			name: municipality.name,
-			address: {
-				"@type": "PostalAddress",
-				addressRegion: municipality.state,
+		description: description,
+		datePublished,
+		url,
+		mainEntityOfPage: url,
+		articleSection: meetingType,
+		publisher: organizationReference(),
+		about: {
+			"@type": "Event",
+			name: title,
+			startDate: meetingDate,
+			organizer: {
+				"@type": "GovernmentOrganization",
+				name: municipality.name,
+				address: {
+					"@type": "PostalAddress",
+					addressRegion: municipality.state,
+					addressCountry: "US",
+				},
 			},
 		},
-		datePublished,
 		...(topics &&
 			topics.length > 0 && {
 				keywords: topics.join(", "),
 			}),
-		...(decisions &&
-			decisions.length > 0 && {
-				mainEntity: decisions.map((decision) => ({
-					"@type": "Action",
-					name: decision.title,
-					description: decision.description,
-				})),
-			}),
+		...(sourceUrl && { citation: sourceUrl }),
 	};
 }
 
@@ -122,34 +133,30 @@ export function generateMeetingJsonLd({
 export function generateMunicipalityJsonLd({
 	name,
 	state,
-	county,
-	population,
 	websiteUrl,
+	description,
 }: {
 	name: string;
 	state: string;
-	county?: string;
-	population?: number;
 	websiteUrl?: string;
+	description?: string;
 }) {
 	return {
 		"@context": "https://schema.org",
 		"@type": "GovernmentOrganization",
 		name,
+		...(description && { description }),
 		address: {
 			"@type": "PostalAddress",
 			addressLocality: name,
-			addressRegion: county ? `${county}, ${state}` : state,
+			addressRegion: state,
 			addressCountry: "US",
 		},
+		areaServed: {
+			"@type": "AdministrativeArea",
+			name: `${name}, ${state}`,
+		},
 		...(websiteUrl && { url: websiteUrl }),
-		...(population && {
-			numberOfEmployees: {
-				"@type": "QuantitativeValue",
-				name: "Population",
-				value: population,
-			},
-		}),
 	};
 }
 
@@ -160,16 +167,49 @@ export function generateOrganizationJsonLd() {
 	return {
 		"@context": "https://schema.org",
 		"@type": "Organization",
+		"@id": ORGANIZATION_ID,
 		name: SITE_NAME,
 		description: DEFAULT_DESCRIPTION,
 		url: SITE_URL,
 		logo: `${SITE_URL}/icon-512.png`,
-		sameAs: [],
-		contactPoint: {
-			"@type": "ContactPoint",
-			contactType: "customer support",
-			email: "support@civicobservatory.com",
-		},
+	};
+}
+
+export function generateHomeJsonLd() {
+	return {
+		"@context": "https://schema.org",
+		"@graph": [
+			generateOrganizationJsonLd(),
+			{
+				"@type": "WebSite",
+				"@id": WEBSITE_ID,
+				name: SITE_NAME,
+				url: SITE_URL,
+				publisher: organizationReference(),
+			},
+			softwareApplicationJsonLd({
+				description: DEFAULT_DESCRIPTION,
+				url: SITE_URL,
+			}),
+		],
+	};
+}
+
+export function generatePricingJsonLd({
+	description,
+}: {
+	description: string;
+}) {
+	return {
+		"@context": "https://schema.org",
+		"@type": "WebPage",
+		name: "Pricing",
+		description,
+		url: canonicalUrl("/pricing"),
+		mainEntity: softwareApplicationJsonLd({
+			description,
+			url: canonicalUrl("/pricing"),
+		}),
 	};
 }
 
@@ -188,5 +228,55 @@ export function generateBreadcrumbJsonLd(
 			name: item.name,
 			item: item.url,
 		})),
+	};
+}
+
+function softwareApplicationJsonLd({
+	description,
+	url,
+}: {
+	description: string;
+	url: string;
+}) {
+	return {
+		"@type": "SoftwareApplication",
+		"@id": SOFTWARE_ID,
+		name: SITE_NAME,
+		description,
+		url,
+		applicationCategory: "GovernmentApplication",
+		operatingSystem: "Web",
+		publisher: organizationReference(),
+		offers: [
+			{
+				"@type": "Offer",
+				name: "Free",
+				price: "0",
+				priceCurrency: "USD",
+				availability: "https://schema.org/InStock",
+				url: canonicalUrl("/pricing"),
+				description: "50 summary views per day, 3 uploads per month",
+			},
+			{
+				"@type": "Offer",
+				name: "Pro",
+				price: "15",
+				priceCurrency: "USD",
+				availability: "https://schema.org/InStock",
+				url: canonicalUrl("/pricing"),
+				description:
+					"Unlimited summaries, 20 uploads, immediate alerts, API access",
+			},
+		],
+	};
+}
+
+function organizationReference() {
+	return {
+		"@type": "Organization",
+		"@id": ORGANIZATION_ID,
+		name: SITE_NAME,
+		url: SITE_URL,
+		logo: `${SITE_URL}/icon-512.png`,
 	};
 }

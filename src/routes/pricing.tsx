@@ -23,7 +23,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { canonicalLink } from "@/lib/seo";
+import { canonicalLink, generatePricingJsonLd } from "@/lib/seo";
 import { cn } from "@/lib/utils";
 import { api } from "../../convex/_generated/api";
 
@@ -35,37 +35,6 @@ export const Route = createFileRoute("/pricing")({
 	head: () => {
 		const description =
 			"Choose the plan that fits your needs. Free tier includes 50 daily summaries. Pro plan at $15/month for unlimited access and real-time alerts.";
-
-		const jsonLd = {
-			"@context": "https://schema.org",
-			"@type": "WebPage",
-			name: "Pricing",
-			description,
-			mainEntity: {
-				"@type": "Product",
-				name: "Civic Observatory Pro",
-				description:
-					"Unlimited access to municipal meeting summaries with real-time alerts",
-				offers: [
-					{
-						"@type": "Offer",
-						name: "Free",
-						price: "0",
-						priceCurrency: "USD",
-						description: "50 summary views per day, 3 uploads per month",
-					},
-					{
-						"@type": "Offer",
-						name: "Pro",
-						price: "15",
-						priceCurrency: "USD",
-						billingDuration: "P1M",
-						description:
-							"Unlimited summaries, 20 uploads, immediate alerts, API access",
-					},
-				],
-			},
-		};
 
 		return {
 			meta: [
@@ -81,7 +50,7 @@ export const Route = createFileRoute("/pricing")({
 			scripts: [
 				{
 					type: "application/ld+json",
-					children: JSON.stringify(jsonLd),
+					children: JSON.stringify(generatePricingJsonLd({ description })),
 				},
 			],
 			links: [canonicalLink("/pricing")],

@@ -17,7 +17,7 @@ import { motion } from "motion/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { canonicalLink } from "@/lib/seo";
+import { canonicalLink, generateHomeJsonLd } from "@/lib/seo";
 
 export const Route = createFileRoute("/")({
 	component: LandingPage,
@@ -25,32 +25,6 @@ export const Route = createFileRoute("/")({
 		const title = "Civic Observatory - Municipal Meeting Summarizer";
 		const description =
 			"AI-powered summaries of local government meetings. Stay informed about city councils, school boards, and planning commissions in your community.";
-
-		const jsonLd = {
-			"@context": "https://schema.org",
-			"@type": "WebApplication",
-			name: "Civic Observatory",
-			description,
-			applicationCategory: "GovernmentApplication",
-			operatingSystem: "Web",
-			offers: {
-				"@type": "Offer",
-				price: "0",
-				priceCurrency: "USD",
-				description: "Free tier with 50 daily summary views",
-			},
-			featureList: [
-				"AI-powered meeting summaries",
-				"Real-time alerts",
-				"Municipal tracking",
-				"Email digests",
-			],
-			creator: {
-				"@type": "Organization",
-				name: "Civic Observatory",
-				description: "Making local government accessible to everyone",
-			},
-		};
 
 		return {
 			meta: [
@@ -72,7 +46,7 @@ export const Route = createFileRoute("/")({
 			scripts: [
 				{
 					type: "application/ld+json",
-					children: JSON.stringify(jsonLd),
+					children: JSON.stringify(generateHomeJsonLd()),
 				},
 			],
 			links: [canonicalLink("/")],

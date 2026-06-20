@@ -35,7 +35,12 @@ import {
 } from "@/components/ui/collapsible";
 import { VoteDisplay } from "@/components/VoteDisplay";
 import { meetingPath, publicIdentifier } from "@/lib/publicUrls";
-import { canonicalLink, NOINDEX_ROBOTS } from "@/lib/seo";
+import {
+	canonicalLink,
+	canonicalUrl,
+	generateMeetingJsonLd,
+	NOINDEX_ROBOTS,
+} from "@/lib/seo";
 import { cn } from "@/lib/utils";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -106,35 +111,7 @@ export const Route = createFileRoute("/meeting/$meetingId")({
 		const title = `${meeting.title} | Civic Observatory`;
 		const municipalityName = meeting.municipality?.name || "Local Government";
 
-		// JSON-LD structured data
-		const jsonLd = {
-			"@context": "https://schema.org",
-			"@type": "GovernmentService",
-			name: meeting.title,
-			description: description,
-			serviceType: typeLabel,
-			provider: {
-				"@type": "GovernmentOrganization",
-				name: municipalityName,
-				address: {
-					"@type": "PostalAddress",
-					addressRegion: meeting.municipality?.state || "",
-				},
-			},
-			datePublished: date.toISOString(),
-			...(meeting.summary?.topics &&
-				meeting.summary.topics.length > 0 && {
-					keywords: meeting.summary.topics.join(", "),
-				}),
-			...(meeting.summary?.keyDecisions &&
-				meeting.summary.keyDecisions.length > 0 && {
-					mainEntity: meeting.summary.keyDecisions.map((decision) => ({
-						"@type": "Action",
-						name: decision.title,
-						description: decision.description,
-					})),
-				}),
-		};
+		const meetingUrl = canonicalUrl(meetingPath(meeting));
 
 		return {
 			meta: [
@@ -157,7 +134,24 @@ export const Route = createFileRoute("/meeting/$meetingId")({
 			scripts: [
 				{
 					type: "application/ld+json",
-					children: JSON.stringify(jsonLd),
+					children: JSON.stringify(
+						generateMeetingJsonLd({
+							title: meeting.title,
+							description,
+							datePublished: new Date(
+								meeting._creationTime ?? meeting.meetingDate,
+							).toISOString(),
+							meetingDate: date.toISOString(),
+							municipality: {
+								name: municipalityName,
+								state: meeting.municipality?.state || "",
+							},
+							meetingType: typeLabel,
+							url: meetingUrl,
+							sourceUrl: meeting.sourceUrl,
+							topics: meeting.summary?.topics,
+						}),
+					),
 				},
 			],
 			links: [canonicalLink(meetingPath(meeting))],
