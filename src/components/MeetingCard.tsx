@@ -8,6 +8,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { meetingPath } from "@/lib/publicUrls";
 import { cn } from "@/lib/utils";
 import type { Id } from "../../convex/_generated/dataModel";
 
@@ -63,6 +64,7 @@ const statusConfig: Record<
 
 interface MeetingCardProps {
 	id: Id<"meetings">;
+	slug?: string;
 	title: string;
 	meetingDate: number;
 	meetingType: MeetingType;
@@ -74,6 +76,7 @@ interface MeetingCardProps {
 
 export function MeetingCard({
 	id,
+	slug,
 	title,
 	meetingDate,
 	meetingType,
@@ -99,7 +102,7 @@ export function MeetingCard({
 	const hasMoreTopics = normalized.length > 3;
 
 	return (
-		<a href={`/meeting/${id}`} className="block">
+		<a href={meetingPath({ _id: id, slug })} className="block">
 			<motion.div
 				whileHover={{ x: 4 }}
 				transition={{ type: "spring", stiffness: 400, damping: 30 }}
@@ -217,6 +220,7 @@ export function MeetingCardSkeleton() {
 // Compact version for lists
 interface CompactMeetingCardProps {
 	id: Id<"meetings">;
+	slug?: string;
 	title: string;
 	meetingDate: number;
 	meetingType: MeetingType;
@@ -225,6 +229,7 @@ interface CompactMeetingCardProps {
 
 export function CompactMeetingCard({
 	id,
+	slug,
 	title,
 	meetingDate,
 	meetingType,
@@ -234,7 +239,7 @@ export function CompactMeetingCard({
 	const date = new Date(meetingDate);
 
 	return (
-		<a href={`/meeting/${id}`} className="block">
+		<a href={meetingPath({ _id: id, slug })} className="block">
 			<div className="group flex items-center gap-3 p-3 rounded-lg hover:bg-surface/80 transition-colors cursor-pointer">
 				<div className="flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 text-primary">
 					<FileText className="h-5 w-5" />

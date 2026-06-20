@@ -33,6 +33,7 @@ describe("SEO discovery responses", () => {
 					{
 						_id: "municipality_1",
 						_creationTime: Date.UTC(2026, 0, 2),
+						slug: "austin-tx",
 						name: "Austin",
 					},
 				],
@@ -40,6 +41,7 @@ describe("SEO discovery responses", () => {
 					{
 						_id: "meeting_summarized",
 						_creationTime: Date.UTC(2026, 0, 3),
+						slug: "austin-tx-2026-01-04-city-council",
 						meetingDate: Date.UTC(2026, 0, 4),
 						status: "summarized",
 					},
@@ -66,10 +68,10 @@ describe("SEO discovery responses", () => {
 		const body = await response.text();
 		expect(body).toContain("<loc>https://civicobservatory.com/</loc>");
 		expect(body).toContain(
-			"<loc>https://civicobservatory.com/explore/municipality_1</loc>",
+			"<loc>https://civicobservatory.com/explore/austin-tx</loc>",
 		);
 		expect(body).toContain(
-			"<loc>https://civicobservatory.com/meeting/meeting_summarized</loc>",
+			"<loc>https://civicobservatory.com/meeting/austin-tx-2026-01-04-city-council</loc>",
 		);
 		expect(body).not.toContain("meeting_pending");
 	});

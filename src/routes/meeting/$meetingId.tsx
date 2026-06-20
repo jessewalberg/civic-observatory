@@ -1,4 +1,9 @@
-import { createFileRoute, Link, notFound } from "@tanstack/react-router";
+import {
+	createFileRoute,
+	Link,
+	notFound,
+	redirect,
+} from "@tanstack/react-router";
 import { ConvexHttpClient } from "convex/browser";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import {
@@ -29,6 +34,7 @@ import {
 	CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { VoteDisplay } from "@/components/VoteDisplay";
+import { meetingPath, publicIdentifier } from "@/lib/publicUrls";
 import { canonicalLink, NOINDEX_ROBOTS } from "@/lib/seo";
 import { cn } from "@/lib/utils";
 import { api } from "../../../convex/_generated/api";
@@ -46,12 +52,23 @@ export const Route = createFileRoute("/meeting/$meetingId")({
 		try {
 			const convex = new ConvexHttpClient(convexUrl);
 			meeting = await convex.query(
-				api.functions.meetings.queries.getWithSummary,
+				api.functions.meetings.queries.getWithSummaryByIdentifier,
 				{
-					id: params.meetingId as Id<"meetings">,
+					identifier: params.meetingId,
 				},
 			);
-		} catch {
+			if (meeting && params.meetingId !== publicIdentifier(meeting)) {
+				throw redirect({
+					to: "/meeting/$meetingId",
+					params: { meetingId: publicIdentifier(meeting) },
+					statusCode: 301,
+					replace: true,
+				});
+			}
+		} catch (error) {
+			if (error instanceof Response) {
+				throw error;
+			}
 			throw notFound();
 		}
 
@@ -143,7 +160,7 @@ export const Route = createFileRoute("/meeting/$meetingId")({
 					children: JSON.stringify(jsonLd),
 				},
 			],
-			links: [canonicalLink(`/meeting/${meeting._id}`)],
+			links: [canonicalLink(meetingPath(meeting))],
 		};
 	},
 	notFoundComponent: MeetingNotFoundPage,
@@ -183,6 +200,7 @@ interface MeetingData {
 	_creationTime: number;
 	municipalityId: Id<"municipalities">;
 	title: string;
+	slug?: string;
 	meetingType: string;
 	meetingDate: number;
 	status: "pending" | "processing" | "summarized" | "failed" | "skipped";
@@ -222,11 +240,13 @@ interface MeetingData {
 		_id: Id<"municipalities">;
 		name: string;
 		state: string;
+		slug?: string;
 	} | null;
 }
 
 function MeetingDetailPage() {
 	const { meetingId } = Route.useParams();
+	const loaderData = Route.useLoaderData();
 	const { isAuthenticated } = useConvexAuth();
 	const [showRawContent, setShowRawContent] = useState(false);
 	const [isRetrying, setIsRetrying] = useState(false);
@@ -234,9 +254,12 @@ function MeetingDetailPage() {
 	const hasTrackedView = useRef(false);
 
 	// Real-time updates via useQuery
-	const meeting = useQuery(api.functions.meetings.queries.getWithSummary, {
-		id: meetingId as Id<"meetings">,
-	});
+	const queriedMeeting = useQuery(
+		api.functions.meetings.queries.getWithSummaryByIdentifier,
+		{ identifier: meetingId },
+	);
+	const meeting =
+		queriedMeeting === undefined ? loaderData.meeting : queriedMeeting;
 	const retryProcessing = useMutation(
 		api.functions.meetings.mutations.retryProcessing,
 	);
@@ -689,7 +712,9 @@ function Breadcrumb({ meeting }: { meeting: MeetingData }) {
 				<>
 					<Link
 						to="/explore/$municipalityId"
-						params={{ municipalityId: meeting.municipalityId }}
+						params={{
+							municipalityId: publicIdentifier(meeting.municipality),
+						}}
 						className="hover:text-foreground transition-colors"
 					>
 						{meeting.municipality.name}

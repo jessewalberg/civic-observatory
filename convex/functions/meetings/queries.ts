@@ -1,5 +1,6 @@
 import { v } from "convex/values";
-import { query } from "../../_generated/server";
+import type { Id } from "../../_generated/dataModel";
+import { type QueryCtx, query } from "../../_generated/server";
 import { getCurrentUser } from "../../lib/auth";
 
 // Meeting type validator
@@ -137,6 +138,43 @@ export const getWithSummary = query({
 		};
 	},
 });
+
+export const getWithSummaryByIdentifier = query({
+	args: {
+		identifier: v.string(),
+	},
+	handler: async (ctx, args) => {
+		const bySlug = await ctx.db
+			.query("meetings")
+			.withIndex("by_slug", (q) => q.eq("slug", args.identifier))
+			.first();
+
+		const meeting =
+			bySlug ?? (await getMeetingByLegacyId(ctx, args.identifier));
+		if (!meeting) return null;
+
+		const summary = await ctx.db
+			.query("summaries")
+			.withIndex("by_meeting", (q) => q.eq("meetingId", meeting._id))
+			.first();
+
+		const municipality = await ctx.db.get(meeting.municipalityId);
+
+		return {
+			...meeting,
+			summary,
+			municipality,
+		};
+	},
+});
+
+async function getMeetingByLegacyId(ctx: QueryCtx, identifier: string) {
+	try {
+		return await ctx.db.get(identifier as Id<"meetings">);
+	} catch {
+		return null;
+	}
+}
 
 // ═══════════════════════════════════════════════════════════════
 // GET RECENT - Recent meetings across all municipalities

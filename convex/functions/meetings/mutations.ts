@@ -1,12 +1,13 @@
 import { v } from "convex/values";
 import { internal } from "../../_generated/api";
-import type { Id } from "../../_generated/dataModel";
+import type { Doc, Id } from "../../_generated/dataModel";
 import {
 	internalMutation,
 	type MutationCtx,
 	mutation,
 } from "../../_generated/server";
 import { getCurrentUser, requireAdmin } from "../../lib/auth";
+import { createMeetingSlug, createMunicipalitySlug } from "../../lib/seoSlugs";
 
 // Meeting type validator
 const meetingTypeValidator = v.union(
@@ -73,11 +74,17 @@ export const create = mutation({
 		}
 
 		const now = Date.now();
+		const slug = await createUniqueMeetingSlug(ctx, {
+			municipality,
+			title: args.title,
+			meetingDate: args.meetingDate,
+		});
 
 		// Create the meeting
 		const meetingId = await ctx.db.insert("meetings", {
 			municipalityId: args.municipalityId,
 			title: args.title,
+			slug,
 			meetingType: args.meetingType,
 			meetingDate: args.meetingDate,
 			sourceUrl: args.sourceUrl,
@@ -232,11 +239,21 @@ export const createFromScrape = internalMutation({
 		}
 
 		const now = Date.now();
+		const municipality = await ctx.db.get(args.municipalityId);
+		if (!municipality) {
+			throw new Error("Municipality not found");
+		}
+		const slug = await createUniqueMeetingSlug(ctx, {
+			municipality,
+			title: args.title,
+			meetingDate: args.meetingDate,
+		});
 
 		// Create the meeting
 		const meetingId = await ctx.db.insert("meetings", {
 			municipalityId: args.municipalityId,
 			title: args.title,
+			slug,
 			meetingType: args.meetingType,
 			meetingDate: args.meetingDate,
 			sourceUrl: args.sourceUrl,
@@ -789,6 +806,49 @@ async function generateContentHash(content: string): Promise<string> {
 	}
 
 	return `hash_${Math.abs(hash).toString(16)}`;
+}
+
+async function createUniqueMeetingSlug(
+	ctx: MutationCtx,
+	{
+		municipality,
+		title,
+		meetingDate,
+		currentId,
+	}: {
+		municipality: Doc<"municipalities">;
+		title: string;
+		meetingDate: number;
+		currentId?: Id<"meetings">;
+	},
+): Promise<string> {
+	const municipalitySlug =
+		municipality.slug ??
+		createMunicipalitySlug({
+			name: municipality.name,
+			state: municipality.state,
+		});
+	const baseSlug = createMeetingSlug({
+		municipalitySlug,
+		title,
+		meetingDate,
+	});
+	let candidate = baseSlug;
+	let suffix = 2;
+
+	while (true) {
+		const existing = await ctx.db
+			.query("meetings")
+			.withIndex("by_slug", (q) => q.eq("slug", candidate))
+			.first();
+
+		if (!existing || existing._id === currentId) {
+			return candidate;
+		}
+
+		candidate = `${baseSlug}-${suffix}`;
+		suffix++;
+	}
 }
 
 // ═══════════════════════════════════════════════════════════════

@@ -297,6 +297,7 @@ export const getPendingByFrequency = internalQuery({
 				},
 				meeting: {
 					_id: meeting._id,
+					slug: meeting.slug,
 					title: meeting.title,
 					meetingType: meeting.meetingType,
 					meetingDate: meeting.meetingDate,
@@ -304,6 +305,7 @@ export const getPendingByFrequency = internalQuery({
 				municipality: municipality
 					? {
 							_id: municipality._id,
+							slug: municipality.slug,
 							name: municipality.name,
 							state: municipality.state,
 						}
@@ -346,8 +348,14 @@ export const getPendingForUserDigest = internalQuery({
 				user: { _id: string; email: string; name?: string };
 				alerts: Array<{
 					alert: (typeof alerts)[0];
-					meeting: { title: string; meetingType: string; meetingDate: number };
-					municipality: { name: string; state: string } | null;
+					meeting: {
+						_id: string;
+						slug?: string;
+						title: string;
+						meetingType: string;
+						meetingDate: number;
+					};
+					municipality: { name: string; state: string; slug?: string } | null;
 					summary: { executiveSummary: string; topics: string[] } | null;
 				}>;
 			}
@@ -385,12 +393,18 @@ export const getPendingForUserDigest = internalQuery({
 			userAlerts.get(userId)?.alerts.push({
 				alert,
 				meeting: {
+					_id: meeting._id,
+					slug: meeting.slug,
 					title: meeting.title,
 					meetingType: meeting.meetingType,
 					meetingDate: meeting.meetingDate,
 				},
 				municipality: municipality
-					? { name: municipality.name, state: municipality.state }
+					? {
+							name: municipality.name,
+							state: municipality.state,
+							slug: municipality.slug,
+						}
 					: null,
 				summary: summary
 					? {

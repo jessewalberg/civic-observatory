@@ -1,8 +1,10 @@
 import { v } from "convex/values";
+import type { Id } from "../../_generated/dataModel";
 import type { MutationCtx } from "../../_generated/server";
 import { internalMutation, mutation } from "../../_generated/server";
 import { STATE_NAMES } from "../../data/index";
 import { requireAdmin as requireAdminBridge } from "../../lib/auth";
+import { createMunicipalitySlug } from "../../lib/seoSlugs";
 
 // Valid US state names for validation
 const VALID_STATES = new Set(STATE_NAMES);
@@ -72,10 +74,15 @@ export const create = mutation({
 		validateState(args.state);
 
 		const now = Date.now();
+		const slug = await createUniqueMunicipalitySlug(
+			ctx,
+			createMunicipalitySlug({ name: args.name, state: args.state }),
+		);
 
 		const id = await ctx.db.insert("municipalities", {
 			name: args.name,
 			state: args.state,
+			slug,
 			county: args.county,
 			population: args.population,
 			timezone: args.timezone,
@@ -148,12 +155,44 @@ export const update = mutation({
 		if (updates.isActive !== undefined) updateData.isActive = updates.isActive;
 		if (updates.isVerified !== undefined)
 			updateData.isVerified = updates.isVerified;
+		if (!existing.slug) {
+			const slugName = updates.name ?? existing.name;
+			const slugState = updates.state ?? existing.state;
+			updateData.slug = await createUniqueMunicipalitySlug(
+				ctx,
+				createMunicipalitySlug({ name: slugName, state: slugState }),
+				id,
+			);
+		}
 
 		await ctx.db.patch(id, updateData);
 
 		return id;
 	},
 });
+
+async function createUniqueMunicipalitySlug(
+	ctx: MutationCtx,
+	baseSlug: string,
+	currentId?: Id<"municipalities">,
+): Promise<string> {
+	let candidate = baseSlug;
+	let suffix = 2;
+
+	while (true) {
+		const existing = await ctx.db
+			.query("municipalities")
+			.withIndex("by_slug", (q) => q.eq("slug", candidate))
+			.first();
+
+		if (!existing || existing._id === currentId) {
+			return candidate;
+		}
+
+		candidate = `${baseSlug}-${suffix}`;
+		suffix++;
+	}
+}
 
 // ═══════════════════════════════════════════════════════════════
 // UPDATE SCRAPE STATUS - After a scrape job runs

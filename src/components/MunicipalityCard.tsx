@@ -4,11 +4,13 @@ import { motion } from "motion/react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { publicIdentifier } from "@/lib/publicUrls";
 import { cn } from "@/lib/utils";
 import type { Id } from "../../convex/_generated/dataModel";
 
 interface MunicipalityCardProps {
 	id: Id<"municipalities">;
+	slug?: string;
 	name: string;
 	state: string;
 	county?: string;
@@ -20,6 +22,7 @@ interface MunicipalityCardProps {
 
 export function MunicipalityCard({
 	id,
+	slug,
 	name,
 	state,
 	county,
@@ -29,7 +32,10 @@ export function MunicipalityCard({
 	className,
 }: MunicipalityCardProps) {
 	return (
-		<Link to="/explore/$municipalityId" params={{ municipalityId: id }}>
+		<Link
+			to="/explore/$municipalityId"
+			params={{ municipalityId: publicIdentifier({ _id: id, slug }) }}
+		>
 			<motion.div
 				whileHover={{ y: -4, scale: 1.02 }}
 				whileTap={{ scale: 0.98 }}

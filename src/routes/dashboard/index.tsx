@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { LoadingButton } from "@/components/ui/loading-button";
+import { meetingPath } from "@/lib/publicUrls";
 import { NOINDEX_ROBOTS } from "@/lib/seo";
 import { requireAuth } from "@/lib/serverAuth";
 import { cn } from "@/lib/utils";
@@ -237,6 +238,7 @@ interface FeedItemType {
 	isNew: boolean;
 	meeting: {
 		_id: Id<"meetings">;
+		slug?: string;
 		title: string;
 		meetingType: string;
 		meetingDate: number;
@@ -292,7 +294,7 @@ function FeedItem({
 
 	return (
 		<a
-			href={`/meeting/${item.meeting._id}`}
+			href={meetingPath(item.meeting)}
 			className={cn(
 				"block p-4 hover:bg-muted/50 transition-colors",
 				item.isNew && "bg-primary/5 border-l-2 border-l-primary",

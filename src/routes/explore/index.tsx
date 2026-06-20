@@ -367,6 +367,7 @@ function ExplorePage() {
 							>
 								<MunicipalityCard
 									id={municipality._id}
+									slug={municipality.slug}
 									name={municipality.name}
 									state={municipality.state}
 									county={municipality.county}

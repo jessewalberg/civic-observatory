@@ -1,15 +1,18 @@
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../../convex/_generated/api";
+import { meetingPath, municipalityPath } from "./publicUrls";
 
 export interface SitemapMunicipality {
 	_id: string;
 	_creationTime: number;
+	slug?: string;
 	name: string;
 }
 
 export interface SitemapMeeting {
 	_id: string;
 	_creationTime: number;
+	slug?: string;
 	meetingDate: number;
 	status: string;
 }
@@ -122,7 +125,7 @@ export function generateSitemapXml(
 	];
 
 	const municipalityUrls: SitemapUrl[] = municipalities.map((municipality) => ({
-		loc: `/explore/${municipality._id}`,
+		loc: municipalityPath(municipality),
 		changefreq: "daily",
 		priority: "0.8",
 		lastmod: toDateOnly(municipality._creationTime),
@@ -131,7 +134,7 @@ export function generateSitemapXml(
 	const meetingUrls: SitemapUrl[] = meetings
 		.filter((meeting) => meeting.status === "summarized")
 		.map((meeting) => ({
-			loc: `/meeting/${meeting._id}`,
+			loc: meetingPath(meeting),
 			changefreq: "weekly",
 			priority: "0.7",
 			lastmod: toDateOnly(meeting.meetingDate),

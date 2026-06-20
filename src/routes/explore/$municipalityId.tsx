@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { ConvexHttpClient } from "convex/browser";
 import { useConvexAuth, useQuery } from "convex/react";
 import {
@@ -30,9 +30,9 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { municipalityPath, publicIdentifier } from "@/lib/publicUrls";
 import { canonicalLink } from "@/lib/seo";
 import { api } from "../../../convex/_generated/api";
-import type { Id } from "../../../convex/_generated/dataModel";
 
 export const Route = createFileRoute("/explore/$municipalityId")({
 	component: MunicipalityDetailPage,
@@ -44,13 +44,27 @@ export const Route = createFileRoute("/explore/$municipalityId")({
 		try {
 			const convex = new ConvexHttpClient(convexUrl);
 			const municipality = await convex.query(
-				api.functions.municipalities.queries.get,
+				api.functions.municipalities.queries.getByIdentifier,
 				{
-					id: params.municipalityId as Id<"municipalities">,
+					identifier: params.municipalityId,
 				},
 			);
+			if (
+				municipality &&
+				params.municipalityId !== publicIdentifier(municipality)
+			) {
+				throw redirect({
+					to: "/explore/$municipalityId",
+					params: { municipalityId: publicIdentifier(municipality) },
+					statusCode: 301,
+					replace: true,
+				});
+			}
 			return { municipality };
-		} catch {
+		} catch (error) {
+			if (error instanceof Response) {
+				throw error;
+			}
 			return { municipality: null };
 		}
 	},
@@ -130,7 +144,7 @@ export const Route = createFileRoute("/explore/$municipalityId")({
 					children: JSON.stringify(jsonLd),
 				},
 			],
-			links: [canonicalLink(`/explore/${municipality._id}`)],
+			links: [canonicalLink(municipalityPath(municipality))],
 		};
 	},
 });
@@ -162,15 +176,22 @@ const MEETING_SKELETON_KEYS = [
 
 function MunicipalityDetailPage() {
 	const { municipalityId } = Route.useParams();
+	const loaderData = Route.useLoaderData();
 	const { isAuthenticated } = useConvexAuth();
 	const [meetingType, setMeetingType] = useState<string>("");
 	const [cursor, setCursor] = useState<string | null>(null);
 	const [showSubscribeModal, setShowSubscribeModal] = useState(false);
 
 	// Fetch municipality details
-	const municipality = useQuery(api.functions.municipalities.queries.get, {
-		id: municipalityId as Id<"municipalities">,
-	});
+	const queriedMunicipality = useQuery(
+		api.functions.municipalities.queries.getByIdentifier,
+		{ identifier: municipalityId },
+	);
+	const municipality =
+		queriedMunicipality === undefined
+			? loaderData.municipality
+			: queriedMunicipality;
+	const resolvedMunicipalityId = municipality?._id;
 
 	// Fetch user if authenticated
 	const user = useQuery(
@@ -181,10 +202,10 @@ function MunicipalityDetailPage() {
 	// Check if user is subscribed to this municipality
 	const existingSubscription = useQuery(
 		api.functions.subscriptions.queries.getForMunicipality,
-		user
+		user && resolvedMunicipalityId
 			? {
 					userId: user._id,
-					municipalityId: municipalityId as Id<"municipalities">,
+					municipalityId: resolvedMunicipalityId,
 				}
 			: "skip",
 	);
@@ -204,17 +225,17 @@ function MunicipalityDetailPage() {
 	// Fetch meeting types available for this municipality
 	const meetingTypes = useQuery(
 		api.functions.meetings.queries.getMeetingTypes,
-		municipality
-			? { municipalityId: municipalityId as Id<"municipalities"> }
+		resolvedMunicipalityId
+			? { municipalityId: resolvedMunicipalityId }
 			: "skip",
 	);
 
 	// Fetch meetings with filters and pagination
 	const meetingsData = useQuery(
 		api.functions.meetings.queries.listByMunicipality,
-		municipality
+		resolvedMunicipalityId
 			? {
-					municipalityId: municipalityId as Id<"municipalities">,
+					municipalityId: resolvedMunicipalityId,
 					meetingType:
 						meetingType && meetingType !== "all"
 							? (meetingType as MeetingType)
@@ -228,8 +249,8 @@ function MunicipalityDetailPage() {
 	// Fetch meeting count
 	const meetingCount = useQuery(
 		api.functions.meetings.queries.countByMunicipality,
-		municipality
-			? { municipalityId: municipalityId as Id<"municipalities"> }
+		resolvedMunicipalityId
+			? { municipalityId: resolvedMunicipalityId }
 			: "skip",
 	);
 
@@ -512,6 +533,7 @@ function MunicipalityDetailPage() {
 							>
 								<MeetingCard
 									id={meeting._id}
+									slug={meeting.slug}
 									title={meeting.title}
 									meetingDate={meeting.meetingDate}
 									meetingType={meeting.meetingType}
@@ -544,7 +566,7 @@ function MunicipalityDetailPage() {
 				<SubscriptionModal
 					open={showSubscribeModal}
 					onOpenChange={setShowSubscribeModal}
-					municipalityId={municipalityId as Id<"municipalities">}
+					municipalityId={municipality._id}
 					municipalityName={municipality.name}
 					userId={user._id}
 					existingSubscription={existingSubscription ?? null}

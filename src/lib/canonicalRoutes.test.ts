@@ -50,11 +50,12 @@ describe("public route canonicals", () => {
 	it("adds canonical links to municipality detail pages", () => {
 		expectCanonical(
 			MunicipalityRoute,
-			"https://civicobservatory.com/explore/municipality_123",
+			"https://civicobservatory.com/explore/austin-tx",
 			{
 				loaderData: {
 					municipality: {
 						_id: "municipality_123",
+						slug: "austin-tx",
 						name: "Austin",
 						state: "TX",
 					},
@@ -66,11 +67,12 @@ describe("public route canonicals", () => {
 	it("adds canonical links to meeting detail pages", () => {
 		expectCanonical(
 			MeetingRoute,
-			"https://civicobservatory.com/meeting/meeting_123",
+			"https://civicobservatory.com/meeting/austin-tx-2026-01-15-city-council-regular-meeting",
 			{
 				loaderData: {
 					meeting: {
 						_id: "meeting_123",
+						slug: "austin-tx-2026-01-15-city-council-regular-meeting",
 						title: "City Council Regular Meeting",
 						meetingType: "city_council",
 						meetingDate: Date.UTC(2026, 0, 15),

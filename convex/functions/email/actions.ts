@@ -26,9 +26,12 @@ type PendingAlert = {
 	};
 	meeting: Pick<
 		Doc<"meetings">,
-		"_id" | "title" | "meetingType" | "meetingDate"
+		"_id" | "slug" | "title" | "meetingType" | "meetingDate"
 	>;
-	municipality: Pick<Doc<"municipalities">, "_id" | "name" | "state"> | null;
+	municipality: Pick<
+		Doc<"municipalities">,
+		"_id" | "slug" | "name" | "state"
+	> | null;
 	summary: Pick<
 		Doc<"summaries">,
 		"_id" | "executiveSummary" | "topics" | "keyDecisions"
@@ -37,8 +40,11 @@ type PendingAlert = {
 
 type DigestAlert = {
 	alert: Doc<"alerts">;
-	meeting: Pick<Doc<"meetings">, "title" | "meetingType" | "meetingDate">;
-	municipality: Pick<Doc<"municipalities">, "name" | "state"> | null;
+	meeting: Pick<
+		Doc<"meetings">,
+		"_id" | "slug" | "title" | "meetingType" | "meetingDate"
+	>;
+	municipality: Pick<Doc<"municipalities">, "slug" | "name" | "state"> | null;
 	summary: Pick<Doc<"summaries">, "executiveSummary" | "topics"> | null;
 };
 
@@ -194,7 +200,7 @@ export const sendImmediateAlert = internalAction({
 			topics: summary.topics,
 			matchedTopics: alert.matchedTopics,
 			keyDecisions: summary.keyDecisions.slice(0, 3),
-			meetingUrl: `${BASE_URL}/meeting/${meeting._id}`,
+			meetingUrl: meetingUrl(meeting),
 		};
 
 		const emailParams: EmailParams = {
@@ -282,7 +288,7 @@ export const sendDailyDigest = internalAction({
 					topics: summary?.topics ?? [],
 					matchedTopics: alert.matchedTopics,
 					keyDecisions: [],
-					meetingUrl: `${BASE_URL}/meeting/${alert.meetingId}`,
+					meetingUrl: meetingUrl(meeting, alert.meetingId),
 				}),
 			);
 
@@ -389,7 +395,7 @@ export const sendWeeklyDigest = internalAction({
 					topics: summary?.topics ?? [],
 					matchedTopics: alert.matchedTopics,
 					keyDecisions: [],
-					meetingUrl: `${BASE_URL}/meeting/${alert.meetingId}`,
+					meetingUrl: meetingUrl(meeting, alert.meetingId),
 				}),
 			);
 
@@ -502,3 +508,10 @@ export const processImmediateAlerts = internalAction({
 		return results;
 	},
 });
+
+function meetingUrl(
+	meeting: { _id?: string; slug?: string },
+	fallbackId?: string,
+): string {
+	return `${BASE_URL}/meeting/${meeting.slug ?? meeting._id ?? fallbackId}`;
+}

@@ -1,5 +1,7 @@
 import { v } from "convex/values";
-import { internalMutation } from "../../_generated/server";
+import type { Doc, Id } from "../../_generated/dataModel";
+import { internalMutation, type MutationCtx } from "../../_generated/server";
+import { createMeetingSlug, createMunicipalitySlug } from "../../lib/seoSlugs";
 import { normalizeUrl } from "../../scrapers/utils";
 
 // ═══════════════════════════════════════════════════════════════
@@ -137,10 +139,19 @@ export const createMeetingFromScrape = internalMutation({
 			hasInlineContent ||
 			isLikelyDocumentUrl(args.sourceUrl) ||
 			!sourceIsListingPage;
+		if (!municipality) {
+			throw new Error("Municipality not found");
+		}
+		const slug = await createUniqueMeetingSlug(ctx, {
+			municipality,
+			title: args.title,
+			meetingDate: args.meetingDate,
+		});
 
 		const meetingId = await ctx.db.insert("meetings", {
 			municipalityId: args.municipalityId,
 			title: args.title,
+			slug,
 			meetingType: args.meetingType,
 			meetingDate: args.meetingDate,
 			sourceUrl: args.sourceUrl,
@@ -163,6 +174,49 @@ function isLikelyDocumentUrl(url: string): boolean {
 		/\/ViewFile/i.test(url) ||
 		/\/View\.ashx/i.test(url)
 	);
+}
+
+async function createUniqueMeetingSlug(
+	ctx: MutationCtx,
+	{
+		municipality,
+		title,
+		meetingDate,
+		currentId,
+	}: {
+		municipality: Doc<"municipalities">;
+		title: string;
+		meetingDate: number;
+		currentId?: Id<"meetings">;
+	},
+): Promise<string> {
+	const municipalitySlug =
+		municipality.slug ??
+		createMunicipalitySlug({
+			name: municipality.name,
+			state: municipality.state,
+		});
+	const baseSlug = createMeetingSlug({
+		municipalitySlug,
+		title,
+		meetingDate,
+	});
+	let candidate = baseSlug;
+	let suffix = 2;
+
+	while (true) {
+		const existing = await ctx.db
+			.query("meetings")
+			.withIndex("by_slug", (q) => q.eq("slug", candidate))
+			.first();
+
+		if (!existing || existing._id === currentId) {
+			return candidate;
+		}
+
+		candidate = `${baseSlug}-${suffix}`;
+		suffix++;
+	}
 }
 
 // ═══════════════════════════════════════════════════════════════
