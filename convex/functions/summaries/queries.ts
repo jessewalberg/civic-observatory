@@ -188,58 +188,63 @@ async function listPublicSummaryResults(
 	const limit = Math.min(Math.max(args.limit ?? 20, 1), 50);
 	const normalizedQuery = normalizeSearchText(args.query ?? "");
 	const normalizedTopic = args.topic ? canonicalTopic(args.topic) : null;
-	const summaries = await ctx.db.query("summaries").collect();
+	const summarizedMeetings = await ctx.db
+		.query("meetings")
+		.withIndex("by_status", (q) => q.eq("status", "summarized"))
+		.collect();
+	summarizedMeetings.sort((a, b) => b.meetingDate - a.meetingDate);
 
-	const results: Array<PublicSummaryResult | null> = await Promise.all(
-		summaries.map(async (summary) => {
-			const meeting = await ctx.db.get(summary.meetingId);
-			if (!meeting || meeting.status !== "summarized") return null;
+	const results: PublicSummaryResult[] = [];
+	for (const meeting of summarizedMeetings) {
+		const municipality = await ctx.db.get(meeting.municipalityId);
+		if (!municipality || !isCoveragePublic(municipality)) continue;
 
-			const municipality = await ctx.db.get(meeting.municipalityId);
-			if (!municipality || !isCoveragePublic(municipality)) return null;
+		const summary = await ctx.db
+			.query("summaries")
+			.withIndex("by_meeting", (q) => q.eq("meetingId", meeting._id))
+			.first();
+		if (!summary) continue;
 
-			if (
-				normalizedTopic &&
-				!summary.topics.some(
-					(topic) => canonicalTopic(topic) === normalizedTopic,
-				)
-			) {
-				return null;
-			}
+		if (
+			normalizedTopic &&
+			!summary.topics.some((topic) => canonicalTopic(topic) === normalizedTopic)
+		) {
+			continue;
+		}
 
-			const searchableText = summarySearchText({
-				summary,
-				meeting,
-				municipality,
-			});
-			if (normalizedQuery && !searchableText.includes(normalizedQuery)) {
-				return null;
-			}
+		const searchableText = summarySearchText({
+			summary,
+			meeting,
+			municipality,
+		});
+		if (normalizedQuery && !searchableText.includes(normalizedQuery)) {
+			continue;
+		}
 
-			return {
-				meetingId: meeting._id,
-				meetingSlug: meeting.slug,
-				title: meeting.title,
-				meetingDate: meeting.meetingDate,
-				meetingType: meeting.meetingType,
-				status: meeting.status,
-				summaryId: summary._id,
-				summarySnippet: summarySnippet(summary, normalizedQuery),
-				topics: summary.topics,
-				municipality: {
-					id: municipality._id,
-					slug: municipality.slug,
-					name: municipality.name,
-					state: municipality.state,
-				},
-			};
-		}),
-	);
+		results.push({
+			meetingId: meeting._id,
+			meetingSlug: meeting.slug,
+			title: meeting.title,
+			meetingDate: meeting.meetingDate,
+			meetingType: meeting.meetingType,
+			status: meeting.status,
+			summaryId: summary._id,
+			summarySnippet: summarySnippet(summary, normalizedQuery),
+			topics: summary.topics,
+			municipality: {
+				id: municipality._id,
+				slug: municipality.slug,
+				name: municipality.name,
+				state: municipality.state,
+			},
+		});
 
-	return results
-		.filter((result): result is PublicSummaryResult => Boolean(result))
-		.sort((a, b) => b.meetingDate - a.meetingDate)
-		.slice(0, limit);
+		if (!normalizedQuery && !normalizedTopic && results.length >= limit) {
+			break;
+		}
+	}
+
+	return results.slice(0, limit);
 }
 
 function summarySearchText({
