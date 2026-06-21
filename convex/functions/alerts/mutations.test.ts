@@ -7,6 +7,7 @@ import { modules } from "../../test.setup";
 
 const setup = () => convexTest(schema, modules);
 const ISSUER = "https://clerk.example.com";
+let deliverySeed = 0;
 
 async function seedUser(
 	t: ReturnType<typeof convexTest>,
@@ -14,6 +15,7 @@ async function seedUser(
 		clerkUserId: string;
 		email: string;
 		tier?: "free" | "pro";
+		isAdmin?: boolean;
 	},
 ) {
 	const now = Date.now();
@@ -22,6 +24,7 @@ async function seedUser(
 			clerkUserId: o.clerkUserId,
 			email: o.email,
 			tier: o.tier ?? "free",
+			isAdmin: o.isAdmin,
 			createdAt: now,
 			lastLoginAt: now,
 		}),
@@ -104,6 +107,111 @@ async function seedAlert(
 			sentAt: now,
 			readAt,
 			createdAt: now,
+		}),
+	);
+}
+
+async function seedDeliveryAlert(
+	t: ReturnType<typeof convexTest>,
+	o: {
+		status: "pending" | "queued" | "sent" | "failed" | "skipped";
+		deliveryFailureKind?: "retryable" | "permanent";
+		deliveryAttemptCount?: number;
+		lastDeliveryAttemptAt?: number;
+		nextDeliveryAttemptAt?: number;
+		deliveryError?: string;
+		deliveryKey?: string;
+		providerMessageId?: string;
+		scheduledFor?: number;
+		sentAt?: number;
+		createdAt?: number;
+		userEmail?: string;
+		meetingTitle?: string;
+	},
+) {
+	const now = Date.now();
+	deliverySeed += 1;
+	const seedSuffix = deliverySeed.toString().padStart(3, "0");
+	const userId = await seedUser(t, {
+		clerkUserId: `user_delivery_${seedSuffix}`,
+		email: o.userEmail ?? "delivery-reader@example.test",
+		tier: "pro",
+	});
+	const municipalityId = await t.run(async (ctx) =>
+		ctx.db.insert("municipalities", {
+			name: "Coventry",
+			state: "Connecticut",
+			platform: "manual",
+			isActive: true,
+			isVerified: true,
+			createdAt: now,
+			updatedAt: now,
+		}),
+	);
+	const meetingId = await t.run(async (ctx) =>
+		ctx.db.insert("meetings", {
+			municipalityId,
+			title: o.meetingTitle ?? "Delivery Health Meeting",
+			meetingType: "city_council",
+			meetingDate: now,
+			sourceType: "manual_entry",
+			rawContent: "Agenda packet content.",
+			status: "summarized",
+			createdAt: now,
+			updatedAt: now,
+		}),
+	);
+	const summaryId = await t.run(async (ctx) =>
+		ctx.db.insert("summaries", {
+			meetingId,
+			version: 1,
+			executiveSummary: "Council reviewed local updates.",
+			keyDecisions: [],
+			discussionTopics: [],
+			upcomingItems: [],
+			topics: ["budget"],
+			modelUsed: "test",
+			promptVersion: "test",
+			processingTimeMs: 1,
+			municipalityId,
+			meetingDate: now,
+			sourceType: "manual_entry",
+			sourceContentHash: `delivery-health-${seedSuffix}`,
+			status: "summarized",
+			createdAt: now,
+		}),
+	);
+	const subscriptionId = await t.run(async (ctx) =>
+		ctx.db.insert("subscriptions", {
+			userId: userId as Id<"users">,
+			municipalityId,
+			alertFrequency: "daily",
+			emailEnabled: true,
+			isActive: true,
+			createdAt: now,
+			updatedAt: now,
+		}),
+	);
+
+	return await t.run(async (ctx) =>
+		ctx.db.insert("alerts", {
+			userId: userId as Id<"users">,
+			subscriptionId,
+			meetingId,
+			summaryId,
+			municipalityId,
+			matchedTopics: ["budget"],
+			status: o.status,
+			deliveryFailureKind: o.deliveryFailureKind,
+			deliveryAttemptCount: o.deliveryAttemptCount,
+			lastDeliveryAttemptAt: o.lastDeliveryAttemptAt,
+			nextDeliveryAttemptAt: o.nextDeliveryAttemptAt,
+			deliveryError: o.deliveryError,
+			deliveryKey: o.deliveryKey,
+			providerMessageId: o.providerMessageId,
+			scheduledFor: o.scheduledFor,
+			sentAt: o.sentAt,
+			createdAt: o.createdAt ?? now,
 		}),
 	);
 }
@@ -622,5 +730,175 @@ describe("alert read query ownership", () => {
 		await expect(
 			t.query(api.functions.alerts.queries.getUnreadCount, {}),
 		).resolves.toBe(0);
+	});
+});
+
+describe("admin alert delivery health", () => {
+	it("returns null for non-admin callers", async () => {
+		const t = setup();
+		await seedUser(t, {
+			clerkUserId: "user_delivery_viewer",
+			email: "viewer@example.test",
+		});
+		await seedDeliveryAlert(t, {
+			status: "failed",
+			deliveryFailureKind: "permanent",
+			deliveryError: "Sender domain not verified",
+		});
+		const asViewer = t.withIdentity({
+			subject: "user_delivery_viewer",
+			issuer: ISSUER,
+			email: "viewer@example.test",
+		});
+
+		await expect(
+			asViewer.query(api.functions.alerts.queries.getDeliveryHealth, {}),
+		).resolves.toBeNull();
+	});
+
+	it("summarizes delivery state and recent alert context for admins", async () => {
+		const t = setup();
+		const now = Date.now();
+		await seedUser(t, {
+			clerkUserId: "user_delivery_admin",
+			email: "admin@example.test",
+			isAdmin: true,
+		});
+		const staleQueuedId = await seedDeliveryAlert(t, {
+			status: "queued",
+			deliveryKey: "alert/stale",
+			deliveryAttemptCount: 1,
+			lastDeliveryAttemptAt: now - 31 * 60 * 1000,
+			userEmail: "stale@example.test",
+			meetingTitle: "Stale Queue Hearing",
+			createdAt: now - 5,
+		});
+		await seedDeliveryAlert(t, {
+			status: "queued",
+			deliveryKey: "alert/fresh",
+			deliveryAttemptCount: 1,
+			lastDeliveryAttemptAt: now - 5 * 60 * 1000,
+		});
+		await seedDeliveryAlert(t, {
+			status: "pending",
+			deliveryFailureKind: "retryable",
+			deliveryAttemptCount: 2,
+			nextDeliveryAttemptAt: now + 10 * 60 * 1000,
+			scheduledFor: now + 10 * 60 * 1000,
+			deliveryError: "Cloudflare email service not configured",
+		});
+		await seedDeliveryAlert(t, {
+			status: "pending",
+		});
+		await seedDeliveryAlert(t, {
+			status: "sent",
+			sentAt: now - 1000,
+			providerMessageId: "<email_sent@example.test>",
+		});
+		await seedDeliveryAlert(t, {
+			status: "failed",
+			deliveryFailureKind: "permanent",
+			deliveryError: "Sender domain not verified",
+		});
+		await seedDeliveryAlert(t, {
+			status: "failed",
+			deliveryFailureKind: "permanent",
+			deliveryAttemptCount: 3,
+			deliveryError:
+				"Retry attempts exhausted after 3 attempts: Cloudflare email service not configured",
+		});
+
+		const asAdmin = t.withIdentity({
+			subject: "user_delivery_admin",
+			issuer: ISSUER,
+			email: "admin@example.test",
+		});
+
+		const health = await asAdmin.query(
+			api.functions.alerts.queries.getDeliveryHealth,
+			{ limit: 10 },
+		);
+
+		expect(health).toMatchObject({
+			counts: {
+				total: 7,
+				pending: 2,
+				queued: 2,
+				staleQueued: 1,
+				sent: 1,
+				failed: 2,
+				skipped: 0,
+				retryable: 1,
+				permanent: 2,
+				exhausted: 1,
+			},
+			staleQueuedThresholdMs: 30 * 60 * 1000,
+		});
+		expect(health?.alerts).toHaveLength(7);
+		expect(
+			health?.alerts.find((alert) => alert._id === staleQueuedId),
+		).toMatchObject({
+			status: "queued",
+			userEmail: "stale@example.test",
+			meetingTitle: "Stale Queue Hearing",
+			municipalityName: "Coventry",
+			deliveryKey: "alert/stale",
+			deliveryAttemptCount: 1,
+			isStaleQueued: true,
+			isRetrying: false,
+			isExhausted: false,
+		});
+	});
+
+	it("filters failed, retrying, and stale queued delivery rows", async () => {
+		const t = setup();
+		const now = Date.now();
+		await seedUser(t, {
+			clerkUserId: "user_delivery_filter_admin",
+			email: "admin@example.test",
+			isAdmin: true,
+		});
+		const failedId = await seedDeliveryAlert(t, {
+			status: "failed",
+			deliveryFailureKind: "permanent",
+			deliveryError: "Sender domain not verified",
+		});
+		const retryingId = await seedDeliveryAlert(t, {
+			status: "pending",
+			deliveryFailureKind: "retryable",
+			nextDeliveryAttemptAt: now + 10 * 60 * 1000,
+		});
+		const staleQueuedId = await seedDeliveryAlert(t, {
+			status: "queued",
+			lastDeliveryAttemptAt: now - 31 * 60 * 1000,
+		});
+		await seedDeliveryAlert(t, { status: "sent" });
+		const asAdmin = t.withIdentity({
+			subject: "user_delivery_filter_admin",
+			issuer: ISSUER,
+			email: "admin@example.test",
+		});
+
+		await expect(
+			asAdmin.query(api.functions.alerts.queries.getDeliveryHealth, {
+				filter: "failed",
+			}),
+		).resolves.toMatchObject({
+			alerts: [expect.objectContaining({ _id: failedId })],
+		});
+		await expect(
+			asAdmin.query(api.functions.alerts.queries.getDeliveryHealth, {
+				filter: "retrying",
+			}),
+		).resolves.toMatchObject({
+			alerts: [expect.objectContaining({ _id: retryingId })],
+		});
+		await expect(
+			asAdmin.query(api.functions.alerts.queries.getDeliveryHealth, {
+				filter: "stale_queued",
+			}),
+		).resolves.toMatchObject({
+			alerts: [expect.objectContaining({ _id: staleQueuedId })],
+		});
 	});
 });

@@ -1,6 +1,9 @@
 import { v } from "convex/values";
+import type { Doc } from "../../_generated/dataModel";
 import { internalQuery, query } from "../../_generated/server";
 import { getCurrentUser } from "../../lib/auth";
+
+const STALE_QUEUED_THRESHOLD_MS = 30 * 60 * 1000;
 
 // ═══════════════════════════════════════════════════════════════
 // GET BY ID - Get a single alert with full details
@@ -258,6 +261,106 @@ export const getFeed = query({
 });
 
 // ═══════════════════════════════════════════════════════════════
+// GET DELIVERY HEALTH - Admin-only alert delivery state overview
+// ═══════════════════════════════════════════════════════════════
+export const getDeliveryHealth = query({
+	args: {
+		filter: v.optional(
+			v.union(
+				v.literal("all"),
+				v.literal("failed"),
+				v.literal("retrying"),
+				v.literal("stale_queued"),
+				v.literal("queued"),
+				v.literal("pending"),
+			),
+		),
+		limit: v.optional(v.number()),
+	},
+	handler: async (ctx, args) => {
+		const caller = await getCurrentUser(ctx);
+		if (!caller?.isAdmin) {
+			return null;
+		}
+
+		const now = Date.now();
+		const alerts = await ctx.db.query("alerts").collect();
+		const counts = {
+			total: alerts.length,
+			pending: alerts.filter((alert) => alert.status === "pending").length,
+			queued: alerts.filter((alert) => alert.status === "queued").length,
+			staleQueued: alerts.filter((alert) => isStaleQueued(alert, now)).length,
+			sent: alerts.filter((alert) => alert.status === "sent").length,
+			failed: alerts.filter((alert) => alert.status === "failed").length,
+			skipped: alerts.filter((alert) => alert.status === "skipped").length,
+			retryable: alerts.filter(
+				(alert) => alert.deliveryFailureKind === "retryable",
+			).length,
+			permanent: alerts.filter(
+				(alert) => alert.deliveryFailureKind === "permanent",
+			).length,
+			exhausted: alerts.filter((alert) => isExhausted(alert)).length,
+		};
+
+		const filter = args.filter ?? "all";
+		const limit = Math.min(Math.max(args.limit ?? 50, 1), 200);
+		const filteredAlerts = alerts
+			.filter((alert) => matchesDeliveryHealthFilter(alert, filter, now))
+			.sort((a, b) => deliverySortTime(b) - deliverySortTime(a))
+			.slice(0, limit);
+
+		const alertRows = await Promise.all(
+			filteredAlerts.map(async (alert) => {
+				const [user, meeting, subscription] = await Promise.all([
+					ctx.db.get(alert.userId),
+					ctx.db.get(alert.meetingId),
+					ctx.db.get(alert.subscriptionId),
+				]);
+				const municipalityId = meeting?.municipalityId ?? alert.municipalityId;
+				const municipality = municipalityId
+					? await ctx.db.get(municipalityId)
+					: null;
+				const staleQueued = isStaleQueued(alert, now);
+				const exhausted = isExhausted(alert);
+				const retrying = isRetrying(alert);
+
+				return {
+					_id: alert._id,
+					status: alert.status,
+					createdAt: alert.createdAt,
+					scheduledFor: alert.scheduledFor,
+					sentAt: alert.sentAt,
+					deliveryError: alert.deliveryError,
+					deliveryKey: alert.deliveryKey,
+					deliveryAttemptCount: alert.deliveryAttemptCount ?? 0,
+					lastDeliveryAttemptAt: alert.lastDeliveryAttemptAt,
+					nextDeliveryAttemptAt: alert.nextDeliveryAttemptAt,
+					deliveryFailureKind: alert.deliveryFailureKind,
+					providerMessageId: alert.providerMessageId,
+					isStaleQueued: staleQueued,
+					isRetrying: retrying,
+					isExhausted: exhausted,
+					userEmail: user?.email ?? "Unknown user",
+					userName: user?.name,
+					meetingTitle: meeting?.title ?? "Unknown meeting",
+					meetingDate: meeting?.meetingDate,
+					municipalityName: municipality?.name ?? "Unknown municipality",
+					municipalityState: municipality?.state ?? "",
+					alertFrequency: subscription?.alertFrequency ?? null,
+				};
+			}),
+		);
+
+		return {
+			generatedAt: now,
+			staleQueuedThresholdMs: STALE_QUEUED_THRESHOLD_MS,
+			counts,
+			alerts: alertRows,
+		};
+	},
+});
+
+// ═══════════════════════════════════════════════════════════════
 // GET PENDING BY FREQUENCY - Get pending alerts for a frequency (internal)
 // Used by cron jobs to send digests
 // ═══════════════════════════════════════════════════════════════
@@ -470,3 +573,49 @@ export const checkDuplicate = internalQuery({
 		return existing !== null;
 	},
 });
+
+type AlertDoc = Doc<"alerts">;
+
+function isStaleQueued(alert: AlertDoc, now: number): boolean {
+	if (alert.status !== "queued") return false;
+
+	const lastAttemptAt = alert.lastDeliveryAttemptAt ?? alert.createdAt;
+	return lastAttemptAt < now - STALE_QUEUED_THRESHOLD_MS;
+}
+
+function isRetrying(alert: AlertDoc): boolean {
+	return (
+		alert.status === "pending" && alert.deliveryFailureKind === "retryable"
+	);
+}
+
+function isExhausted(alert: AlertDoc): boolean {
+	return (
+		alert.status === "failed" &&
+		typeof alert.deliveryError === "string" &&
+		alert.deliveryError.includes("Retry attempts exhausted")
+	);
+}
+
+function matchesDeliveryHealthFilter(
+	alert: AlertDoc,
+	filter: "all" | "failed" | "retrying" | "stale_queued" | "queued" | "pending",
+	now: number,
+): boolean {
+	if (filter === "all") return true;
+	if (filter === "failed") return alert.status === "failed";
+	if (filter === "retrying") return isRetrying(alert);
+	if (filter === "stale_queued") return isStaleQueued(alert, now);
+	if (filter === "queued") return alert.status === "queued";
+	return alert.status === "pending";
+}
+
+function deliverySortTime(alert: AlertDoc): number {
+	return (
+		alert.lastDeliveryAttemptAt ??
+		alert.nextDeliveryAttemptAt ??
+		alert.sentAt ??
+		alert.scheduledFor ??
+		alert.createdAt
+	);
+}
