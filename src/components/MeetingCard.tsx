@@ -1,6 +1,10 @@
 import { ChevronRight, FileText } from "lucide-react";
 import { motion } from "motion/react";
 import {
+	CoverageReliabilityBadge,
+	type PublicCoverageBadge,
+} from "@/components/CoverageReliabilityBadge";
+import {
 	normalizeTopics,
 	type Topic,
 	TopicBadge,
@@ -71,6 +75,7 @@ interface MeetingCardProps {
 	status: MeetingStatus;
 	topics?: string[];
 	summaryPreview?: string;
+	coverageBadge?: PublicCoverageBadge;
 	className?: string;
 }
 
@@ -83,6 +88,7 @@ export function MeetingCard({
 	status,
 	topics = [],
 	summaryPreview,
+	coverageBadge,
 	className,
 }: MeetingCardProps) {
 	const typeLabel = meetingTypeLabels[meetingType];
@@ -141,12 +147,20 @@ export function MeetingCard({
 										</div>
 									)}
 								</div>
-								<Badge
-									variant="outline"
-									className={cn("flex-shrink-0 text-xs", statusInfo.className)}
-								>
-									{statusInfo.label}
-								</Badge>
+								<div className="flex flex-shrink-0 flex-wrap justify-end gap-1.5">
+									{coverageBadge && (
+										<CoverageReliabilityBadge
+											badge={coverageBadge}
+											className="justify-end"
+										/>
+									)}
+									<Badge
+										variant="outline"
+										className={cn("text-xs", statusInfo.className)}
+									>
+										{statusInfo.label}
+									</Badge>
+								</div>
 							</div>
 
 							{/* Summary preview */}

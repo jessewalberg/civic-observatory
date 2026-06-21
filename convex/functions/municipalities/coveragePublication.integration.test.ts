@@ -244,6 +244,68 @@ describe("coverage publication integration", () => {
 		);
 	});
 
+	it("projects safe public reliability badges without leaking scraper errors", async () => {
+		const t = setup();
+		const municipalityId = await seedMunicipality(t, {
+			name: "Badge Falls",
+			slug: "badge-falls-connecticut",
+			coverageStatus: "published",
+			lastScrapedAt: NOW - 15_000,
+			lastScrapeStatus: "failed",
+			lastScrapeError: "internal scraper token expired at secret://source",
+		});
+		await seedMeetingWithSummary(t, municipalityId);
+
+		const [listRow] = await t.query(api.functions.municipalities.queries.list, {
+			state: "Connecticut",
+			activeOnly: true,
+		});
+		expect(listRow).toMatchObject({
+			_id: municipalityId,
+			coverageBadge: {
+				kind: "verified",
+				label: "Verified coverage",
+				latestHealth: "failing",
+				lastCheckedAt: NOW - 15_000,
+			},
+		});
+		expect("lastScrapeError" in listRow).toBe(false);
+		expect(JSON.stringify(listRow.coverageBadge)).not.toContain("secret://");
+
+		const detail = await t.query(
+			api.functions.municipalities.queries.getByIdentifier,
+			{ identifier: "badge-falls-connecticut" },
+		);
+		expect(detail).toMatchObject({
+			coverageBadge: {
+				kind: "verified",
+				label: "Verified coverage",
+				latestHealth: "failing",
+			},
+		});
+		expect(detail && "lastScrapeError" in detail).toBe(false);
+
+		const meetingList = await t.query(
+			api.functions.meetings.queries.listByMunicipality,
+			{ municipalityId, limit: 10 },
+		);
+		expect(meetingList.municipalityCoverageBadge).toMatchObject({
+			kind: "verified",
+			label: "Verified coverage",
+			latestHealth: "failing",
+		});
+
+		const [summaryResult] = await t.query(
+			api.functions.summaries.queries.searchPublicSummaries,
+			{ query: "Council", limit: 10 },
+		);
+		expect(summaryResult.municipality.coverageBadge).toMatchObject({
+			kind: "verified",
+			label: "Verified coverage",
+			latestHealth: "failing",
+		});
+	});
+
 	it("blocks subscriptions and alert candidates for unpublished or paused coverage", async () => {
 		const t = setup();
 		const userId = await seedUser(t);
@@ -347,6 +409,9 @@ async function seedMunicipality(
 		coverageStatus: "published" | "unpublished" | "paused";
 		isActive: boolean;
 		isVerified: boolean;
+		lastScrapedAt: number;
+		lastScrapeStatus: "success" | "failed" | "partial";
+		lastScrapeError: string;
 	}> = {},
 ) {
 	return await t.run(async (ctx) =>
@@ -357,6 +422,9 @@ async function seedMunicipality(
 			meetingsPageUrl: "https://example.test/agendas",
 			platform: "civicplus",
 			scrapeConfig: { frequencyHours: 24 },
+			lastScrapedAt: overrides.lastScrapedAt,
+			lastScrapeStatus: overrides.lastScrapeStatus,
+			lastScrapeError: overrides.lastScrapeError,
 			coverageStatus: overrides.coverageStatus ?? "unpublished",
 			isActive: overrides.isActive ?? true,
 			isVerified: overrides.isVerified ?? true,

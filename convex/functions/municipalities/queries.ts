@@ -5,6 +5,11 @@ import { getCurrentUser } from "../../lib/auth";
 import { buildMunicipalityCoverageHealth } from "./coverageHealth";
 import { getCoverageStatus, isCoveragePublic } from "./coveragePublication";
 import { buildMunicipalityOnboardingChecklist } from "./onboardingChecklist";
+import {
+	buildPublicCoverageBadge,
+	toSafePublicMunicipality,
+	withPublicCoverageBadge,
+} from "./publicCoverageBadge";
 
 const DEFAULT_SEARCH_LIMIT = 10;
 const MAX_RESULT_LIMIT = 100;
@@ -38,7 +43,10 @@ export const list = query({
 
 		return filtered
 			.sort((a, b) => a.name.localeCompare(b.name))
-			.slice(0, limit);
+			.slice(0, limit)
+			.map((municipality) =>
+				projectMunicipalityForCaller(municipality, includeInternal),
+			);
 	},
 });
 
@@ -185,7 +193,10 @@ export const search = query({
 			.filter((municipality) =>
 				args.state ? municipality.state === args.state : true,
 			)
-			.slice(0, limit);
+			.slice(0, limit)
+			.map((municipality) =>
+				projectMunicipalityForCaller(municipality, includeInternal),
+			);
 	},
 });
 
@@ -215,6 +226,7 @@ export const listByState = query({
 				county: string | undefined;
 				population: number | undefined;
 				isVerified: boolean;
+				coverageBadge: ReturnType<typeof buildPublicCoverageBadge>;
 			}>
 		> = {};
 
@@ -228,6 +240,7 @@ export const listByState = query({
 				county: muni.county,
 				population: muni.population,
 				isVerified: muni.isVerified,
+				coverageBadge: buildPublicCoverageBadge(muni),
 			});
 		}
 
@@ -369,6 +382,7 @@ export const listCoverageHealth = query({
 						isActive: municipality.isActive,
 						isVerified: municipality.isVerified,
 						coverageStatus: getCoverageStatus(municipality),
+						coverageBadge: buildPublicCoverageBadge(municipality, now),
 					},
 					health: buildMunicipalityCoverageHealth({
 						now,
@@ -572,7 +586,19 @@ async function filterVisibleMunicipality(
 	municipality: Doc<"municipalities"> | null,
 ) {
 	if (!municipality) return null;
-	if (isCoveragePublic(municipality)) return municipality;
-	if (await canReadInternalCoverage(ctx)) return municipality;
+	if (isCoveragePublic(municipality)) {
+		return toSafePublicMunicipality(municipality);
+	}
+	if (await canReadInternalCoverage(ctx))
+		return withPublicCoverageBadge(municipality);
 	return null;
+}
+
+function projectMunicipalityForCaller(
+	municipality: Doc<"municipalities">,
+	includeInternal: boolean,
+) {
+	return includeInternal
+		? withPublicCoverageBadge(municipality)
+		: toSafePublicMunicipality(municipality);
 }

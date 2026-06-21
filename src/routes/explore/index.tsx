@@ -327,6 +327,7 @@ function ExplorePage() {
 									county={municipality.county}
 									population={municipality.population}
 									isVerified={municipality.isVerified}
+									coverageBadge={municipality.coverageBadge}
 									meetingCount={meetingCounts[municipality._id] ?? 0}
 								/>
 							</motion.div>

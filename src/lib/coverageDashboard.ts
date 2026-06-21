@@ -1,3 +1,5 @@
+import type { PublicCoverageBadge } from "@/lib/publicCoverageBadge";
+
 export type CoverageHealthState =
 	| "live"
 	| "stale"
@@ -13,6 +15,7 @@ export type CoverageDashboardRow = {
 		state: string;
 		platform: "granicus" | "civicplus" | "generic" | "manual";
 		coverageStatus?: "published" | "unpublished" | "paused";
+		coverageBadge?: PublicCoverageBadge;
 		isActive: boolean;
 		isVerified: boolean;
 	};

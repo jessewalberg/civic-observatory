@@ -1,6 +1,10 @@
 import { Link } from "@tanstack/react-router";
 import { Building2, FileText, MapPin, Users } from "lucide-react";
 import { motion } from "motion/react";
+import {
+	CoverageReliabilityBadge,
+	type PublicCoverageBadge,
+} from "@/components/CoverageReliabilityBadge";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -17,6 +21,7 @@ interface MunicipalityCardProps {
 	population?: number;
 	meetingCount?: number;
 	isVerified?: boolean;
+	coverageBadge?: PublicCoverageBadge;
 	className?: string;
 }
 
@@ -29,6 +34,7 @@ export function MunicipalityCard({
 	population,
 	meetingCount = 0,
 	isVerified = false,
+	coverageBadge,
 	className,
 }: MunicipalityCardProps) {
 	return (
@@ -64,11 +70,16 @@ export function MunicipalityCard({
 									</span>
 								</div>
 							</div>
-							{isVerified && (
+							{coverageBadge ? (
+								<CoverageReliabilityBadge
+									badge={coverageBadge}
+									className="flex-shrink-0 justify-end"
+								/>
+							) : isVerified ? (
 								<Badge variant="secondary" className="flex-shrink-0 text-xs">
 									Verified
 								</Badge>
-							)}
+							) : null}
 						</div>
 
 						{/* Stats */}

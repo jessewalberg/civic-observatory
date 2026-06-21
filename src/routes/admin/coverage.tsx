@@ -20,6 +20,7 @@ import {
 import { motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { CoverageReliabilityBadge } from "@/components/CoverageReliabilityBadge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -917,9 +918,7 @@ function CoverageContent() {
 													<HealthBadge state={row.health.state} />
 												</TableCell>
 												<TableCell>
-													<CoverageStatusBadge
-														status={coverageStatusFor(row.municipality)}
-													/>
+													<CoverageVisibilityCell row={row} />
 												</TableCell>
 												<TableCell>
 													<Badge
@@ -1113,6 +1112,18 @@ function HealthBadge({ state }: { state: CoverageHealthState }) {
 	);
 }
 
+function healthStateLabel(state: CoverageHealthState) {
+	const labels: Record<CoverageHealthState, string> = {
+		live: "Live",
+		stale: "Stale",
+		failing: "Failing",
+		unsupported: "Unsupported",
+		pending: "Pending",
+		"never-probed": "Never probed",
+	};
+	return labels[state];
+}
+
 function OnboardingStatusBadge({
 	status,
 	short = false,
@@ -1165,6 +1176,24 @@ function CoverageStatusBadge({ status }: { status: CoverageStatus }) {
 		>
 			{config[status].label}
 		</Badge>
+	);
+}
+
+function CoverageVisibilityCell({ row }: { row: CoverageDashboardRow }) {
+	const badge = row.municipality.coverageBadge;
+
+	return (
+		<div className="space-y-1">
+			<CoverageStatusBadge status={coverageStatusFor(row.municipality)} />
+			{badge && (
+				<>
+					<CoverageReliabilityBadge badge={badge} showLastChecked />
+					<p className="text-xs text-muted-foreground">
+						Health detail: {healthStateLabel(row.health.state)}
+					</p>
+				</>
+			)}
+		</div>
 	);
 }
 

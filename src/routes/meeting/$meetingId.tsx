@@ -22,6 +22,10 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
+import {
+	CoverageReliabilityBadge,
+	type PublicCoverageBadge,
+} from "@/components/CoverageReliabilityBadge";
 import { ShareButton } from "@/components/ShareButton";
 import { MeetingDetailSkeleton } from "@/components/skeletons";
 import { normalizeTopics, TopicBadge } from "@/components/TopicBadge";
@@ -252,6 +256,7 @@ interface MeetingData {
 		state: string;
 		slug?: string;
 		lastScrapedAt?: number;
+		coverageBadge?: PublicCoverageBadge;
 	} | null;
 }
 
@@ -786,6 +791,12 @@ function MeetingHeader({ meeting, typeLabel }: MeetingHeaderProps) {
 				</div>
 				{meeting.meetingType !== "other" && (
 					<Badge variant="secondary">{typeLabel}</Badge>
+				)}
+				{meeting.municipality?.coverageBadge && (
+					<CoverageReliabilityBadge
+						badge={meeting.municipality.coverageBadge}
+						showLastChecked
+					/>
 				)}
 				{isFutureMeeting && (
 					<Badge className="bg-blue-500/15 text-blue-400 border-blue-500/30">
