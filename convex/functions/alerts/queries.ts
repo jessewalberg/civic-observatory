@@ -320,6 +320,7 @@ export const getPendingByFrequency = internalQuery({
 					title: meeting.title,
 					meetingType: meeting.meetingType,
 					meetingDate: meeting.meetingDate,
+					sourceUrl: meeting.sourceUrl,
 				},
 				municipality: municipality
 					? {
@@ -335,6 +336,7 @@ export const getPendingByFrequency = internalQuery({
 							executiveSummary: summary.executiveSummary,
 							topics: summary.topics,
 							keyDecisions: summary.keyDecisions,
+							sourceUrl: summary.sourceUrl,
 						}
 					: null,
 			});
@@ -373,9 +375,14 @@ export const getPendingForUserDigest = internalQuery({
 						title: string;
 						meetingType: string;
 						meetingDate: number;
+						sourceUrl?: string;
 					};
 					municipality: { name: string; state: string; slug?: string } | null;
-					summary: { executiveSummary: string; topics: string[] } | null;
+					summary: {
+						executiveSummary: string;
+						topics: string[];
+						sourceUrl?: string;
+					} | null;
 				}>;
 			}
 		>();
@@ -417,6 +424,7 @@ export const getPendingForUserDigest = internalQuery({
 					title: meeting.title,
 					meetingType: meeting.meetingType,
 					meetingDate: meeting.meetingDate,
+					sourceUrl: meeting.sourceUrl,
 				},
 				municipality: municipality
 					? {
@@ -429,6 +437,7 @@ export const getPendingForUserDigest = internalQuery({
 					? {
 							executiveSummary: summary.executiveSummary,
 							topics: summary.topics,
+							sourceUrl: summary.sourceUrl,
 						}
 					: null,
 			});

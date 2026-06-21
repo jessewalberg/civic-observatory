@@ -42,33 +42,30 @@ crons.daily(
 
 // Send immediate alerts for new summaries
 // Runs every 5 minutes
-// Uncomment to enable:
-// crons.interval(
-//   "send-immediate-alerts",
-//   { minutes: 5 },
-//   internal.functions.email.actions.processImmediateAlerts,
-//   {}
-// );
+crons.interval(
+	"send-immediate-alerts",
+	{ minutes: 5 },
+	internal.functions.email.actions.processImmediateAlerts,
+	{},
+);
 
 // Send daily digest emails
 // Runs at 8am UTC daily
-// Uncomment to enable:
-// crons.daily(
-//   "send-daily-digest",
-//   { hourUTC: 8, minuteUTC: 0 },
-//   internal.functions.email.actions.sendDailyDigest,
-//   {}
-// );
+crons.daily(
+	"send-daily-digest",
+	{ hourUTC: 8, minuteUTC: 0 },
+	internal.functions.email.actions.sendDailyDigest,
+	{},
+);
 
 // Send weekly digest emails
 // Runs at 8am UTC on Mondays (day 1)
-// Uncomment to enable:
-// crons.weekly(
-//   "send-weekly-digest",
-//   { dayOfWeek: "monday", hourUTC: 8, minuteUTC: 0 },
-//   internal.functions.email.actions.sendWeeklyDigest,
-//   {}
-// );
+crons.weekly(
+	"send-weekly-digest",
+	{ dayOfWeek: "monday", hourUTC: 8, minuteUTC: 0 },
+	internal.functions.email.actions.sendWeeklyDigest,
+	{},
+);
 
 // ═══════════════════════════════════════════════════════════════
 // CLEANUP CRONS

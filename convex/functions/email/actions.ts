@@ -15,6 +15,7 @@ import {
 // ═══════════════════════════════════════════════════════════════
 const FROM_ADDRESS = "alerts@civicobservatory.com";
 const FROM_NAME = "Civic Observatory";
+const RESEND_EMAILS_URL = "https://api.resend.com/emails";
 const BASE_URL = process.env.SITE_URL ?? "https://civicobservatory.com";
 
 type PendingAlert = {
@@ -26,7 +27,7 @@ type PendingAlert = {
 	};
 	meeting: Pick<
 		Doc<"meetings">,
-		"_id" | "slug" | "title" | "meetingType" | "meetingDate"
+		"_id" | "slug" | "title" | "meetingType" | "meetingDate" | "sourceUrl"
 	>;
 	municipality: Pick<
 		Doc<"municipalities">,
@@ -34,7 +35,7 @@ type PendingAlert = {
 	> | null;
 	summary: Pick<
 		Doc<"summaries">,
-		"_id" | "executiveSummary" | "topics" | "keyDecisions"
+		"_id" | "executiveSummary" | "topics" | "keyDecisions" | "sourceUrl"
 	> | null;
 };
 
@@ -42,10 +43,13 @@ type DigestAlert = {
 	alert: Doc<"alerts">;
 	meeting: Pick<
 		Doc<"meetings">,
-		"_id" | "slug" | "title" | "meetingType" | "meetingDate"
+		"_id" | "slug" | "title" | "meetingType" | "meetingDate" | "sourceUrl"
 	>;
 	municipality: Pick<Doc<"municipalities">, "slug" | "name" | "state"> | null;
-	summary: Pick<Doc<"summaries">, "executiveSummary" | "topics"> | null;
+	summary: Pick<
+		Doc<"summaries">,
+		"executiveSummary" | "topics" | "sourceUrl"
+	> | null;
 };
 
 type UserDigest = {
@@ -57,8 +61,8 @@ type UserDigest = {
 	alerts: DigestAlert[];
 };
 
-/** Minimal HTML→text fallback so Cloudflare Email Sending has a text part
- * (improves deliverability; CF accepts html-only but spam filters prefer both). */
+/** Minimal HTML→text fallback so transactional email has a text part
+ * (improves deliverability; spam filters prefer both HTML and text). */
 export function htmlToText(html: string): string {
 	return html
 		.replace(/<style[\s\S]*?<\/style>/gi, "")
@@ -75,10 +79,7 @@ export function htmlToText(html: string): string {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// SEND EMAIL - Core sending via the Cloudflare Email Sending REST API.
-// Transactional only; the sending domain (civicobservatory.com) must be onboarded to
-// Cloudflare Email Sending and CLOUDFLARE_API_TOKEN must carry the email send
-// permission. Replaced Resend to consolidate on Cloudflare (one fewer vendor).
+// SEND EMAIL - Core sending via Resend's transactional email API.
 // ═══════════════════════════════════════════════════════════════
 export const sendEmail = internalAction({
 	args: {
@@ -86,64 +87,70 @@ export const sendEmail = internalAction({
 		subject: v.string(),
 		html: v.string(),
 		replyTo: v.optional(v.string()),
+		idempotencyKey: v.optional(v.string()),
 	},
 	handler: async (
 		_ctx,
 		args,
 	): Promise<{ success: boolean; error?: string; id?: string }> => {
-		const apiToken = process.env.CLOUDFLARE_API_TOKEN;
-		const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+		const apiKey = process.env.RESEND_API_KEY;
 
-		if (!apiToken || !accountId) {
-			console.error(
-				"CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID not configured",
-			);
-			return { success: false, error: "Email service not configured" };
+		if (!apiKey) {
+			console.error("RESEND_API_KEY not configured");
+			return {
+				success: false,
+				error: "Resend email service not configured",
+			};
 		}
 
 		try {
-			const response = await fetch(
-				`https://api.cloudflare.com/client/v4/accounts/${accountId}/email/sending/send`,
-				{
-					method: "POST",
-					headers: {
-						"Content-Type": "application/json",
-						Authorization: `Bearer ${apiToken}`,
-					},
-					body: JSON.stringify({
-						from: { address: FROM_ADDRESS, name: FROM_NAME },
-						to: args.to,
-						subject: args.subject,
-						html: args.html,
-						text: htmlToText(args.html),
-						...(args.replyTo ? { reply_to: args.replyTo } : {}),
-					}),
-				},
-			);
+			const headers: Record<string, string> = {
+				"Content-Type": "application/json",
+				Authorization: `Bearer ${apiKey}`,
+				"User-Agent": "civic-observatory/1.0",
+			};
+			if (args.idempotencyKey) {
+				headers["Idempotency-Key"] = args.idempotencyKey;
+			}
+
+			const response = await fetch(RESEND_EMAILS_URL, {
+				method: "POST",
+				headers,
+				body: JSON.stringify({
+					from: `${FROM_NAME} <${FROM_ADDRESS}>`,
+					to: [args.to],
+					subject: args.subject,
+					html: args.html,
+					text: htmlToText(args.html),
+					...(args.replyTo ? { reply_to: args.replyTo } : {}),
+					tags: [
+						{
+							name: "category",
+							value: "alert_delivery",
+						},
+					],
+				}),
+			});
 
 			if (!response.ok) {
-				const errorData = await response.text();
-				console.error(
-					`Cloudflare Email API error (${response.status}):`,
-					errorData,
-				);
-				return { success: false, error: `Email API error: ${response.status}` };
+				const errorMessage = await resendErrorMessage(response);
+				console.error(`Resend API error (${response.status}):`, errorMessage);
+				return {
+					success: false,
+					error: `Resend API error: ${response.status} ${errorMessage}`,
+				};
 			}
 
-			// CF returns { success, errors, result: { delivered, queued, permanent_bounces } }
 			const data = (await response.json()) as {
-				success?: boolean;
-				errors?: Array<{ message?: string }>;
-				result?: { queued?: string[]; delivered?: string[] };
+				id?: string;
 			};
-			if (data.success === false) {
-				const msg =
-					data.errors?.map((e) => e.message).join("; ") || "send failed";
-				console.error("Cloudflare Email send failed:", msg);
-				return { success: false, error: msg };
+			if (!data.id) {
+				return {
+					success: false,
+					error: "Resend API response missing email id",
+				};
 			}
-			const id = data.result?.queued?.[0] ?? data.result?.delivered?.[0];
-			return { success: true, id };
+			return { success: true, id: data.id };
 		} catch (error) {
 			const errorMessage =
 				error instanceof Error ? error.message : "Unknown error";
@@ -160,7 +167,10 @@ export const sendImmediateAlert = internalAction({
 	args: {
 		alertId: v.id("alerts"),
 	},
-	handler: async (ctx, args): Promise<{ success: boolean; error?: string }> => {
+	handler: async (
+		ctx,
+		args,
+	): Promise<{ success: boolean; error?: string; id?: string }> => {
 		// Get alert with all related data
 		const alertData = (await ctx.runQuery(
 			internal.functions.alerts.queries.getPendingByFrequency,
@@ -194,6 +204,7 @@ export const sendImmediateAlert = internalAction({
 			title: meeting.title,
 			meetingType: meeting.meetingType,
 			meetingDate: meeting.meetingDate,
+			sourceUrl: emailSourceUrl(meeting.sourceUrl, summary.sourceUrl),
 			municipalityName: municipality?.name ?? "Unknown Municipality",
 			municipalityState: municipality?.state ?? "",
 			executiveSummary: summary.executiveSummary,
@@ -220,6 +231,7 @@ export const sendImmediateAlert = internalAction({
 				to: user.email,
 				subject,
 				html,
+				idempotencyKey: `alert/${alert._id}`,
 			},
 		);
 
@@ -282,6 +294,7 @@ export const sendDailyDigest = internalAction({
 					title: meeting.title,
 					meetingType: meeting.meetingType,
 					meetingDate: meeting.meetingDate,
+					sourceUrl: emailSourceUrl(meeting.sourceUrl, summary?.sourceUrl),
 					municipalityName: municipality?.name ?? "Unknown Municipality",
 					municipalityState: municipality?.state ?? "",
 					executiveSummary: summary?.executiveSummary ?? "",
@@ -301,6 +314,7 @@ export const sendDailyDigest = internalAction({
 
 			// Generate digest email
 			const { subject, html } = dailyDigestTemplate(meetings, emailParams);
+			const alertIds = userAlerts.map(({ alert }) => alert._id);
 
 			// Send email
 			const result = await ctx.runAction(
@@ -309,11 +323,13 @@ export const sendDailyDigest = internalAction({
 					to: user.email,
 					subject,
 					html,
+					idempotencyKey: digestIdempotencyKey(
+						"daily",
+						user._id.toString(),
+						alertIds.map((id) => id.toString()),
+					),
 				},
 			);
-
-			// Update alert statuses
-			const alertIds = userAlerts.map(({ alert }) => alert._id);
 
 			if (result.success) {
 				await ctx.runMutation(
@@ -389,6 +405,7 @@ export const sendWeeklyDigest = internalAction({
 					title: meeting.title,
 					meetingType: meeting.meetingType,
 					meetingDate: meeting.meetingDate,
+					sourceUrl: emailSourceUrl(meeting.sourceUrl, summary?.sourceUrl),
 					municipalityName: municipality?.name ?? "Unknown Municipality",
 					municipalityState: municipality?.state ?? "",
 					executiveSummary: summary?.executiveSummary ?? "",
@@ -419,6 +436,7 @@ export const sendWeeklyDigest = internalAction({
 
 			// Generate weekly digest email
 			const { subject, html } = weeklyDigestTemplate(meetings, emailParams);
+			const alertIds = userAlerts.map(({ alert }) => alert._id);
 
 			// Send email
 			const result = await ctx.runAction(
@@ -427,11 +445,13 @@ export const sendWeeklyDigest = internalAction({
 					to: user.email,
 					subject,
 					html,
+					idempotencyKey: digestIdempotencyKey(
+						"weekly",
+						user._id.toString(),
+						alertIds.map((id) => id.toString()),
+					),
 				},
 			);
-
-			// Update alert statuses
-			const alertIds = userAlerts.map(({ alert }) => alert._id);
 
 			if (result.success) {
 				await ctx.runMutation(
@@ -514,4 +534,55 @@ function meetingUrl(
 	fallbackId?: string,
 ): string {
 	return `${BASE_URL}/meeting/${meeting.slug ?? meeting._id ?? fallbackId}`;
+}
+
+function emailSourceUrl(
+	meetingSourceUrl: string | undefined,
+	summarySourceUrl: string | undefined,
+): string | undefined {
+	const meetingSource = meetingSourceUrl?.trim();
+	if (meetingSource) return meetingSource;
+
+	const summarySource = summarySourceUrl?.trim();
+	return summarySource || undefined;
+}
+
+function digestIdempotencyKey(
+	frequency: "daily" | "weekly",
+	userId: string,
+	alertIds: string[],
+): string {
+	return `digest/${frequency}/${userId}/${hashString([...alertIds].sort().join("|"))}`;
+}
+
+function hashString(value: string): string {
+	let hash = 2166136261;
+	for (let i = 0; i < value.length; i++) {
+		hash ^= value.charCodeAt(i);
+		hash = Math.imul(hash, 16777619);
+	}
+	return (hash >>> 0).toString(36);
+}
+
+async function resendErrorMessage(response: Response): Promise<string> {
+	try {
+		const text = await response.text();
+		if (!text) return "send failed";
+
+		try {
+			const data = JSON.parse(text) as {
+				message?: string;
+				error?: string | { message?: string };
+			};
+			if (typeof data.message === "string") return data.message;
+			if (typeof data.error === "string") return data.error;
+			if (data.error?.message) return data.error.message;
+		} catch {
+			return text;
+		}
+
+		return text;
+	} catch {
+		return "send failed";
+	}
 }
