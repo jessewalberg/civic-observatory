@@ -6,10 +6,24 @@ import { action, internalAction } from "../../_generated/server";
 
 // Initialize scrapers when this module loads
 import "../../scrapers/init";
-import type { Id } from "../../_generated/dataModel";
-import { findScraperForUrl, getScraper } from "../../scrapers/registry";
-import type { ScraperConfig, ScraperError } from "../../scrapers/types";
+import type { Doc, Id } from "../../_generated/dataModel";
+import {
+	detectPlatform,
+	findScraperForUrl,
+	getScraper,
+} from "../../scrapers/registry";
+import type {
+	Platform,
+	ScrapedMeeting,
+	ScraperConfig,
+	ScraperError,
+} from "../../scrapers/types";
 import { normalizeUrl } from "../../scrapers/utils";
+import {
+	buildScraperValidationReport,
+	type DuplicateValidationResult,
+	type ScraperValidationReport,
+} from "../../scrapers/validation";
 
 // Result types for actions
 interface RunScraperResult {
@@ -28,6 +42,16 @@ interface ScrapeAllDueResult {
 	scheduled: number;
 	municipalities: Array<{ municipalityId: string; name: string }>;
 }
+
+type ValidateScraperResult = ScraperValidationReport & {
+	success: boolean;
+	runId: Id<"scraperValidationRuns">;
+	municipalityId?: Id<"municipalities">;
+	sourceUrl: string;
+	configuredPlatform?: Platform;
+	detectedPlatform: Platform;
+	selectedPlatform?: Platform;
+};
 
 // ═══════════════════════════════════════════════════════════════
 // RUN SCRAPER - Main action to scrape a municipality
@@ -365,6 +389,43 @@ function shouldQueueSummarization(args: {
 	return !urlsMatch(args.sourceUrl, args.meetingsPageUrl);
 }
 
+function detectValidationPlatform(
+	sourceUrl: string,
+	configuredPlatform?: Platform,
+): Platform {
+	if (configuredPlatform === "manual") {
+		return "manual";
+	}
+	if (!sourceUrl) {
+		return configuredPlatform ?? "generic";
+	}
+	return detectPlatform(sourceUrl);
+}
+
+function scraperConfigFromMunicipality(
+	municipality: Doc<"municipalities"> | null | undefined,
+): ScraperConfig | undefined {
+	if (!municipality?.scrapeConfig) return undefined;
+
+	return {
+		meetingListSelector: municipality.scrapeConfig.meetingListSelector,
+		meetingLinkSelector: municipality.scrapeConfig.meetingLinkSelector,
+		dateSelector: municipality.scrapeConfig.dateSelector,
+		dateFormat: municipality.scrapeConfig.dateFormat,
+		contentSelector: municipality.scrapeConfig.contentSelector,
+		frequencyHours: municipality.scrapeConfig.frequencyHours,
+	};
+}
+
+function scraperErrorFromException(error: unknown, url: string): ScraperError {
+	return {
+		message: error instanceof Error ? error.message : "Unknown scraper error",
+		url,
+		code: "unknown",
+		timestamp: Date.now(),
+	};
+}
+
 // ═══════════════════════════════════════════════════════════════
 // SCRAPE ALL DUE - Find and scrape all municipalities due
 // ═══════════════════════════════════════════════════════════════
@@ -428,6 +489,175 @@ export const scrapeSingle = internalAction({
 			triggeredBy: "manual",
 			triggeredByUserId: args.userId,
 		});
+	},
+});
+
+// ═══════════════════════════════════════════════════════════════
+// VALIDATE SCRAPER - Run non-publishing diagnostics for an operator
+// ═══════════════════════════════════════════════════════════════
+export const validateScraper = action({
+	args: {
+		municipalityId: v.optional(v.id("municipalities")),
+		sourceUrl: v.optional(v.string()),
+		platform: v.optional(
+			v.union(
+				v.literal("granicus"),
+				v.literal("civicplus"),
+				v.literal("generic"),
+				v.literal("manual"),
+			),
+		),
+	},
+	handler: async (ctx, args): Promise<ValidateScraperResult> => {
+		const user = await ctx.runQuery(
+			internal.functions.users.queries.getCurrentInternal,
+			{},
+		);
+		if (!user?.isAdmin) {
+			throw new Error("Unauthorized: Admin access required");
+		}
+
+		const startedAt = Date.now();
+		const municipality = args.municipalityId
+			? await ctx.runQuery(
+					internal.functions.scrapers.queries.getMunicipalityForScraping,
+					{ municipalityId: args.municipalityId },
+				)
+			: null;
+
+		if (args.municipalityId && !municipality) {
+			throw new Error("Municipality not found");
+		}
+
+		const sourceUrl =
+			args.sourceUrl?.trim() || municipality?.meetingsPageUrl?.trim() || "";
+		const configuredPlatform = args.platform ?? municipality?.platform;
+		const detectedPlatform = detectValidationPlatform(
+			sourceUrl,
+			configuredPlatform,
+		);
+		// Operator overrides intentionally win so configured-vs-detected mismatches
+		// are visible in the validation report.
+		const scraper =
+			sourceUrl && configuredPlatform !== "manual"
+				? getScraper(configuredPlatform ?? detectedPlatform) ||
+					findScraperForUrl(sourceUrl)
+				: undefined;
+		const selectedPlatform = scraper?.platform;
+		const scraperFound = Boolean(scraper);
+
+		let scrapeSucceeded = false;
+		let meetings: ScrapedMeeting[] = [];
+		let errors: ScraperError[] = [];
+		let duplicateResults: DuplicateValidationResult[] | undefined;
+
+		if (!sourceUrl) {
+			errors = [
+				{
+					message: "No source URL provided for validation",
+					code: "unknown",
+					timestamp: Date.now(),
+				},
+			];
+		} else if (configuredPlatform === "manual") {
+			errors = [
+				{
+					message: "Manual municipalities do not have automatic scrapers",
+					url: sourceUrl,
+					code: "unknown",
+					timestamp: Date.now(),
+				},
+			];
+		} else if (!scraper) {
+			errors = [
+				{
+					message: `No scraper available for ${detectedPlatform}`,
+					url: sourceUrl,
+					code: "unknown",
+					timestamp: Date.now(),
+				},
+			];
+		} else {
+			try {
+				const result = await scraper.scrape(
+					sourceUrl,
+					scraperConfigFromMunicipality(municipality),
+				);
+				scrapeSucceeded = result.success;
+				meetings = result.meetings;
+				errors = result.errors;
+			} catch (error) {
+				errors = [scraperErrorFromException(error, sourceUrl)];
+			}
+
+			if (args.municipalityId && meetings.length > 0) {
+				duplicateResults = await Promise.all(
+					meetings.map(async (meeting) => {
+						const sourceUrlForMeeting =
+							meeting.documentUrl ?? meeting.sourceUrl;
+						const existing = await ctx.runQuery(
+							internal.functions.scrapers.queries.checkMeetingExists,
+							{
+								municipalityId: args.municipalityId as Id<"municipalities">,
+								contentHash: meeting.contentHash,
+								sourceUrl: sourceUrlForMeeting,
+							},
+						);
+						return {
+							exists: existing.exists,
+							sourceUrl: sourceUrlForMeeting,
+							contentHash: meeting.contentHash,
+							reason: existing.reason,
+						};
+					}),
+				);
+			}
+		}
+
+		const completedAt = Date.now();
+		const report = buildScraperValidationReport({
+			now: completedAt,
+			sourceUrl,
+			configuredPlatform,
+			detectedPlatform,
+			selectedPlatform,
+			scraperFound,
+			scrapeSucceeded,
+			meetings,
+			errors,
+			duplicateResults,
+		});
+
+		const runId = await ctx.runMutation(
+			internal.functions.scrapers.mutations.saveValidationRun,
+			{
+				municipalityId: args.municipalityId,
+				sourceUrl,
+				configuredPlatform,
+				detectedPlatform,
+				selectedPlatform,
+				status: report.status,
+				checks: report.checks,
+				stats: report.stats,
+				meetingSample: report.meetingSample,
+				errors: report.errors,
+				triggeredByUserId: user._id,
+				createdAt: startedAt,
+				completedAt,
+				durationMs: completedAt - startedAt,
+			},
+		);
+
+		return {
+			success: report.status !== "failed",
+			runId,
+			municipalityId: args.municipalityId,
+			sourceUrl,
+			configuredPlatform,
+			detectedPlatform,
+			selectedPlatform,
+			...report,
+		};
 	},
 });
 

@@ -5,6 +5,7 @@ export {
 	addScrapeJobError,
 	createMeetingFromScrape,
 	createScrapeJob,
+	saveValidationRun,
 	updateMunicipalityScrapeStatus,
 	updateScrapeJobStatus,
 } from "./mutations";
@@ -14,6 +15,7 @@ export {
 	getMunicipalityForScraping,
 	getRecentScrapeJobs,
 	getScrapeJob,
+	listValidationRuns,
 } from "./queries";
 
 // Scraper actions (internal) - Note: these use "use node"

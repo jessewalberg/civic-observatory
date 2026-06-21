@@ -1,5 +1,6 @@
 import { v } from "convex/values";
-import { internalQuery } from "../../_generated/server";
+import { internalQuery, query } from "../../_generated/server";
+import { getCurrentUser } from "../../lib/auth";
 
 // ═══════════════════════════════════════════════════════════════
 // GET MUNICIPALITY FOR SCRAPING - Get municipality with scrape config
@@ -173,5 +174,59 @@ export const getRecentScrapeJobs = internalQuery({
 			)
 			.order("desc")
 			.take(limit);
+	},
+});
+
+export const listValidationRuns = query({
+	args: {
+		municipalityId: v.optional(v.id("municipalities")),
+		limit: v.optional(v.number()),
+	},
+	handler: async (ctx, args) => {
+		const caller = await getCurrentUser(ctx);
+		if (!caller?.isAdmin) return null;
+
+		const limit = Math.min(args.limit ?? 20, 100);
+		const runs = args.municipalityId
+			? await ctx.db
+					.query("scraperValidationRuns")
+					.withIndex("by_municipality_created", (q) =>
+						q.eq("municipalityId", args.municipalityId),
+					)
+					.order("desc")
+					.take(limit)
+			: await ctx.db
+					.query("scraperValidationRuns")
+					.withIndex("by_created")
+					.order("desc")
+					.take(limit);
+
+		const municipalityIds = [
+			...new Set(
+				runs.flatMap((run) => (run.municipalityId ? [run.municipalityId] : [])),
+			),
+		];
+		const municipalities = await Promise.all(
+			municipalityIds.map((id) => ctx.db.get(id)),
+		);
+		const municipalityMap = new Map(
+			municipalities
+				.filter((municipality) => municipality !== null)
+				.map((municipality) => [
+					municipality._id,
+					{
+						name: municipality.name,
+						state: municipality.state,
+						platform: municipality.platform,
+					},
+				]),
+		);
+
+		return runs.map((run) => ({
+			...run,
+			municipality: run.municipalityId
+				? (municipalityMap.get(run.municipalityId) ?? null)
+				: null,
+		}));
 	},
 });

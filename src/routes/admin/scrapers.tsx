@@ -7,6 +7,7 @@ import {
 	CheckCircle2,
 	Clock,
 	ExternalLink,
+	FlaskConical,
 	Loader2,
 	Play,
 	RefreshCw,
@@ -57,6 +58,35 @@ export const Route = createFileRoute("/admin/scrapers")({
 	component: ScrapersAdminPage,
 });
 
+type ValidationDisplayRun = {
+	status: string;
+	sourceUrl: string;
+	runId?: string;
+	checks: Array<{
+		name: string;
+		status: string;
+		message: string;
+		details?: Array<{ label: string; value: string }>;
+	}>;
+	stats: {
+		meetingsFound: number;
+		documentReady: number;
+		summaryReady: number;
+		duplicates: number;
+		errors: number;
+	};
+	meetingSample: Array<{
+		title: string;
+		meetingDate: number;
+		sourceUrl: string;
+		documentUrl?: string;
+		documentReady: boolean;
+		summaryReady: boolean;
+		duplicate: boolean;
+	}>;
+	errors: Array<{ message: string; url?: string; code?: string }>;
+};
+
 function ScrapersAdminPage() {
 	return <ScrapersContent />;
 }
@@ -70,6 +100,13 @@ function ScrapersContent() {
 	const [tableSearch, setTableSearch] = useState("");
 	const [tablePlatform, setTablePlatform] = useState<string>("all");
 	const [tableScrapeStatus, setTableScrapeStatus] = useState<string>("all");
+	const [validationMunicipalityId, setValidationMunicipalityId] =
+		useState<string>("source-url");
+	const [validationSourceUrl, setValidationSourceUrl] = useState("");
+	const [validationPlatform, setValidationPlatform] = useState<string>("auto");
+	const [isValidating, setIsValidating] = useState(false);
+	const [validationResult, setValidationResult] =
+		useState<ValidationDisplayRun | null>(null);
 
 	// Queries
 	const isAdmin = useQuery(api.functions.users.queries.isAdmin, {});
@@ -81,6 +118,12 @@ function ScrapersContent() {
 	const failedJobs = useQuery(api.functions.scrapeJobs.queries.getFailed, {
 		limit: 10,
 	});
+	const validationRuns = useQuery(
+		api.functions.scrapers.queries.listValidationRuns,
+		{
+			limit: 5,
+		},
+	);
 	const municipalities = useQuery(
 		api.functions.municipalities.queries.list,
 		{},
@@ -93,6 +136,9 @@ function ScrapersContent() {
 	const batchRescrape = useAction(api.functions.scrapers.actions.batchRescrape);
 	const triggerScrapeAllDue = useAction(
 		api.functions.scrapers.actions.triggerScrapeAllDue,
+	);
+	const validateScraper = useAction(
+		api.functions.scrapers.actions.validateScraper,
 	);
 	const retryJob = useAction(api.functions.scrapeJobs.mutations.retry);
 
@@ -190,6 +236,54 @@ function ScrapersContent() {
 		}
 	};
 
+	const handleValidationMunicipalityChange = (value: string) => {
+		setValidationMunicipalityId(value);
+		setValidationPlatform("auto");
+		if (value === "source-url") return;
+
+		const selected = municipalities?.find((muni) => muni._id === value);
+		setValidationSourceUrl(selected?.meetingsPageUrl ?? "");
+	};
+
+	const handleValidateScraper = async () => {
+		const sourceUrl = validationSourceUrl.trim();
+		const municipalityId =
+			validationMunicipalityId === "source-url"
+				? undefined
+				: (validationMunicipalityId as Id<"municipalities">);
+		const platform =
+			validationPlatform === "auto"
+				? undefined
+				: (validationPlatform as
+						| "granicus"
+						| "civicplus"
+						| "generic"
+						| "manual");
+
+		setIsValidating(true);
+		try {
+			const result = await validateScraper({
+				municipalityId,
+				sourceUrl: sourceUrl || undefined,
+				platform,
+			});
+			setValidationResult(result);
+			if (result.status === "failed") {
+				toast.error("Validation failed");
+			} else if (result.status === "partial") {
+				toast.warning("Validation completed with warnings");
+			} else {
+				toast.success("Validation passed");
+			}
+		} catch (error) {
+			const message =
+				error instanceof Error ? error.message : "Validation failed";
+			toast.error(message);
+		} finally {
+			setIsValidating(false);
+		}
+	};
+
 	const isLoading =
 		isAdmin === undefined ||
 		stats === undefined ||
@@ -254,6 +348,9 @@ function ScrapersContent() {
 		stats && stats.total > 0
 			? Math.round((stats.completed / stats.total) * 100)
 			: 0;
+	const canRunValidation =
+		validationMunicipalityId !== "source-url" ||
+		validationSourceUrl.trim().length > 0;
 
 	return (
 		<div className="min-h-screen bg-background">
@@ -427,6 +524,209 @@ function ScrapersContent() {
 								<span className="text-xs text-muted-foreground animate-pulse">
 									Scheduling batch...
 								</span>
+							)}
+						</div>
+					</Card>
+
+					<Card className="mb-8">
+						<div className="p-4 border-b border-border flex items-center gap-2">
+							<FlaskConical className="h-4 w-4 text-primary" />
+							<h2 className="font-display text-lg font-semibold text-foreground">
+								Validation Runner
+							</h2>
+							{validationResult && (
+								<StatusBadge status={validationResult.status} />
+							)}
+						</div>
+						<div className="p-4 space-y-4">
+							<div className="grid md:grid-cols-[minmax(180px,260px)_1fr_minmax(130px,170px)_auto] gap-3">
+								<Select
+									value={validationMunicipalityId}
+									onValueChange={handleValidationMunicipalityChange}
+								>
+									<SelectTrigger className="h-9 text-xs">
+										<SelectValue placeholder="Municipality" />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value="source-url">Source URL only</SelectItem>
+										{municipalities?.map((muni) => (
+											<SelectItem key={muni._id} value={muni._id}>
+												{muni.name}, {muni.state}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+
+								<Input
+									value={validationSourceUrl}
+									onChange={(event) =>
+										setValidationSourceUrl(event.target.value)
+									}
+									placeholder="Meetings source URL"
+									className="h-9 text-xs"
+								/>
+
+								<Select
+									value={validationPlatform}
+									onValueChange={setValidationPlatform}
+								>
+									<SelectTrigger className="h-9 text-xs">
+										<SelectValue placeholder="Platform" />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value="auto">Auto</SelectItem>
+										<SelectItem value="civicplus">CivicPlus</SelectItem>
+										<SelectItem value="granicus">Granicus</SelectItem>
+										<SelectItem value="generic">Generic</SelectItem>
+										<SelectItem value="manual">Manual</SelectItem>
+									</SelectContent>
+								</Select>
+
+								<Button
+									variant="outline"
+									size="sm"
+									onClick={handleValidateScraper}
+									disabled={!canRunValidation || isValidating}
+									className="h-9"
+								>
+									{isValidating ? (
+										<Loader2 className="h-3 w-3 animate-spin mr-1.5" />
+									) : (
+										<FlaskConical className="h-3 w-3 mr-1.5" />
+									)}
+									Validate
+								</Button>
+							</div>
+
+							{validationResult && (
+								<div className="grid lg:grid-cols-3 gap-4">
+									<div className="lg:col-span-2 border border-border rounded-md overflow-hidden">
+										<Table>
+											<TableHeader>
+												<TableRow>
+													<TableHead>Check</TableHead>
+													<TableHead>Status</TableHead>
+													<TableHead>Diagnostic</TableHead>
+												</TableRow>
+											</TableHeader>
+											<TableBody>
+												{validationResult.checks.map((check) => (
+													<TableRow key={check.name}>
+														<TableCell className="font-medium text-sm">
+															{formatValidationCheckName(check.name)}
+														</TableCell>
+														<TableCell>
+															<ValidationCheckBadge status={check.status} />
+														</TableCell>
+														<TableCell className="text-sm text-muted-foreground">
+															{check.message}
+														</TableCell>
+													</TableRow>
+												))}
+											</TableBody>
+										</Table>
+									</div>
+
+									<div className="space-y-3">
+										<div className="grid grid-cols-2 gap-2 text-sm">
+											<MiniStat
+												label="Found"
+												value={validationResult.stats.meetingsFound}
+											/>
+											<MiniStat
+												label="Documents"
+												value={validationResult.stats.documentReady}
+											/>
+											<MiniStat
+												label="Summary Ready"
+												value={validationResult.stats.summaryReady}
+											/>
+											<MiniStat
+												label="Duplicates"
+												value={validationResult.stats.duplicates}
+											/>
+										</div>
+
+										{validationResult.meetingSample.length > 0 && (
+											<div className="border border-border rounded-md divide-y divide-border">
+												{validationResult.meetingSample
+													.slice(0, 3)
+													.map((meeting, index) => (
+														<div
+															key={`${meeting.sourceUrl}-${index}`}
+															className="p-3"
+														>
+															<p className="text-sm font-medium text-foreground line-clamp-1">
+																{meeting.title}
+															</p>
+															<div className="mt-2 flex flex-wrap gap-1.5">
+																<Badge variant="outline" className="text-xs">
+																	{meeting.documentReady
+																		? "Document"
+																		: "No document"}
+																</Badge>
+																<Badge variant="outline" className="text-xs">
+																	{meeting.summaryReady
+																		? "Summary ready"
+																		: "Not ready"}
+																</Badge>
+																{meeting.duplicate && (
+																	<Badge variant="warning" className="text-xs">
+																		Duplicate
+																	</Badge>
+																)}
+															</div>
+														</div>
+													))}
+											</div>
+										)}
+									</div>
+								</div>
+							)}
+
+							{validationRuns && validationRuns.length > 0 && (
+								<div className="border-t border-border pt-4">
+									<div className="flex items-center justify-between mb-2">
+										<h3 className="text-sm font-semibold text-foreground">
+											Recent Validation Runs
+										</h3>
+									</div>
+									<Table>
+										<TableHeader>
+											<TableRow>
+												<TableHead>Source</TableHead>
+												<TableHead>Status</TableHead>
+												<TableHead>Found</TableHead>
+												<TableHead>Time</TableHead>
+											</TableRow>
+										</TableHeader>
+										<TableBody>
+											{validationRuns.map((run) => (
+												<TableRow key={run._id}>
+													<TableCell className="max-w-[320px]">
+														<div className="flex flex-col">
+															<span className="font-medium text-sm text-foreground truncate">
+																{run.municipality?.name ?? "Source URL"}
+															</span>
+															<span className="text-xs text-muted-foreground truncate">
+																{run.sourceUrl}
+															</span>
+														</div>
+													</TableCell>
+													<TableCell>
+														<StatusBadge status={run.status} />
+													</TableCell>
+													<TableCell className="text-sm text-muted-foreground">
+														{run.stats.meetingsFound}
+													</TableCell>
+													<TableCell className="text-sm text-muted-foreground">
+														{formatRelativeTime(run.createdAt)}
+													</TableCell>
+												</TableRow>
+											))}
+										</TableBody>
+									</Table>
+								</div>
 							)}
 						</div>
 					</Card>
@@ -874,6 +1174,15 @@ function StatCard({
 	);
 }
 
+function MiniStat({ label, value }: { label: string; value: string | number }) {
+	return (
+		<div className="rounded-md border border-border p-3">
+			<p className="text-lg font-semibold text-foreground">{value}</p>
+			<p className="text-xs text-muted-foreground">{label}</p>
+		</div>
+	);
+}
+
 // ═══════════════════════════════════════════════════════════════
 // Status Badge Component
 // ═══════════════════════════════════════════════════════════════
@@ -883,6 +1192,7 @@ function StatusBadge({ status }: { status: string }) {
 		"success" | "destructive" | "warning" | "info" | "secondary"
 	> = {
 		completed: "success",
+		passed: "success",
 		success: "success",
 		failed: "destructive",
 		partial: "warning",
@@ -897,9 +1207,39 @@ function StatusBadge({ status }: { status: string }) {
 	);
 }
 
+function ValidationCheckBadge({ status }: { status: string }) {
+	const variants: Record<
+		string,
+		"success" | "destructive" | "warning" | "info" | "secondary"
+	> = {
+		pass: "success",
+		warning: "warning",
+		fail: "destructive",
+		not_applicable: "secondary",
+	};
+
+	return (
+		<Badge variant={variants[status] ?? "secondary"} className="text-xs">
+			{formatValidationCheckStatus(status)}
+		</Badge>
+	);
+}
+
 // ═══════════════════════════════════════════════════════════════
 // Utility Functions
 // ═══════════════════════════════════════════════════════════════
+function formatValidationCheckName(name: string): string {
+	return name
+		.split("_")
+		.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+		.join(" ");
+}
+
+function formatValidationCheckStatus(status: string): string {
+	if (status === "not_applicable") return "N/A";
+	return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
 function formatRelativeTime(timestamp: number): string {
 	const now = Date.now();
 	const diff = now - timestamp;
