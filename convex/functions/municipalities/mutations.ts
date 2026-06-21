@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 import type { MutationCtx } from "../../_generated/server";
 import { internalMutation, mutation } from "../../_generated/server";
@@ -383,6 +384,13 @@ export const setCoverageStatus = mutation({
 					: undefined,
 			createdAt: now,
 		});
+
+		if (args.status === "published") {
+			await ctx.runMutation(
+				internal.functions.coverageRequests.mutations.activateForMunicipality,
+				{ municipalityId: args.id },
+			);
+		}
 
 		return { coverageStatus: args.status };
 	},
