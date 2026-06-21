@@ -16,7 +16,7 @@ const baseMeeting: MeetingData = {
 
 const emailParams = {
 	userName: "Coventry Reader",
-	unsubscribeUrl: "https://civicobservatory.com/api/unsubscribe",
+	unsubscribeUrl: "https://civicobservatory.com/dashboard/subscriptions",
 	manageSubscriptionsUrl:
 		"https://civicobservatory.com/dashboard/subscriptions",
 	baseUrl: "https://civicobservatory.com",

@@ -397,6 +397,10 @@ describe("Cloudflare email delivery", () => {
 		expect(body.html).toContain(
 			"https://civicobservatory.com/dashboard/subscriptions",
 		);
+		expect(body.html).not.toContain("/api/unsubscribe");
+		expect(body.html).toContain(
+			'<a href="https://civicobservatory.com/dashboard/subscriptions">Unsubscribe</a>',
+		);
 		expect(body.html).toContain("Unsubscribe");
 		expect(body.headers["X-Civic-Delivery-Key"]).toBe(`alert/${alertId}`);
 	});
