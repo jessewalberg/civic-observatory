@@ -9,11 +9,15 @@ import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import {
 	AlertCircle,
 	Calendar,
+	Check,
 	ChevronDown,
 	ChevronRight,
 	ChevronUp,
 	Clock,
+	Copy,
+	Download,
 	ExternalLink,
+	FileDown,
 	FileText,
 	Loader2,
 	MapPin,
@@ -21,7 +25,7 @@ import {
 	ShieldCheck,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
 	CoverageReliabilityBadge,
 	type PublicCoverageBadge,
@@ -38,13 +42,27 @@ import {
 	CollapsibleContent,
 	CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { VoteDisplay } from "@/components/VoteDisplay";
+import { copyTextToClipboard } from "@/lib/clipboard";
 import {
 	formatMeetingDate,
 	formatMeetingScheduleDate,
 } from "@/lib/meetingDates";
 import { getMeetingSourceTrust } from "@/lib/meetingTrust";
 import { meetingPath, publicIdentifier } from "@/lib/publicUrls";
+import {
+	buildReporterCsv,
+	buildReporterExportFilename,
+	buildReporterMarkdown,
+} from "@/lib/reporterExport";
 import {
 	canonicalLink,
 	canonicalUrl,
@@ -760,6 +778,7 @@ function MeetingHeader({ meeting, typeLabel }: MeetingHeaderProps) {
 	const sentimentInfo = sentiment ? sentimentConfig[sentiment] : null;
 	const isFutureMeeting = meeting.meetingDate > Date.now();
 	const sourceTrust = getMeetingSourceTrust(meeting);
+	const [showReporterExport, setShowReporterExport] = useState(false);
 
 	const shareDescription = meeting.summary?.executiveSummary
 		? `${meeting.summary.executiveSummary.slice(0, 150)}...`
@@ -832,10 +851,152 @@ function MeetingHeader({ meeting, typeLabel }: MeetingHeaderProps) {
 							</Button>
 						</a>
 					)}
+					{meeting.summary && (
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							onClick={() => setShowReporterExport(true)}
+						>
+							<FileDown className="h-4 w-4 mr-2" />
+							Reporter export
+						</Button>
+					)}
 					<ShareButton title={meeting.title} description={shareDescription} />
 				</div>
 			</div>
+			{meeting.summary && (
+				<ReporterExportDialog
+					meeting={meeting}
+					open={showReporterExport}
+					onOpenChange={setShowReporterExport}
+				/>
+			)}
 		</header>
+	);
+}
+
+export function ReporterExportDialog({
+	meeting,
+	open,
+	onOpenChange,
+}: {
+	meeting: MeetingData;
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
+}) {
+	const [format, setFormat] = useState<"markdown" | "csv">("markdown");
+	const [copied, setCopied] = useState(false);
+	const resetCopiedTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const exportText = useMemo(
+		() =>
+			format === "markdown"
+				? buildReporterMarkdown(meeting)
+				: buildReporterCsv(meeting),
+		[format, meeting],
+	);
+	const extension = format === "markdown" ? "md" : "csv";
+
+	useEffect(() => {
+		return () => {
+			if (resetCopiedTimeout.current) {
+				clearTimeout(resetCopiedTimeout.current);
+			}
+		};
+	}, []);
+
+	const copyExport = async () => {
+		await copyTextToClipboard(exportText);
+		if (resetCopiedTimeout.current) {
+			clearTimeout(resetCopiedTimeout.current);
+		}
+		setCopied(true);
+		resetCopiedTimeout.current = setTimeout(() => {
+			setCopied(false);
+			resetCopiedTimeout.current = null;
+		}, 2000);
+	};
+
+	const downloadExport = () => {
+		const blob = new Blob([exportText], {
+			type: format === "markdown" ? "text/markdown" : "text/csv",
+		});
+		const url = URL.createObjectURL(blob);
+		const link = document.createElement("a");
+		link.href = url;
+		link.download = buildReporterExportFilename(meeting, extension);
+		document.body.appendChild(link);
+		link.click();
+		document.body.removeChild(link);
+		setTimeout(() => URL.revokeObjectURL(url), 1000);
+	};
+
+	return (
+		<Dialog open={open} onOpenChange={onOpenChange}>
+			<DialogContent className="sm:max-w-3xl">
+				<DialogHeader>
+					<DialogTitle>Reporter export</DialogTitle>
+					<DialogDescription>
+						Source-backed meeting summary output for reporting workflows.
+					</DialogDescription>
+				</DialogHeader>
+				<div className="space-y-4">
+					<div className="flex flex-wrap items-center justify-between gap-3">
+						<fieldset className="inline-flex rounded-md border border-border p-1">
+							<legend className="sr-only">Export format</legend>
+							<Button
+								type="button"
+								size="sm"
+								variant={format === "markdown" ? "secondary" : "ghost"}
+								aria-pressed={format === "markdown"}
+								onClick={() => setFormat("markdown")}
+							>
+								Markdown
+							</Button>
+							<Button
+								type="button"
+								size="sm"
+								variant={format === "csv" ? "secondary" : "ghost"}
+								aria-pressed={format === "csv"}
+								onClick={() => setFormat("csv")}
+							>
+								CSV
+							</Button>
+						</fieldset>
+						<div className="flex items-center gap-2">
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								onClick={copyExport}
+							>
+								{copied ? (
+									<Check className="h-4 w-4 mr-2" />
+								) : (
+									<Copy className="h-4 w-4 mr-2" />
+								)}
+								{copied ? "Copied" : "Copy"}
+							</Button>
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								onClick={downloadExport}
+							>
+								<Download className="h-4 w-4 mr-2" />
+								Download
+							</Button>
+						</div>
+					</div>
+					<Textarea
+						readOnly
+						value={exportText}
+						className="min-h-[420px] resize-y font-mono text-xs leading-5"
+						aria-label="Reporter export output"
+					/>
+				</div>
+			</DialogContent>
+		</Dialog>
 	);
 }
 

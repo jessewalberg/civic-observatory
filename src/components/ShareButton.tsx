@@ -16,6 +16,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
+import { copyTextToClipboard } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
 
 interface ShareButtonProps {
@@ -63,21 +64,9 @@ export function ShareButton({
 	};
 
 	const handleCopyLink = async () => {
-		try {
-			await navigator.clipboard.writeText(shareUrl);
-			setCopied(true);
-			setTimeout(() => setCopied(false), 2000);
-		} catch {
-			// Fallback for older browsers
-			const input = document.createElement("input");
-			input.value = shareUrl;
-			document.body.appendChild(input);
-			input.select();
-			document.execCommand("copy");
-			document.body.removeChild(input);
-			setCopied(true);
-			setTimeout(() => setCopied(false), 2000);
-		}
+		await copyTextToClipboard(shareUrl);
+		setCopied(true);
+		setTimeout(() => setCopied(false), 2000);
 	};
 
 	const shareLinks = [
