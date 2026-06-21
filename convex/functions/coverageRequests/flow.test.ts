@@ -17,6 +17,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	vi.useRealTimers();
 	vi.unstubAllEnvs();
 	vi.unstubAllGlobals();
 	vi.restoreAllMocks();
@@ -127,6 +128,84 @@ describe("coverage request flow", () => {
 		expect(adminList.map((row: { _id: string }) => row._id)).toEqual([
 			requestId,
 		]);
+	});
+
+	it("links same-municipality requests and notifies each requester when seeded coverage is published", async () => {
+		vi.useFakeTimers();
+		const t = setup();
+		await seedAdmin(t);
+		const firstRequestId = await t.mutation(
+			coverageRequestsApi.mutations.create,
+			{
+				municipalityName: "Shared Town",
+				state: "Connecticut",
+				requesterEmail: "first@example.test",
+				topicInterests: ["Public Safety"],
+				meetingsPageUrl: "https://shared.example.test/meetings",
+			},
+		);
+		const secondRequestId = await t.mutation(
+			coverageRequestsApi.mutations.create,
+			{
+				municipalityName: " shared   town ",
+				state: "Connecticut",
+				requesterEmail: "second@example.test",
+				topicInterests: ["Budget & Finance"],
+			},
+		);
+		const asAdmin = t.withIdentity({
+			subject: "admin_clerk",
+			issuer: ISSUER,
+			email: "admin@example.test",
+		});
+		const fetchMock = vi.fn(async () => okEmailResponse());
+		vi.stubGlobal("fetch", fetchMock);
+
+		const municipalityId = await asAdmin.mutation(
+			coverageRequestsApi.mutations.seedMunicipality,
+			{
+				requestId: firstRequestId,
+				platform: "generic",
+			},
+		);
+		await asAdmin.mutation(
+			api.functions.municipalities.mutations.setCoverageStatus,
+			{
+				id: municipalityId,
+				status: "published",
+				reason: "Coverage launched",
+				overrideReason: "Operator verified source manually.",
+			},
+		);
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		const [firstRequest, secondRequest] = await t.run(async (ctx) =>
+			Promise.all([
+				ctx.db.get(firstRequestId as Id<"coverageRequests">),
+				ctx.db.get(secondRequestId as Id<"coverageRequests">),
+			]),
+		);
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+		expect(
+			(fetchMock.mock.calls as unknown as Array<[string, RequestInit]>).map(
+				([, init]) => JSON.parse(init.body as string),
+			),
+		).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ to: "first@example.test" }),
+				expect.objectContaining({ to: "second@example.test" }),
+			]),
+		);
+		expect(firstRequest).toMatchObject({
+			status: "active",
+			seededMunicipalityId: municipalityId,
+			notificationStatus: "sent",
+		});
+		expect(secondRequest).toMatchObject({
+			status: "active",
+			seededMunicipalityId: municipalityId,
+			notificationStatus: "sent",
+		});
 	});
 
 	it("sends a Cloudflare email notification when requested coverage becomes active", async () => {

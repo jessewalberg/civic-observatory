@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { internal } from "../../_generated/api";
-import type { Id } from "../../_generated/dataModel";
+import type { Doc, Id } from "../../_generated/dataModel";
 import {
 	internalMutation,
 	type MutationCtx,
@@ -12,6 +12,12 @@ import { createMunicipalitySlug } from "../../lib/seoSlugs";
 
 const VALID_STATES = new Set(STATE_NAMES);
 const MAX_TOPIC_INTERESTS = 10;
+const NOTIFIABLE_STATUSES = [
+	"requested",
+	"discovered",
+	"probed",
+	"active",
+] as const;
 
 const statusValidator = v.union(
 	v.literal("requested"),
@@ -133,14 +139,16 @@ export const seedMunicipality = mutation({
 
 		const now = Date.now();
 		const platform = args.platform ?? "generic";
+		const municipalityName = request.municipalityName;
+		const state = request.state;
 		const municipalityId = await ctx.db.insert("municipalities", {
-			name: request.municipalityName,
-			state: request.state,
+			name: municipalityName,
+			state,
 			slug: await createUniqueMunicipalitySlug(
 				ctx,
 				createMunicipalitySlug({
-					name: request.municipalityName,
-					state: request.state,
+					name: municipalityName,
+					state,
 				}),
 			),
 			websiteUrl: request.websiteUrl,
@@ -159,10 +167,11 @@ export const seedMunicipality = mutation({
 			updatedAt: now,
 		});
 
-		await ctx.db.patch(args.requestId, {
-			status: request.status === "requested" ? "discovered" : request.status,
-			seededMunicipalityId: municipalityId,
-			updatedAt: now,
+		await linkMatchingRequestsToMunicipality(ctx, {
+			municipalityId,
+			name: municipalityName,
+			state,
+			now,
 		});
 
 		return municipalityId;
@@ -174,12 +183,15 @@ export const activateForMunicipality = internalMutation({
 		municipalityId: v.id("municipalities"),
 	},
 	handler: async (ctx, args) => {
-		const requests = await ctx.db
-			.query("coverageRequests")
-			.withIndex("by_seeded_municipality", (q) =>
-				q.eq("seededMunicipalityId", args.municipalityId),
-			)
-			.collect();
+		const municipality = await ctx.db.get(args.municipalityId);
+		if (!municipality) {
+			return { activated: 0 };
+		}
+
+		const requests = await getRequestsForMunicipalityActivation(
+			ctx,
+			municipality,
+		);
 		const now = Date.now();
 		let activated = 0;
 
@@ -193,6 +205,8 @@ export const activateForMunicipality = internalMutation({
 
 			await ctx.db.patch(request._id, {
 				status: "active",
+				seededMunicipalityId:
+					request.seededMunicipalityId ?? args.municipalityId,
 				notificationStatus: "queued",
 				notificationError: undefined,
 				updatedAt: now,
@@ -265,12 +279,90 @@ async function createUniqueMunicipalitySlug(
 	}
 }
 
+async function linkMatchingRequestsToMunicipality(
+	ctx: MutationCtx,
+	args: {
+		municipalityId: Id<"municipalities">;
+		name: string;
+		state: string;
+		now: number;
+	},
+) {
+	const requests = await getMatchingRequestsByNameState(
+		ctx,
+		args.name,
+		args.state,
+	);
+
+	await Promise.all(
+		requests.map((request) =>
+			ctx.db.patch(request._id, {
+				status: request.status === "requested" ? "discovered" : request.status,
+				seededMunicipalityId:
+					request.seededMunicipalityId ?? args.municipalityId,
+				updatedAt: args.now,
+			}),
+		),
+	);
+}
+
+async function getRequestsForMunicipalityActivation(
+	ctx: MutationCtx,
+	municipality: Doc<"municipalities">,
+): Promise<Doc<"coverageRequests">[]> {
+	const [seededRequests, matchingRequests] = await Promise.all([
+		ctx.db
+			.query("coverageRequests")
+			.withIndex("by_seeded_municipality", (q) =>
+				q.eq("seededMunicipalityId", municipality._id),
+			)
+			.collect(),
+		getMatchingRequestsByNameState(ctx, municipality.name, municipality.state),
+	]);
+	const byId = new Map<Id<"coverageRequests">, Doc<"coverageRequests">>();
+
+	for (const request of [...seededRequests, ...matchingRequests]) {
+		byId.set(request._id, request);
+	}
+
+	return [...byId.values()];
+}
+
+async function getMatchingRequestsByNameState(
+	ctx: MutationCtx,
+	name: string,
+	state: string,
+): Promise<Doc<"coverageRequests">[]> {
+	const normalizedName = normalizeComparableText(name);
+	const requestsByStatus = await Promise.all(
+		NOTIFIABLE_STATUSES.map((status) =>
+			ctx.db
+				.query("coverageRequests")
+				.withIndex("by_state_status", (q) =>
+					q.eq("state", state).eq("status", status),
+				)
+				.collect(),
+		),
+	);
+
+	return requestsByStatus
+		.flat()
+		.filter(
+			(request) =>
+				normalizeComparableText(request.municipalityName) === normalizedName,
+		);
+}
+
 function validateState(state: string) {
 	if (!VALID_STATES.has(state)) {
 		throw new Error(
 			`Invalid state "${state}". Must be a full state name (e.g. "Connecticut", not "CT").`,
 		);
 	}
+}
+
+function normalizeComparableText(value: string): string {
+	return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 function requiredText(value: string, message: string): string {
