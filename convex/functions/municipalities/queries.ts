@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import type { Doc, Id } from "../../_generated/dataModel";
-import { type QueryCtx, query } from "../../_generated/server";
+import { internalQuery, type QueryCtx, query } from "../../_generated/server";
 import { getCurrentUser } from "../../lib/auth";
 import { buildMunicipalityCoverageHealth } from "./coverageHealth";
 import { getCoverageStatus, isCoveragePublic } from "./coveragePublication";
@@ -44,6 +44,31 @@ export const get = query({
 	},
 	handler: async (ctx, args) => {
 		return await getVisibleMunicipality(ctx, args.id);
+	},
+});
+
+export const internalGet = internalQuery({
+	args: {
+		id: v.id("municipalities"),
+	},
+	handler: async (ctx, args) => {
+		return await ctx.db.get(args.id);
+	},
+});
+
+export const internalList = internalQuery({
+	args: {
+		state: v.optional(v.string()),
+	},
+	handler: async (ctx, args) => {
+		const municipalities = args.state
+			? await ctx.db
+					.query("municipalities")
+					.withIndex("by_state", (q) => q.eq("state", args.state as string))
+					.collect()
+			: await ctx.db.query("municipalities").collect();
+
+		return municipalities.sort((a, b) => a.name.localeCompare(b.name));
 	},
 });
 

@@ -1,7 +1,7 @@
 "use node";
 
 import { v } from "convex/values";
-import { api, internal } from "../../_generated/api";
+import { internal } from "../../_generated/api";
 import type { Doc } from "../../_generated/dataModel";
 import { internalAction } from "../../_generated/server";
 
@@ -284,7 +284,7 @@ export const discoverOne = internalAction({
 	},
 	handler: async (ctx, args) => {
 		const municipality = await ctx.runQuery(
-			api.functions.municipalities.queries.get,
+			internal.functions.municipalities.queries.internalGet,
 			{ id: args.municipalityId },
 		);
 		if (!municipality) {
@@ -341,7 +341,7 @@ export const discoverByState = internalAction({
 		failed: number;
 	}> => {
 		const municipalities = (await ctx.runQuery(
-			api.functions.municipalities.queries.list,
+			internal.functions.municipalities.queries.internalList,
 			{ state: args.state },
 		)) as Doc<"municipalities">[];
 
