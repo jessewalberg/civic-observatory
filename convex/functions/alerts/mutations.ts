@@ -110,6 +110,8 @@ export const generateAlerts = internalMutation({
 export const markSent = internalMutation({
 	args: {
 		alertId: v.id("alerts"),
+		deliveryKey: v.optional(v.string()),
+		providerMessageId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const alert = await ctx.db.get(args.alertId);
@@ -120,6 +122,12 @@ export const markSent = internalMutation({
 		await ctx.db.patch(args.alertId, {
 			status: "sent",
 			sentAt: Date.now(),
+			deliveryKey: args.deliveryKey ?? alert.deliveryKey,
+			providerMessageId: args.providerMessageId,
+			deliveryError: undefined,
+			deliveryFailureKind: undefined,
+			nextDeliveryAttemptAt: undefined,
+			scheduledFor: undefined,
 		});
 	},
 });
@@ -131,6 +139,9 @@ export const markFailed = internalMutation({
 	args: {
 		alertId: v.id("alerts"),
 		error: v.string(),
+		failureKind: v.optional(
+			v.union(v.literal("retryable"), v.literal("permanent")),
+		),
 	},
 	handler: async (ctx, args) => {
 		const alert = await ctx.db.get(args.alertId);
@@ -141,6 +152,34 @@ export const markFailed = internalMutation({
 		await ctx.db.patch(args.alertId, {
 			status: "failed",
 			deliveryError: args.error,
+			deliveryFailureKind: args.failureKind ?? "permanent",
+			nextDeliveryAttemptAt: undefined,
+			scheduledFor: undefined,
+		});
+	},
+});
+
+// ═══════════════════════════════════════════════════════════════
+// MARK RETRYABLE FAILURE - Keep an alert pending for a later retry
+// ═══════════════════════════════════════════════════════════════
+export const markRetryableFailure = internalMutation({
+	args: {
+		alertId: v.id("alerts"),
+		error: v.string(),
+		retryAt: v.number(),
+	},
+	handler: async (ctx, args) => {
+		const alert = await ctx.db.get(args.alertId);
+		if (!alert) {
+			throw new Error("Alert not found");
+		}
+
+		await ctx.db.patch(args.alertId, {
+			status: "pending",
+			scheduledFor: args.retryAt,
+			nextDeliveryAttemptAt: args.retryAt,
+			deliveryError: args.error,
+			deliveryFailureKind: "retryable",
 		});
 	},
 });
@@ -151,6 +190,7 @@ export const markFailed = internalMutation({
 export const markQueued = internalMutation({
 	args: {
 		alertId: v.id("alerts"),
+		deliveryKey: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const alert = await ctx.db.get(args.alertId);
@@ -158,9 +198,33 @@ export const markQueued = internalMutation({
 			throw new Error("Alert not found");
 		}
 
+		if (alert.status === "sent") {
+			return {
+				reserved: false,
+				alreadySent: true,
+				attemptCount: alert.deliveryAttemptCount ?? 0,
+				providerMessageId: alert.providerMessageId,
+			};
+		}
+
+		if (alert.status !== "pending") {
+			return {
+				reserved: false,
+				alreadySent: false,
+				attemptCount: alert.deliveryAttemptCount ?? 0,
+			};
+		}
+
+		const attemptCount = (alert.deliveryAttemptCount ?? 0) + 1;
 		await ctx.db.patch(args.alertId, {
 			status: "queued",
+			deliveryKey: args.deliveryKey ?? alert.deliveryKey,
+			deliveryAttemptCount: attemptCount,
+			lastDeliveryAttemptAt: Date.now(),
+			nextDeliveryAttemptAt: undefined,
 		});
+
+		return { reserved: true, alreadySent: false, attemptCount };
 	},
 });
 
@@ -191,6 +255,8 @@ export const markSkipped = internalMutation({
 export const markBatchSent = internalMutation({
 	args: {
 		alertIds: v.array(v.id("alerts")),
+		deliveryKey: v.optional(v.string()),
+		providerMessageId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const now = Date.now();
@@ -202,10 +268,165 @@ export const markBatchSent = internalMutation({
 			await ctx.db.patch(alertId, {
 				status: "sent",
 				sentAt: now,
+				deliveryKey: args.deliveryKey ?? alert.deliveryKey,
+				providerMessageId: args.providerMessageId,
+				deliveryError: undefined,
+				deliveryFailureKind: undefined,
+				nextDeliveryAttemptAt: undefined,
+				scheduledFor: undefined,
 			});
 		}
 
 		return { updated: args.alertIds.length };
+	},
+});
+
+// ═══════════════════════════════════════════════════════════════
+// MARK BATCH QUEUED - Atomically reserve multiple alerts for a digest send
+// ═══════════════════════════════════════════════════════════════
+export const markBatchQueued = internalMutation({
+	args: {
+		alertIds: v.array(v.id("alerts")),
+		deliveryKey: v.string(),
+	},
+	handler: async (ctx, args) => {
+		const alerts = [];
+		let missing = false;
+		for (const alertId of args.alertIds) {
+			const alert = await ctx.db.get(alertId);
+			if (!alert) {
+				missing = true;
+				continue;
+			}
+			alerts.push(alert);
+		}
+
+		const maxExistingAttemptCount = Math.max(
+			0,
+			...alerts.map((alert) => alert.deliveryAttemptCount ?? 0),
+		);
+		if (missing) {
+			return {
+				reserved: false,
+				alreadySent: false,
+				missing: true,
+				attemptCount: maxExistingAttemptCount,
+			};
+		}
+
+		const alreadySent = alerts.every((alert) => alert.status === "sent");
+		if (alreadySent) {
+			return {
+				reserved: false,
+				alreadySent: true,
+				missing: false,
+				attemptCount: maxExistingAttemptCount,
+			};
+		}
+
+		if (alerts.some((alert) => alert.status !== "pending")) {
+			return {
+				reserved: false,
+				alreadySent: false,
+				missing: false,
+				attemptCount: maxExistingAttemptCount,
+			};
+		}
+
+		let maxAttemptCount = 0;
+		const now = Date.now();
+		for (const alert of alerts) {
+			const attemptCount = (alert.deliveryAttemptCount ?? 0) + 1;
+			maxAttemptCount = Math.max(maxAttemptCount, attemptCount);
+			await ctx.db.patch(alert._id, {
+				status: "queued",
+				deliveryKey: args.deliveryKey,
+				deliveryAttemptCount: attemptCount,
+				lastDeliveryAttemptAt: now,
+				nextDeliveryAttemptAt: undefined,
+			});
+		}
+
+		return {
+			reserved: true,
+			alreadySent: false,
+			missing: false,
+			attemptCount: maxAttemptCount,
+		};
+	},
+});
+
+// ═══════════════════════════════════════════════════════════════
+// MARK BATCH RETRYABLE FAILURE - Keep digest alerts pending for retry
+// ═══════════════════════════════════════════════════════════════
+export const markBatchRetryableFailure = internalMutation({
+	args: {
+		alertIds: v.array(v.id("alerts")),
+		error: v.string(),
+		retryAt: v.number(),
+	},
+	handler: async (ctx, args) => {
+		for (const alertId of args.alertIds) {
+			const alert = await ctx.db.get(alertId);
+			if (!alert) continue;
+
+			await ctx.db.patch(alertId, {
+				status: "pending",
+				scheduledFor: args.retryAt,
+				nextDeliveryAttemptAt: args.retryAt,
+				deliveryError: args.error,
+				deliveryFailureKind: "retryable",
+			});
+		}
+
+		return { updated: args.alertIds.length };
+	},
+});
+
+// ═══════════════════════════════════════════════════════════════
+// RECOVER STALE QUEUED ALERTS - Requeue reservations that never completed
+// ═══════════════════════════════════════════════════════════════
+export const recoverStaleQueuedAlerts = internalMutation({
+	args: {
+		staleBefore: v.number(),
+		maxAttempts: v.number(),
+	},
+	handler: async (ctx, args) => {
+		const queuedAlerts = await ctx.db
+			.query("alerts")
+			.withIndex("by_status", (q) => q.eq("status", "queued"))
+			.collect();
+
+		let requeued = 0;
+		let failed = 0;
+		for (const alert of queuedAlerts) {
+			const lastAttemptAt = alert.lastDeliveryAttemptAt ?? alert.createdAt;
+			if (lastAttemptAt > args.staleBefore) continue;
+
+			const attemptCount = alert.deliveryAttemptCount ?? 0;
+			if (attemptCount >= args.maxAttempts) {
+				await ctx.db.patch(alert._id, {
+					status: "failed",
+					deliveryError: `Retry attempts exhausted after ${attemptCount} attempts: Delivery reservation expired before completion`,
+					deliveryFailureKind: "permanent",
+					nextDeliveryAttemptAt: undefined,
+					scheduledFor: undefined,
+				});
+				failed++;
+				continue;
+			}
+
+			await ctx.db.patch(alert._id, {
+				status: "pending",
+				scheduledFor: undefined,
+				nextDeliveryAttemptAt: undefined,
+				deliveryError: "Delivery reservation expired before completion",
+				deliveryFailureKind: "retryable",
+			});
+			requeued++;
+		}
+
+		return { requeued, failed };
 	},
 });
 

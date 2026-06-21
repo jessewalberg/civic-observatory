@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { internal } from "../../_generated/api";
 import type { Doc, Id } from "../../_generated/dataModel";
-import { internalAction } from "../../_generated/server";
+import { type ActionCtx, internalAction } from "../../_generated/server";
 import {
 	dailyDigestTemplate,
 	type EmailParams,
@@ -17,6 +17,31 @@ const FROM_ADDRESS = "alerts@civicobservatory.com";
 const FROM_NAME = "Civic Observatory";
 const CLOUDFLARE_API_BASE = "https://api.cloudflare.com/client/v4";
 const BASE_URL = process.env.SITE_URL ?? "https://civicobservatory.com";
+const DELIVERY_RETRY_DELAY_MS = 15 * 60 * 1000;
+const DELIVERY_RESERVATION_TIMEOUT_MS = 30 * 60 * 1000;
+const MAX_DELIVERY_ATTEMPTS = 3;
+
+type SendEmailResult = {
+	success: boolean;
+	error?: string;
+	id?: string;
+	retryable?: boolean;
+};
+
+type DigestResults = {
+	sent: number;
+	failed: number;
+	retrying: number;
+	errors: string[];
+};
+
+type DeliveryReservation = {
+	reserved: boolean;
+	alreadySent: boolean;
+	missing?: boolean;
+	attemptCount: number;
+	providerMessageId?: string;
+};
 
 type PendingAlert = {
 	alert: Doc<"alerts">;
@@ -89,10 +114,7 @@ export const sendEmail = internalAction({
 		replyTo: v.optional(v.string()),
 		deliveryKey: v.optional(v.string()),
 	},
-	handler: async (
-		_ctx,
-		args,
-	): Promise<{ success: boolean; error?: string; id?: string }> => {
+	handler: async (_ctx, args): Promise<SendEmailResult> => {
 		const apiToken = process.env.CLOUDFLARE_API_TOKEN;
 		const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
 
@@ -103,6 +125,7 @@ export const sendEmail = internalAction({
 			return {
 				success: false,
 				error: "Cloudflare email service not configured",
+				retryable: true,
 			};
 		}
 
@@ -146,9 +169,11 @@ export const sendEmail = internalAction({
 					`Cloudflare Email API error (${response.status}):`,
 					errorMessage,
 				);
+				const retryable = isRetryableCloudflareStatus(response.status);
 				return {
 					success: false,
 					error: `Cloudflare Email API error: ${response.status} ${errorMessage}`,
+					...(retryable ? { retryable } : {}),
 				};
 			}
 
@@ -182,7 +207,7 @@ export const sendEmail = internalAction({
 			const errorMessage =
 				error instanceof Error ? error.message : "Unknown error";
 			console.error("Failed to send email:", errorMessage);
-			return { success: false, error: errorMessage };
+			return { success: false, error: errorMessage, retryable: true };
 		}
 	},
 });
@@ -193,11 +218,13 @@ export const sendEmail = internalAction({
 export const sendImmediateAlert = internalAction({
 	args: {
 		alertId: v.id("alerts"),
+		recoverStaleQueued: v.optional(v.boolean()),
 	},
-	handler: async (
-		ctx,
-		args,
-	): Promise<{ success: boolean; error?: string; id?: string }> => {
+	handler: async (ctx, args): Promise<SendEmailResult> => {
+		if (args.recoverStaleQueued !== false) {
+			await recoverStaleDeliveryReservations(ctx);
+		}
+
 		// Get alert with all related data
 		const alertData = (await ctx.runQuery(
 			internal.functions.alerts.queries.getPendingByFrequency,
@@ -212,6 +239,7 @@ export const sendImmediateAlert = internalAction({
 		}
 
 		const { alert, user, meeting, municipality, summary } = alertInfo;
+		const deliveryKey = `alert/${alert._id}`;
 
 		if (!summary) {
 			await ctx.runMutation(internal.functions.alerts.mutations.markFailed, {
@@ -222,9 +250,25 @@ export const sendImmediateAlert = internalAction({
 		}
 
 		// Mark as queued
-		await ctx.runMutation(internal.functions.alerts.mutations.markQueued, {
-			alertId: args.alertId,
-		});
+		const queued = (await ctx.runMutation(
+			internal.functions.alerts.mutations.markQueued,
+			{
+				alertId: args.alertId,
+				deliveryKey,
+			},
+		)) as DeliveryReservation;
+
+		if (!queued.reserved) {
+			if (queued.alreadySent) {
+				return { success: true, id: queued.providerMessageId };
+			}
+
+			return {
+				success: false,
+				error: "Alert delivery already reserved",
+				retryable: true,
+			};
+		}
 
 		// Build meeting data for template
 		const meetingData: MeetingData = {
@@ -258,13 +302,15 @@ export const sendImmediateAlert = internalAction({
 				to: user.email,
 				subject,
 				html,
-				deliveryKey: `alert/${alert._id}`,
+				deliveryKey,
 			},
 		);
 
 		if (result.success) {
 			await ctx.runMutation(internal.functions.alerts.mutations.markSent, {
 				alertId: args.alertId,
+				deliveryKey,
+				providerMessageId: result.id,
 			});
 
 			// Track usage
@@ -276,10 +322,25 @@ export const sendImmediateAlert = internalAction({
 					windowType: "month",
 				},
 			);
+		} else if (shouldRetryDelivery(result, queued.attemptCount)) {
+			await ctx.runMutation(
+				internal.functions.alerts.mutations.markRetryableFailure,
+				{
+					alertId: args.alertId,
+					error: deliveryError(result, "Failed to send email"),
+					retryAt: nextRetryAt(),
+				},
+			);
 		} else {
+			const error = terminalDeliveryError(
+				result,
+				"Failed to send email",
+				queued.attemptCount,
+			);
 			await ctx.runMutation(internal.functions.alerts.mutations.markFailed, {
 				alertId: args.alertId,
-				error: result.error ?? "Failed to send email",
+				error,
+				failureKind: "permanent",
 			});
 		}
 
@@ -292,10 +353,15 @@ export const sendImmediateAlert = internalAction({
 // ═══════════════════════════════════════════════════════════════
 export const sendDailyDigest = internalAction({
 	args: {},
-	handler: async (
-		ctx,
-	): Promise<{ sent: number; failed: number; errors: string[] }> => {
-		const results = { sent: 0, failed: 0, errors: [] as string[] };
+	handler: async (ctx): Promise<DigestResults> => {
+		await recoverStaleDeliveryReservations(ctx);
+
+		const results: DigestResults = {
+			sent: 0,
+			failed: 0,
+			retrying: 0,
+			errors: [],
+		};
 
 		// Get all pending alerts grouped by user
 		const userDigests = (await ctx.runQuery(
@@ -308,12 +374,39 @@ export const sendDailyDigest = internalAction({
 
 			if (userAlerts.length === 0) continue;
 
+			const alertIds = userAlerts.map(({ alert }) => alert._id);
+			const deliveryKey = digestDeliveryKey(
+				"daily",
+				user._id.toString(),
+				alertIds.map((id) => id.toString()),
+			);
+
 			// Mark all alerts as queued
-			for (const { alert } of userAlerts) {
-				await ctx.runMutation(internal.functions.alerts.mutations.markQueued, {
-					alertId: alert._id,
-				});
+			const queued = (await ctx.runMutation(
+				internal.functions.alerts.mutations.markBatchQueued,
+				{
+					alertIds,
+					deliveryKey,
+				},
+			)) as DeliveryReservation;
+
+			if (!queued.reserved) {
+				if (queued.alreadySent) {
+					results.sent++;
+					continue;
+				}
+
+				results.retrying++;
+				results.errors.push(
+					`User ${user.email}: ${
+						queued.missing
+							? "Alert delivery reservation unavailable"
+							: "Alert delivery already reserved"
+					}`,
+				);
+				continue;
 			}
+			const maxAttemptCount = queued.attemptCount;
 
 			// Build meeting data for all alerts
 			const meetings: MeetingData[] = userAlerts.map(
@@ -341,7 +434,6 @@ export const sendDailyDigest = internalAction({
 
 			// Generate digest email
 			const { subject, html } = dailyDigestTemplate(meetings, emailParams);
-			const alertIds = userAlerts.map(({ alert }) => alert._id);
 
 			// Send email
 			const result = await ctx.runAction(
@@ -350,11 +442,7 @@ export const sendDailyDigest = internalAction({
 					to: user.email,
 					subject,
 					html,
-					deliveryKey: digestDeliveryKey(
-						"daily",
-						user._id.toString(),
-						alertIds.map((id) => id.toString()),
-					),
+					deliveryKey,
 				},
 			);
 
@@ -363,6 +451,8 @@ export const sendDailyDigest = internalAction({
 					internal.functions.alerts.mutations.markBatchSent,
 					{
 						alertIds,
+						deliveryKey,
+						providerMessageId: result.id,
 					},
 				);
 
@@ -379,18 +469,38 @@ export const sendDailyDigest = internalAction({
 				}
 
 				results.sent++;
+			} else if (shouldRetryDelivery(result, maxAttemptCount)) {
+				const error = deliveryError(result, "Failed to send digest");
+				await ctx.runMutation(
+					internal.functions.alerts.mutations.markBatchRetryableFailure,
+					{
+						alertIds,
+						error,
+						retryAt: nextRetryAt(),
+					},
+				);
+				results.retrying++;
+				results.errors.push(`User ${user.email}: ${error}`);
 			} else {
+				const error = terminalDeliveryError(
+					result,
+					"Failed to send digest",
+					maxAttemptCount,
+				);
 				for (const alertId of alertIds) {
 					await ctx.runMutation(
 						internal.functions.alerts.mutations.markFailed,
 						{
 							alertId,
-							error: result.error ?? "Failed to send digest",
+							error,
+							failureKind: "permanent",
 						},
 					);
 				}
 				results.failed++;
-				results.errors.push(`User ${user.email}: ${result.error}`);
+				results.errors.push(
+					`User ${user.email}: ${deliveryError(result, "Failed to send digest")}`,
+				);
 			}
 		}
 
@@ -403,10 +513,15 @@ export const sendDailyDigest = internalAction({
 // ═══════════════════════════════════════════════════════════════
 export const sendWeeklyDigest = internalAction({
 	args: {},
-	handler: async (
-		ctx,
-	): Promise<{ sent: number; failed: number; errors: string[] }> => {
-		const results = { sent: 0, failed: 0, errors: [] as string[] };
+	handler: async (ctx): Promise<DigestResults> => {
+		await recoverStaleDeliveryReservations(ctx);
+
+		const results: DigestResults = {
+			sent: 0,
+			failed: 0,
+			retrying: 0,
+			errors: [],
+		};
 
 		// Get all pending alerts grouped by user
 		const userDigests = (await ctx.runQuery(
@@ -419,12 +534,39 @@ export const sendWeeklyDigest = internalAction({
 
 			if (userAlerts.length === 0) continue;
 
+			const alertIds = userAlerts.map(({ alert }) => alert._id);
+			const deliveryKey = digestDeliveryKey(
+				"weekly",
+				user._id.toString(),
+				alertIds.map((id) => id.toString()),
+			);
+
 			// Mark all alerts as queued
-			for (const { alert } of userAlerts) {
-				await ctx.runMutation(internal.functions.alerts.mutations.markQueued, {
-					alertId: alert._id,
-				});
+			const queued = (await ctx.runMutation(
+				internal.functions.alerts.mutations.markBatchQueued,
+				{
+					alertIds,
+					deliveryKey,
+				},
+			)) as DeliveryReservation;
+
+			if (!queued.reserved) {
+				if (queued.alreadySent) {
+					results.sent++;
+					continue;
+				}
+
+				results.retrying++;
+				results.errors.push(
+					`User ${user.email}: ${
+						queued.missing
+							? "Alert delivery reservation unavailable"
+							: "Alert delivery already reserved"
+					}`,
+				);
+				continue;
 			}
+			const maxAttemptCount = queued.attemptCount;
 
 			// Build meeting data for all alerts
 			const meetings: MeetingData[] = userAlerts.map(
@@ -463,7 +605,6 @@ export const sendWeeklyDigest = internalAction({
 
 			// Generate weekly digest email
 			const { subject, html } = weeklyDigestTemplate(meetings, emailParams);
-			const alertIds = userAlerts.map(({ alert }) => alert._id);
 
 			// Send email
 			const result = await ctx.runAction(
@@ -472,11 +613,7 @@ export const sendWeeklyDigest = internalAction({
 					to: user.email,
 					subject,
 					html,
-					deliveryKey: digestDeliveryKey(
-						"weekly",
-						user._id.toString(),
-						alertIds.map((id) => id.toString()),
-					),
+					deliveryKey,
 				},
 			);
 
@@ -485,6 +622,8 @@ export const sendWeeklyDigest = internalAction({
 					internal.functions.alerts.mutations.markBatchSent,
 					{
 						alertIds,
+						deliveryKey,
+						providerMessageId: result.id,
 					},
 				);
 
@@ -501,18 +640,38 @@ export const sendWeeklyDigest = internalAction({
 				}
 
 				results.sent++;
+			} else if (shouldRetryDelivery(result, maxAttemptCount)) {
+				const error = deliveryError(result, "Failed to send weekly digest");
+				await ctx.runMutation(
+					internal.functions.alerts.mutations.markBatchRetryableFailure,
+					{
+						alertIds,
+						error,
+						retryAt: nextRetryAt(),
+					},
+				);
+				results.retrying++;
+				results.errors.push(`User ${user.email}: ${error}`);
 			} else {
+				const error = terminalDeliveryError(
+					result,
+					"Failed to send weekly digest",
+					maxAttemptCount,
+				);
 				for (const alertId of alertIds) {
 					await ctx.runMutation(
 						internal.functions.alerts.mutations.markFailed,
 						{
 							alertId,
-							error: result.error ?? "Failed to send weekly digest",
+							error,
+							failureKind: "permanent",
 						},
 					);
 				}
 				results.failed++;
-				results.errors.push(`User ${user.email}: ${result.error}`);
+				results.errors.push(
+					`User ${user.email}: ${deliveryError(result, "Failed to send weekly digest")}`,
+				);
 			}
 		}
 
@@ -528,8 +687,15 @@ export const processImmediateAlerts = internalAction({
 	args: {},
 	handler: async (
 		ctx,
-	): Promise<{ processed: number; sent: number; failed: number }> => {
-		const results = { processed: 0, sent: 0, failed: 0 };
+	): Promise<{
+		processed: number;
+		sent: number;
+		failed: number;
+		retrying: number;
+	}> => {
+		await recoverStaleDeliveryReservations(ctx);
+
+		const results = { processed: 0, sent: 0, failed: 0, retrying: 0 };
 
 		// Get all pending immediate alerts
 		const pendingAlerts = await ctx.runQuery(
@@ -542,11 +708,13 @@ export const processImmediateAlerts = internalAction({
 
 			const result = await ctx.runAction(
 				internal.functions.email.actions.sendImmediateAlert,
-				{ alertId: alertInfo.alert._id },
+				{ alertId: alertInfo.alert._id, recoverStaleQueued: false },
 			);
 
 			if (result.success) {
 				results.sent++;
+			} else if (result.retryable) {
+				results.retrying++;
 			} else {
 				results.failed++;
 			}
@@ -572,6 +740,42 @@ function emailSourceUrl(
 
 	const summarySource = summarySourceUrl?.trim();
 	return summarySource || undefined;
+}
+
+function shouldRetryDelivery(
+	result: SendEmailResult,
+	attemptCount: number,
+): boolean {
+	return result.retryable === true && attemptCount < MAX_DELIVERY_ATTEMPTS;
+}
+
+function nextRetryAt(): number {
+	return Date.now() + DELIVERY_RETRY_DELAY_MS;
+}
+
+function deliveryError(result: SendEmailResult, fallback: string): string {
+	return result.error ?? fallback;
+}
+
+function terminalDeliveryError(
+	result: SendEmailResult,
+	fallback: string,
+	attemptCount: number,
+): string {
+	const error = deliveryError(result, fallback);
+	if (!result.retryable) return error;
+
+	return `Retry attempts exhausted after ${attemptCount} attempts: ${error}`;
+}
+
+async function recoverStaleDeliveryReservations(ctx: ActionCtx): Promise<void> {
+	await ctx.runMutation(
+		internal.functions.alerts.mutations.recoverStaleQueuedAlerts,
+		{
+			staleBefore: Date.now() - DELIVERY_RESERVATION_TIMEOUT_MS,
+			maxAttempts: MAX_DELIVERY_ATTEMPTS,
+		},
+	);
 }
 
 function digestDeliveryKey(
@@ -667,4 +871,8 @@ function cloudflarePermanentBounce(
 		...(data.delivered ?? []),
 	];
 	return !acceptedRecipients.includes(recipient);
+}
+
+function isRetryableCloudflareStatus(status: number): boolean {
+	return status === 429 || status >= 500;
 }

@@ -276,6 +276,14 @@ export default defineSchema({
 		sentAt: v.optional(v.number()),
 		readAt: v.optional(v.number()),
 		deliveryError: v.optional(v.string()),
+		deliveryKey: v.optional(v.string()),
+		deliveryAttemptCount: v.optional(v.number()),
+		lastDeliveryAttemptAt: v.optional(v.number()),
+		nextDeliveryAttemptAt: v.optional(v.number()),
+		deliveryFailureKind: v.optional(
+			v.union(v.literal("retryable"), v.literal("permanent")),
+		),
+		providerMessageId: v.optional(v.string()),
 
 		createdAt: v.number(),
 	})
