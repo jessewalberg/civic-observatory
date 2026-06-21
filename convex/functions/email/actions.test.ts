@@ -8,7 +8,8 @@ import { modules } from "../../test.setup";
 const setup = () => convexTest(schema, modules);
 
 beforeEach(() => {
-	vi.stubEnv("RESEND_API_KEY", "re_test_key");
+	vi.stubEnv("CLOUDFLARE_API_TOKEN", "cf_test_token");
+	vi.stubEnv("CLOUDFLARE_ACCOUNT_ID", "cf_account_123");
 });
 
 afterEach(() => {
@@ -17,18 +18,110 @@ afterEach(() => {
 	vi.restoreAllMocks();
 });
 
-function okEmailResponse(id = "email_123") {
-	return new Response(JSON.stringify({ id }), {
-		status: 200,
-		headers: { "Content-Type": "application/json" },
-	});
+function okEmailResponse(messageId = "<email_123@example.com>") {
+	return new Response(
+		JSON.stringify({
+			success: true,
+			errors: [],
+			messages: [],
+			result: {
+				message_id: messageId,
+				delivered: [],
+				queued: ["reader@example.test"],
+				permanent_bounces: [],
+			},
+		}),
+		{
+			status: 200,
+			headers: { "Content-Type": "application/json" },
+		},
+	);
 }
 
-function failedEmailResponse(message = "domain not verified") {
-	return new Response(JSON.stringify({ message }), {
-		status: 422,
-		headers: { "Content-Type": "application/json" },
-	});
+function failedEmailResponse(message = "Sender domain not verified") {
+	return new Response(
+		JSON.stringify({
+			success: false,
+			errors: [{ code: 1000, message }],
+			result: null,
+		}),
+		{
+			status: 400,
+			headers: { "Content-Type": "application/json" },
+		},
+	);
+}
+
+function failedEnvelopeEmailResponse(message = "Sender domain not verified") {
+	return new Response(
+		JSON.stringify({
+			success: false,
+			errors: [{ code: 1000, message }],
+			result: null,
+		}),
+		{
+			status: 200,
+			headers: { "Content-Type": "application/json" },
+		},
+	);
+}
+
+function acceptedWithoutMessageIdResponse() {
+	return new Response(
+		JSON.stringify({
+			success: true,
+			errors: [],
+			messages: [],
+			result: {
+				delivered: [],
+				queued: ["reader@example.test"],
+				permanent_bounces: [],
+			},
+		}),
+		{
+			status: 200,
+			headers: { "Content-Type": "application/json" },
+		},
+	);
+}
+
+function malformedSuccessResponse() {
+	return new Response(
+		JSON.stringify({
+			success: true,
+			errors: [],
+			messages: [],
+			result: {
+				delivered: [],
+				queued: [],
+				permanent_bounces: [],
+			},
+		}),
+		{
+			status: 200,
+			headers: { "Content-Type": "application/json" },
+		},
+	);
+}
+
+function permanentBounceResponse() {
+	return new Response(
+		JSON.stringify({
+			success: true,
+			errors: [],
+			messages: [],
+			result: {
+				message_id: "<email_bounce_123@example.com>",
+				delivered: [],
+				queued: [],
+				permanent_bounces: ["reader@example.test"],
+			},
+		}),
+		{
+			status: 200,
+			headers: { "Content-Type": "application/json" },
+		},
+	);
 }
 
 async function seedPendingAlert(
@@ -128,15 +221,16 @@ async function seedPendingAlert(
 	return {
 		alertId: alertId as Id<"alerts">,
 		meetingId: meetingId as Id<"meetings">,
-		summaryId: summaryId as Id<"summaries">,
 		userId: userId as Id<"users">,
 	};
 }
 
-describe("Resend email delivery", () => {
-	it("posts transactional email payloads to Resend with a retry-safe key", async () => {
+describe("Cloudflare email delivery", () => {
+	it("posts transactional email payloads to Cloudflare Email Sending", async () => {
 		const t = setup();
-		const fetchMock = vi.fn(async () => okEmailResponse("email_boundary_123"));
+		const fetchMock = vi.fn(async () =>
+			okEmailResponse("<email_boundary_123@example.com>"),
+		);
 		vi.stubGlobal("fetch", fetchMock);
 
 		await expect(
@@ -144,40 +238,119 @@ describe("Resend email delivery", () => {
 				to: "reader@example.test",
 				subject: "New summary",
 				html: "<p>Summary ready</p>",
-				idempotencyKey: "alert/test-alert-id",
+				replyTo: "support@civicobservatory.com",
+				deliveryKey: "alert/test-alert-id",
 			}),
-		).resolves.toEqual({ success: true, id: "email_boundary_123" });
+		).resolves.toEqual({
+			success: true,
+			id: "<email_boundary_123@example.com>",
+		});
 
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 		const [url, init] = fetchMock.mock.calls[0] as unknown as [
 			string,
 			RequestInit & { headers: Record<string, string> },
 		];
-		expect(url).toBe("https://api.resend.com/emails");
+		expect(url).toBe(
+			"https://api.cloudflare.com/client/v4/accounts/cf_account_123/email/sending/send",
+		);
 		expect(init.method).toBe("POST");
-		expect(init.headers.Authorization).toBe("Bearer re_test_key");
-		expect(init.headers["Idempotency-Key"]).toBe("alert/test-alert-id");
+		expect(init.headers.Authorization).toBe("Bearer cf_test_token");
 		const body = JSON.parse(init.body as string);
 		expect(body).toMatchObject({
-			from: "Civic Observatory <alerts@civicobservatory.com>",
-			to: ["reader@example.test"],
+			from: {
+				address: "alerts@civicobservatory.com",
+				name: "Civic Observatory",
+			},
+			to: "reader@example.test",
 			subject: "New summary",
 			html: "<p>Summary ready</p>",
 			text: "Summary ready",
+			reply_to: "support@civicobservatory.com",
+			headers: {
+				"X-Civic-Delivery-Key": "alert/test-alert-id",
+			},
+		});
+	});
+
+	it("uses queued recipient confirmation when Cloudflare omits a message id", async () => {
+		const t = setup();
+		const fetchMock = vi.fn(async () => acceptedWithoutMessageIdResponse());
+		vi.stubGlobal("fetch", fetchMock);
+
+		await expect(
+			t.action(internal.functions.email.actions.sendEmail, {
+				to: "reader@example.test",
+				subject: "New summary",
+				html: "<p>Summary ready</p>",
+			}),
+		).resolves.toEqual({ success: true, id: "reader@example.test" });
+	});
+
+	it("fails visibly when Cloudflare returns success without an accepted recipient", async () => {
+		const t = setup();
+		const { alertId } = await seedPendingAlert(t);
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => malformedSuccessResponse()),
+		);
+
+		await expect(
+			t.action(internal.functions.email.actions.sendImmediateAlert, {
+				alertId,
+			}),
+		).resolves.toEqual({
+			success: false,
+			error: "Cloudflare Email API response missing accepted recipient",
+		});
+
+		const alert = await t.run(async (ctx) => ctx.db.get(alertId));
+		expect(alert).toMatchObject({
+			status: "failed",
+			deliveryError: "Cloudflare Email API response missing accepted recipient",
+		});
+	});
+
+	it("marks an immediate candidate failed when Cloudflare reports a permanent bounce", async () => {
+		const t = setup();
+		const { alertId } = await seedPendingAlert(t);
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => permanentBounceResponse()),
+		);
+
+		await expect(
+			t.action(internal.functions.email.actions.sendImmediateAlert, {
+				alertId,
+			}),
+		).resolves.toEqual({
+			success: false,
+			error: "Cloudflare Email API reported permanent bounce",
+		});
+
+		const alert = await t.run(async (ctx) => ctx.db.get(alertId));
+		expect(alert).toMatchObject({
+			status: "failed",
+			deliveryError: "Cloudflare Email API reported permanent bounce",
 		});
 	});
 
 	it("marks an immediate pending candidate sent and sends source-backed links", async () => {
 		const t = setup();
 		const { alertId, userId } = await seedPendingAlert(t);
-		const fetchMock = vi.fn(async () => okEmailResponse("email_immediate_123"));
+		const fetchMock = vi.fn(async () =>
+			okEmailResponse("<email_immediate_123@example.com>"),
+		);
 		vi.stubGlobal("fetch", fetchMock);
 
 		await expect(
 			t.action(internal.functions.email.actions.sendImmediateAlert, {
 				alertId,
 			}),
-		).resolves.toEqual({ success: true, id: "email_immediate_123" });
+		).resolves.toEqual({
+			success: true,
+			id: "<email_immediate_123@example.com>",
+		});
 
 		const alert = await t.run(async (ctx) => ctx.db.get(alertId));
 		expect(alert).toMatchObject({
@@ -196,7 +369,7 @@ describe("Resend email delivery", () => {
 			RequestInit,
 		];
 		const body = JSON.parse(init.body as string);
-		expect(body.to).toEqual(["reader@example.test"]);
+		expect(body.to).toBe("reader@example.test");
 		expect(body.html).toContain("Coventry, Connecticut");
 		expect(body.html).toContain("Council reviewed a park bond");
 		expect(body.html).toContain("budget");
@@ -208,9 +381,7 @@ describe("Resend email delivery", () => {
 			"https://civicobservatory.com/dashboard/subscriptions",
 		);
 		expect(body.html).toContain("Unsubscribe");
-		expect((init.headers as Record<string, string>)["Idempotency-Key"]).toBe(
-			`alert/${alertId}`,
-		);
+		expect(body.headers["X-Civic-Delivery-Key"]).toBe(`alert/${alertId}`);
 	});
 
 	it("falls back to the summary source when the meeting source is blank", async () => {
@@ -219,14 +390,19 @@ describe("Resend email delivery", () => {
 		await t.run(async (ctx) => {
 			await ctx.db.patch(meetingId, { sourceUrl: "" });
 		});
-		const fetchMock = vi.fn(async () => okEmailResponse("email_source_123"));
+		const fetchMock = vi.fn(async () =>
+			okEmailResponse("<email_source_123@example.com>"),
+		);
 		vi.stubGlobal("fetch", fetchMock);
 
 		await expect(
 			t.action(internal.functions.email.actions.sendImmediateAlert, {
 				alertId,
 			}),
-		).resolves.toEqual({ success: true, id: "email_source_123" });
+		).resolves.toEqual({
+			success: true,
+			id: "<email_source_123@example.com>",
+		});
 
 		const [, init] = fetchMock.mock.calls[0] as unknown as [
 			string,
@@ -236,7 +412,7 @@ describe("Resend email delivery", () => {
 		expect(body.html).toContain("https://source.example/agenda.pdf");
 	});
 
-	it("marks an immediate candidate failed when Resend rejects the send", async () => {
+	it("marks an immediate candidate failed when Cloudflare rejects the send", async () => {
 		const t = setup();
 		const { alertId } = await seedPendingAlert(t);
 		vi.stubGlobal(
@@ -250,18 +426,43 @@ describe("Resend email delivery", () => {
 			}),
 		).resolves.toMatchObject({
 			success: false,
-			error: "Resend API error: 422 domain not verified",
+			error: "Cloudflare Email API error: 400 Sender domain not verified",
 		});
 
 		const alert = await t.run(async (ctx) => ctx.db.get(alertId));
 		expect(alert).toMatchObject({
 			status: "failed",
-			deliveryError: "Resend API error: 422 domain not verified",
+			deliveryError:
+				"Cloudflare Email API error: 400 Sender domain not verified",
 		});
 	});
 
-	it("fails visibly when Resend credentials are not configured", async () => {
-		vi.stubEnv("RESEND_API_KEY", "");
+	it("marks an immediate candidate failed when Cloudflare returns a failure envelope", async () => {
+		const t = setup();
+		const { alertId } = await seedPendingAlert(t);
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => failedEnvelopeEmailResponse()),
+		);
+
+		await expect(
+			t.action(internal.functions.email.actions.sendImmediateAlert, {
+				alertId,
+			}),
+		).resolves.toMatchObject({
+			success: false,
+			error: "Cloudflare Email API error: Sender domain not verified",
+		});
+
+		const alert = await t.run(async (ctx) => ctx.db.get(alertId));
+		expect(alert).toMatchObject({
+			status: "failed",
+			deliveryError: "Cloudflare Email API error: Sender domain not verified",
+		});
+	});
+
+	it("fails visibly when Cloudflare credentials are not configured", async () => {
+		vi.stubEnv("CLOUDFLARE_API_TOKEN", "");
 		const t = setup();
 		const fetchMock = vi.fn();
 		vi.stubGlobal("fetch", fetchMock);
@@ -274,13 +475,32 @@ describe("Resend email delivery", () => {
 			}),
 		).resolves.toEqual({
 			success: false,
-			error: "Resend email service not configured",
+			error: "Cloudflare email service not configured",
 		});
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
-	it("marks an immediate candidate failed when Resend credentials are missing", async () => {
-		vi.stubEnv("RESEND_API_KEY", "");
+	it("fails visibly when Cloudflare account id is not configured", async () => {
+		vi.stubEnv("CLOUDFLARE_ACCOUNT_ID", "");
+		const t = setup();
+		const fetchMock = vi.fn();
+		vi.stubGlobal("fetch", fetchMock);
+
+		await expect(
+			t.action(internal.functions.email.actions.sendEmail, {
+				to: "reader@example.test",
+				subject: "New summary",
+				html: "<p>Summary ready</p>",
+			}),
+		).resolves.toEqual({
+			success: false,
+			error: "Cloudflare email service not configured",
+		});
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("marks an immediate candidate failed when Cloudflare credentials are missing", async () => {
+		vi.stubEnv("CLOUDFLARE_API_TOKEN", "");
 		const t = setup();
 		const { alertId } = await seedPendingAlert(t);
 		const fetchMock = vi.fn();
@@ -292,21 +512,23 @@ describe("Resend email delivery", () => {
 			}),
 		).resolves.toEqual({
 			success: false,
-			error: "Resend email service not configured",
+			error: "Cloudflare email service not configured",
 		});
 
 		expect(fetchMock).not.toHaveBeenCalled();
 		const alert = await t.run(async (ctx) => ctx.db.get(alertId));
 		expect(alert).toMatchObject({
 			status: "failed",
-			deliveryError: "Resend email service not configured",
+			deliveryError: "Cloudflare email service not configured",
 		});
 	});
 
 	it("sends a daily digest and marks all grouped candidates sent", async () => {
 		const t = setup();
 		const { alertId } = await seedPendingAlert(t, "daily");
-		const fetchMock = vi.fn(async () => okEmailResponse("email_digest_123"));
+		const fetchMock = vi.fn(async () =>
+			okEmailResponse("<email_digest_123@example.com>"),
+		);
 		vi.stubGlobal("fetch", fetchMock);
 
 		await expect(
@@ -328,12 +550,10 @@ describe("Resend email delivery", () => {
 		expect(body.subject).toContain("Daily Digest");
 		expect(body.html).toContain("Town Council Bond Hearing");
 		expect(body.html).toContain("https://source.example/agenda.pdf");
-		expect(
-			(init.headers as Record<string, string>)["Idempotency-Key"],
-		).toContain("digest/daily/");
+		expect(body.headers["X-Civic-Delivery-Key"]).toContain("digest/daily/");
 	});
 
-	it("marks daily digest candidates failed when Resend rejects the send", async () => {
+	it("marks daily digest candidates failed when Cloudflare rejects the send", async () => {
 		const t = setup();
 		const { alertId } = await seedPendingAlert(t, "daily");
 		vi.stubGlobal(
@@ -347,19 +567,20 @@ describe("Resend email delivery", () => {
 			sent: 0,
 			failed: 1,
 			errors: [
-				"User reader@example.test: Resend API error: 422 domain not verified",
+				"User reader@example.test: Cloudflare Email API error: 400 Sender domain not verified",
 			],
 		});
 
 		const alert = await t.run(async (ctx) => ctx.db.get(alertId));
 		expect(alert).toMatchObject({
 			status: "failed",
-			deliveryError: "Resend API error: 422 domain not verified",
+			deliveryError:
+				"Cloudflare Email API error: 400 Sender domain not verified",
 		});
 	});
 
-	it("marks daily digest candidates failed when Resend credentials are missing", async () => {
-		vi.stubEnv("RESEND_API_KEY", "");
+	it("marks daily digest candidates failed when Cloudflare credentials are missing", async () => {
+		vi.stubEnv("CLOUDFLARE_API_TOKEN", "");
 		const t = setup();
 		const { alertId } = await seedPendingAlert(t, "daily");
 		const fetchMock = vi.fn();
@@ -370,21 +591,25 @@ describe("Resend email delivery", () => {
 		).resolves.toEqual({
 			sent: 0,
 			failed: 1,
-			errors: ["User reader@example.test: Resend email service not configured"],
+			errors: [
+				"User reader@example.test: Cloudflare email service not configured",
+			],
 		});
 
 		expect(fetchMock).not.toHaveBeenCalled();
 		const alert = await t.run(async (ctx) => ctx.db.get(alertId));
 		expect(alert).toMatchObject({
 			status: "failed",
-			deliveryError: "Resend email service not configured",
+			deliveryError: "Cloudflare email service not configured",
 		});
 	});
 
 	it("sends a weekly digest and marks grouped candidates sent", async () => {
 		const t = setup();
 		const { alertId } = await seedPendingAlert(t, "weekly");
-		const fetchMock = vi.fn(async () => okEmailResponse("email_weekly_123"));
+		const fetchMock = vi.fn(async () =>
+			okEmailResponse("<email_weekly_123@example.com>"),
+		);
 		vi.stubGlobal("fetch", fetchMock);
 
 		await expect(
@@ -404,8 +629,6 @@ describe("Resend email delivery", () => {
 		const body = JSON.parse(init.body as string);
 		expect(body.subject).toContain("Weekly Digest");
 		expect(body.html).toContain("Town Council Bond Hearing");
-		expect(
-			(init.headers as Record<string, string>)["Idempotency-Key"],
-		).toContain("digest/weekly/");
+		expect(body.headers["X-Civic-Delivery-Key"]).toContain("digest/weekly/");
 	});
 });

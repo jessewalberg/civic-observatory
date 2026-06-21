@@ -15,7 +15,7 @@ import {
 // ═══════════════════════════════════════════════════════════════
 const FROM_ADDRESS = "alerts@civicobservatory.com";
 const FROM_NAME = "Civic Observatory";
-const RESEND_EMAILS_URL = "https://api.resend.com/emails";
+const CLOUDFLARE_API_BASE = "https://api.cloudflare.com/client/v4";
 const BASE_URL = process.env.SITE_URL ?? "https://civicobservatory.com";
 
 type PendingAlert = {
@@ -79,7 +79,7 @@ export function htmlToText(html: string): string {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// SEND EMAIL - Core sending via Resend's transactional email API.
+// SEND EMAIL - Core sending via Cloudflare Email Sending's REST API.
 // ═══════════════════════════════════════════════════════════════
 export const sendEmail = internalAction({
 	args: {
@@ -87,70 +87,97 @@ export const sendEmail = internalAction({
 		subject: v.string(),
 		html: v.string(),
 		replyTo: v.optional(v.string()),
-		idempotencyKey: v.optional(v.string()),
+		deliveryKey: v.optional(v.string()),
 	},
 	handler: async (
 		_ctx,
 		args,
 	): Promise<{ success: boolean; error?: string; id?: string }> => {
-		const apiKey = process.env.RESEND_API_KEY;
+		const apiToken = process.env.CLOUDFLARE_API_TOKEN;
+		const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
 
-		if (!apiKey) {
-			console.error("RESEND_API_KEY not configured");
+		if (!apiToken || !accountId) {
+			console.error(
+				"CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID not configured",
+			);
 			return {
 				success: false,
-				error: "Resend email service not configured",
+				error: "Cloudflare email service not configured",
 			};
 		}
 
 		try {
 			const headers: Record<string, string> = {
 				"Content-Type": "application/json",
-				Authorization: `Bearer ${apiKey}`,
+				Authorization: `Bearer ${apiToken}`,
 				"User-Agent": "civic-observatory/1.0",
 			};
-			if (args.idempotencyKey) {
-				headers["Idempotency-Key"] = args.idempotencyKey;
+
+			const emailHeaders: Record<string, string> = {};
+			if (args.deliveryKey) {
+				emailHeaders["X-Civic-Delivery-Key"] = args.deliveryKey;
 			}
 
-			const response = await fetch(RESEND_EMAILS_URL, {
-				method: "POST",
-				headers,
-				body: JSON.stringify({
-					from: `${FROM_NAME} <${FROM_ADDRESS}>`,
-					to: [args.to],
-					subject: args.subject,
-					html: args.html,
-					text: htmlToText(args.html),
-					...(args.replyTo ? { reply_to: args.replyTo } : {}),
-					tags: [
-						{
-							name: "category",
-							value: "alert_delivery",
+			const response = await fetch(
+				`${CLOUDFLARE_API_BASE}/accounts/${accountId}/email/sending/send`,
+				{
+					method: "POST",
+					headers,
+					body: JSON.stringify({
+						from: {
+							address: FROM_ADDRESS,
+							name: FROM_NAME,
 						},
-					],
-				}),
-			});
+						to: args.to,
+						subject: args.subject,
+						html: args.html,
+						text: htmlToText(args.html),
+						...(args.replyTo ? { reply_to: args.replyTo } : {}),
+						...(Object.keys(emailHeaders).length > 0
+							? { headers: emailHeaders }
+							: {}),
+					}),
+				},
+			);
 
 			if (!response.ok) {
-				const errorMessage = await resendErrorMessage(response);
-				console.error(`Resend API error (${response.status}):`, errorMessage);
+				const errorMessage = await cloudflareErrorMessage(response);
+				console.error(
+					`Cloudflare Email API error (${response.status}):`,
+					errorMessage,
+				);
 				return {
 					success: false,
-					error: `Resend API error: ${response.status} ${errorMessage}`,
+					error: `Cloudflare Email API error: ${response.status} ${errorMessage}`,
 				};
 			}
 
-			const data = (await response.json()) as {
-				id?: string;
-			};
-			if (!data.id) {
+			const data = (await response.json()) as CloudflareEmailResponse;
+			if (data.success === false) {
+				const errorMessage = cloudflareErrors(data) || "send failed";
+				console.error("Cloudflare Email send failed:", errorMessage);
 				return {
 					success: false,
-					error: "Resend API response missing email id",
+					error: `Cloudflare Email API error: ${errorMessage}`,
 				};
 			}
-			return { success: true, id: data.id };
+
+			if (cloudflarePermanentBounce(data, args.to)) {
+				return {
+					success: false,
+					error: "Cloudflare Email API reported permanent bounce",
+				};
+			}
+
+			const acceptedId = cloudflareAcceptedId(data);
+			if (!acceptedId) {
+				return {
+					success: false,
+					error: "Cloudflare Email API response missing accepted recipient",
+				};
+			}
+
+			return { success: true, id: acceptedId };
 		} catch (error) {
 			const errorMessage =
 				error instanceof Error ? error.message : "Unknown error";
@@ -231,7 +258,7 @@ export const sendImmediateAlert = internalAction({
 				to: user.email,
 				subject,
 				html,
-				idempotencyKey: `alert/${alert._id}`,
+				deliveryKey: `alert/${alert._id}`,
 			},
 		);
 
@@ -323,7 +350,7 @@ export const sendDailyDigest = internalAction({
 					to: user.email,
 					subject,
 					html,
-					idempotencyKey: digestIdempotencyKey(
+					deliveryKey: digestDeliveryKey(
 						"daily",
 						user._id.toString(),
 						alertIds.map((id) => id.toString()),
@@ -445,7 +472,7 @@ export const sendWeeklyDigest = internalAction({
 					to: user.email,
 					subject,
 					html,
-					idempotencyKey: digestIdempotencyKey(
+					deliveryKey: digestDeliveryKey(
 						"weekly",
 						user._id.toString(),
 						alertIds.map((id) => id.toString()),
@@ -547,7 +574,7 @@ function emailSourceUrl(
 	return summarySource || undefined;
 }
 
-function digestIdempotencyKey(
+function digestDeliveryKey(
 	frequency: "daily" | "weekly",
 	userId: string,
 	alertIds: string[],
@@ -564,19 +591,33 @@ function hashString(value: string): string {
 	return (hash >>> 0).toString(36);
 }
 
-async function resendErrorMessage(response: Response): Promise<string> {
+type CloudflareEmailResponse = {
+	success?: boolean;
+	errors?: Array<{ code?: number; message?: string }>;
+	message_id?: string;
+	delivered?: string[];
+	queued?: string[];
+	permanent_bounces?: string[];
+	result?: {
+		message_id?: string;
+		delivered?: string[];
+		queued?: string[];
+		permanent_bounces?: string[];
+	} | null;
+};
+
+async function cloudflareErrorMessage(response: Response): Promise<string> {
 	try {
 		const text = await response.text();
 		if (!text) return "send failed";
 
 		try {
-			const data = JSON.parse(text) as {
+			const data = JSON.parse(text) as CloudflareEmailResponse & {
 				message?: string;
-				error?: string | { message?: string };
 			};
+			const errorMessage = cloudflareErrors(data);
+			if (errorMessage) return errorMessage;
 			if (typeof data.message === "string") return data.message;
-			if (typeof data.error === "string") return data.error;
-			if (data.error?.message) return data.error.message;
 		} catch {
 			return text;
 		}
@@ -585,4 +626,45 @@ async function resendErrorMessage(response: Response): Promise<string> {
 	} catch {
 		return "send failed";
 	}
+}
+
+function cloudflareErrors(data: CloudflareEmailResponse): string {
+	return (
+		data.errors
+			?.map((error) => error.message)
+			.filter((message): message is string => Boolean(message))
+			.join("; ") ?? ""
+	);
+}
+
+function cloudflareAcceptedId(
+	data: CloudflareEmailResponse,
+): string | undefined {
+	return (
+		data.result?.message_id ??
+		data.message_id ??
+		data.result?.queued?.[0] ??
+		data.queued?.[0] ??
+		data.result?.delivered?.[0] ??
+		data.delivered?.[0]
+	);
+}
+
+function cloudflarePermanentBounce(
+	data: CloudflareEmailResponse,
+	recipient: string,
+): boolean {
+	const bounces = [
+		...(data.result?.permanent_bounces ?? []),
+		...(data.permanent_bounces ?? []),
+	];
+	if (!bounces.includes(recipient)) return false;
+
+	const acceptedRecipients = [
+		...(data.result?.queued ?? []),
+		...(data.queued ?? []),
+		...(data.result?.delivered ?? []),
+		...(data.delivered ?? []),
+	];
+	return !acceptedRecipients.includes(recipient);
 }
