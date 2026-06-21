@@ -60,6 +60,8 @@ const ALERT_FREQUENCIES = [
 	},
 ] as const;
 
+const EMPTY_TOPIC_FILTERS: string[] = [];
+
 interface Subscription {
 	_id: Id<"subscriptions">;
 	userId: Id<"users">;
@@ -79,6 +81,7 @@ interface SubscriptionModalProps {
 	municipalityId: Id<"municipalities">;
 	municipalityName: string;
 	existingSubscription?: Subscription | null;
+	defaultTopicFilters?: string[];
 }
 
 export function SubscriptionModal({
@@ -87,6 +90,7 @@ export function SubscriptionModal({
 	municipalityId,
 	municipalityName,
 	existingSubscription,
+	defaultTopicFilters = EMPTY_TOPIC_FILTERS,
 }: SubscriptionModalProps) {
 	// Generate unique IDs for form elements
 	const baseId = useId();
@@ -104,6 +108,7 @@ export function SubscriptionModal({
 	const [keywordsExclude, setKeywordsExclude] = useState("");
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [isDeleting, setIsDeleting] = useState(false);
+	const defaultTopicFilterKey = defaultTopicFilters.join("|");
 
 	// Get user tier to check for immediate alerts
 	const user = useQuery(api.functions.users.queries.current, {});
@@ -135,14 +140,14 @@ export function SubscriptionModal({
 			);
 		} else {
 			// Reset to defaults for new subscription
-			setSelectedTopics([]);
+			setSelectedTopics(defaultTopicFilterKey ? defaultTopicFilters : []);
 			setSelectedMeetingTypes([]);
 			setAlertFrequency("daily");
 			setEmailEnabled(true);
 			setKeywordsInclude("");
 			setKeywordsExclude("");
 		}
-	}, [existingSubscription]);
+	}, [existingSubscription, defaultTopicFilterKey, defaultTopicFilters]);
 
 	const handleTopicToggle = (topic: string) => {
 		setSelectedTopics((prev) =>

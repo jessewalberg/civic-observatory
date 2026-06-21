@@ -29,6 +29,13 @@ export function Header() {
 					>
 						Explore
 					</Link>
+					<Link
+						to="/search"
+						search={{ q: undefined }}
+						className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+					>
+						Search
+					</Link>
 					{isSignedIn ? (
 						<>
 							<Link

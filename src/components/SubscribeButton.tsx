@@ -14,6 +14,7 @@ interface SubscribeButtonProps {
 	variant?: "default" | "outline" | "ghost";
 	size?: "default" | "sm" | "lg" | "icon";
 	className?: string;
+	defaultTopicFilters?: string[];
 }
 
 export function SubscribeButton({
@@ -23,6 +24,7 @@ export function SubscribeButton({
 	variant = "outline",
 	size = "default",
 	className,
+	defaultTopicFilters,
 }: SubscribeButtonProps) {
 	const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -86,6 +88,7 @@ export function SubscribeButton({
 				municipalityId={municipalityId}
 				municipalityName={municipalityName}
 				existingSubscription={subscription}
+				defaultTopicFilters={defaultTopicFilters}
 			/>
 		</>
 	);

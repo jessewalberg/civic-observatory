@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import type { Id } from "../../_generated/dataModel";
+import type { Doc, Id } from "../../_generated/dataModel";
 import { type QueryCtx, query } from "../../_generated/server";
 import { getCurrentUser } from "../../lib/auth";
 import { isCoveragePublic } from "../municipalities/coveragePublication";
@@ -115,6 +115,32 @@ export const listSummariesByTopics = query({
 	},
 });
 
+export const searchPublicSummaries = query({
+	args: {
+		query: v.optional(v.string()),
+		limit: v.optional(v.number()),
+	},
+	handler: async (ctx, args) => {
+		return await listPublicSummaryResults(ctx, {
+			query: args.query,
+			limit: args.limit,
+		});
+	},
+});
+
+export const listPublicTopicFeed = query({
+	args: {
+		topic: v.string(),
+		limit: v.optional(v.number()),
+	},
+	handler: async (ctx, args) => {
+		return await listPublicSummaryResults(ctx, {
+			topic: canonicalTopic(args.topic),
+			limit: args.limit,
+		});
+	},
+});
+
 async function canReadInternalCoverage(ctx: QueryCtx): Promise<boolean> {
 	const caller = await getCurrentUser(ctx);
 	return Boolean(caller?.isAdmin);
@@ -131,4 +157,169 @@ async function isMeetingVisible(
 	if (!municipality) return false;
 	if (isCoveragePublic(municipality)) return true;
 	return await canReadInternalCoverage(ctx);
+}
+
+type PublicSummaryResult = {
+	meetingId: Id<"meetings">;
+	meetingSlug?: string;
+	title: string;
+	meetingDate: number;
+	meetingType: Doc<"meetings">["meetingType"];
+	status: Doc<"meetings">["status"];
+	summaryId: Id<"summaries">;
+	summarySnippet: string;
+	topics: string[];
+	municipality: {
+		id: Id<"municipalities">;
+		slug?: string;
+		name: string;
+		state: string;
+	};
+};
+
+async function listPublicSummaryResults(
+	ctx: QueryCtx,
+	args: {
+		query?: string;
+		topic?: string;
+		limit?: number;
+	},
+): Promise<PublicSummaryResult[]> {
+	const limit = Math.min(Math.max(args.limit ?? 20, 1), 50);
+	const normalizedQuery = normalizeSearchText(args.query ?? "");
+	const normalizedTopic = args.topic ? canonicalTopic(args.topic) : null;
+	const summaries = await ctx.db.query("summaries").collect();
+
+	const results: Array<PublicSummaryResult | null> = await Promise.all(
+		summaries.map(async (summary) => {
+			const meeting = await ctx.db.get(summary.meetingId);
+			if (!meeting || meeting.status !== "summarized") return null;
+
+			const municipality = await ctx.db.get(meeting.municipalityId);
+			if (!municipality || !isCoveragePublic(municipality)) return null;
+
+			if (
+				normalizedTopic &&
+				!summary.topics.some(
+					(topic) => canonicalTopic(topic) === normalizedTopic,
+				)
+			) {
+				return null;
+			}
+
+			const searchableText = summarySearchText({
+				summary,
+				meeting,
+				municipality,
+			});
+			if (normalizedQuery && !searchableText.includes(normalizedQuery)) {
+				return null;
+			}
+
+			return {
+				meetingId: meeting._id,
+				meetingSlug: meeting.slug,
+				title: meeting.title,
+				meetingDate: meeting.meetingDate,
+				meetingType: meeting.meetingType,
+				status: meeting.status,
+				summaryId: summary._id,
+				summarySnippet: summarySnippet(summary, normalizedQuery),
+				topics: summary.topics,
+				municipality: {
+					id: municipality._id,
+					slug: municipality.slug,
+					name: municipality.name,
+					state: municipality.state,
+				},
+			};
+		}),
+	);
+
+	return results
+		.filter((result): result is PublicSummaryResult => Boolean(result))
+		.sort((a, b) => b.meetingDate - a.meetingDate)
+		.slice(0, limit);
+}
+
+function summarySearchText({
+	summary,
+	meeting,
+	municipality,
+}: {
+	summary: Doc<"summaries">;
+	meeting: Doc<"meetings">;
+	municipality: Doc<"municipalities">;
+}): string {
+	return normalizeSearchText(
+		[
+			municipality.name,
+			municipality.state,
+			meeting.title,
+			meeting.meetingType,
+			summary.executiveSummary,
+			...summary.topics,
+			...summary.keyDecisions.map(
+				(decision) => `${decision.title} ${decision.description}`,
+			),
+			...summary.discussionTopics.map(
+				(topic) => `${topic.topic} ${topic.summary} ${topic.category}`,
+			),
+			...(summary.publicComments
+				? [summary.publicComments.summary, ...summary.publicComments.themes]
+				: []),
+			...summary.upcomingItems.map((item) => item.title),
+		].join(" "),
+	);
+}
+
+function summarySnippet(summary: Doc<"summaries">, query: string): string {
+	const text = summary.executiveSummary.trim();
+	if (!text) return "";
+	if (!query) return truncate(text, 220);
+
+	const normalizedText = normalizeSearchText(text);
+	const index = normalizedText.indexOf(query);
+	if (index === -1) return truncate(text, 220);
+
+	const start = Math.max(0, index - 80);
+	const end = Math.min(text.length, index + query.length + 140);
+	const prefix = start > 0 ? "..." : "";
+	const suffix = end < text.length ? "..." : "";
+	return `${prefix}${text.slice(start, end).trim()}${suffix}`;
+}
+
+function truncate(value: string, maxLength: number): string {
+	if (value.length <= maxLength) return value;
+	return `${value.slice(0, maxLength - 3).trim()}...`;
+}
+
+function canonicalTopic(value: string): string {
+	const normalized = normalizeSearchText(value).replaceAll(" ", "-");
+	const aliases: Record<string, string> = {
+		"budget-finance": "budget",
+		budgets: "budget",
+		finance: "budget",
+		schools: "education",
+		school: "education",
+		education: "education",
+		"public-safety": "safety",
+		safety: "safety",
+		police: "safety",
+		"housing-development": "housing",
+		development: "housing",
+		planning: "zoning",
+		"zoning-planning": "zoning",
+		transit: "transportation",
+	};
+	return aliases[normalized] ?? normalized;
+}
+
+function normalizeSearchText(value: string): string {
+	return value
+		.toLowerCase()
+		.replace(/&/g, " ")
+		.replace(/[^a-z0-9]+/g, " ")
+		.trim()
+		.replace(/\s+/g, " ");
 }
