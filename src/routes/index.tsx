@@ -1,3 +1,4 @@
+import { useUser } from "@clerk/tanstack-react-start";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
 	ArrowRight,
@@ -16,6 +17,7 @@ import { motion } from "motion/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { getLandingSetupCta } from "@/lib/landingConversion";
 import { canonicalLink, generateHomeJsonLd } from "@/lib/seo";
 
 export const Route = createFileRoute("/")({
@@ -84,6 +86,9 @@ const audiences = [
 ];
 
 function LandingPage() {
+	const { isSignedIn } = useUser();
+	const primarySetupCta = getLandingSetupCta(isSignedIn);
+
 	return (
 		<div className="min-h-screen bg-background text-foreground overflow-hidden">
 			{/* Animated background */}
@@ -173,10 +178,10 @@ function LandingPage() {
 								transition={{ delay: 0.4 }}
 							>
 								<Button size="lg" className="gap-2 text-base px-8" asChild>
-									<Link to="/explore">
-										Explore Meetings
+									<a href={primarySetupCta.href}>
+										{primarySetupCta.label}
 										<ArrowRight className="h-4 w-4" />
-									</Link>
+									</a>
 								</Button>
 								<Button
 									size="lg"
@@ -465,10 +470,10 @@ function LandingPage() {
 								</p>
 								<div className="flex flex-wrap justify-center gap-4">
 									<Button size="lg" className="gap-2 text-base px-10" asChild>
-										<Link to="/explore">
-											Explore Meetings
+										<a href={primarySetupCta.href}>
+											{primarySetupCta.label}
 											<ArrowRight className="h-4 w-4" />
-										</Link>
+										</a>
 									</Button>
 									<Button
 										size="lg"

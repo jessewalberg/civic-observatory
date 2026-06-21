@@ -17,6 +17,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { buildCoverageRequestHref } from "@/lib/landingConversion";
 import { canonicalLink } from "@/lib/seo";
 import { api } from "../../../convex/_generated/api";
 
@@ -177,6 +178,10 @@ function ExplorePage() {
 	};
 
 	const hasActiveFilters = searchQuery.trim() || selectedState;
+	const coverageRequestHref = buildCoverageRequestHref({
+		query: searchQuery,
+		state: selectedState,
+	});
 
 	return (
 		<div className="min-h-screen bg-background">
@@ -342,11 +347,16 @@ function ExplorePage() {
 									? `No municipalities are available in ${selectedState} yet.`
 									: "No municipalities are available yet."}
 						</p>
-						{hasActiveFilters && (
-							<Button variant="outline" onClick={clearFilters}>
-								Clear filters
+						<div className="flex flex-wrap items-center justify-center gap-3">
+							{hasActiveFilters && (
+								<Button variant="outline" onClick={clearFilters}>
+									Clear filters
+								</Button>
+							)}
+							<Button asChild>
+								<a href={coverageRequestHref}>Request coverage</a>
 							</Button>
-						)}
+						</div>
 					</motion.div>
 				)}
 
