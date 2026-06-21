@@ -74,7 +74,7 @@ function NotificationBadge() {
 
 	const unreadCount = useQuery(
 		api.functions.alerts.queries.getUnreadCount,
-		convexUser ? { userId: convexUser._id } : "skip",
+		convexUser ? {} : "skip",
 	);
 
 	return (

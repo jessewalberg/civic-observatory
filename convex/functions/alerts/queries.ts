@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internalQuery, query } from "../../_generated/server";
+import { getCurrentUser } from "../../lib/auth";
 
 // ═══════════════════════════════════════════════════════════════
 // GET BY ID - Get a single alert with full details
@@ -9,8 +10,12 @@ export const getById = query({
 		alertId: v.id("alerts"),
 	},
 	handler: async (ctx, args) => {
+		const user = await getCurrentUser(ctx);
+		if (!user) return null;
+
 		const alert = await ctx.db.get(args.alertId);
 		if (!alert) return null;
+		if (alert.userId !== user._id) return null;
 
 		// Get related data
 		const [meeting, summary, subscription] = await Promise.all([
@@ -63,7 +68,6 @@ export const getById = query({
 // ═══════════════════════════════════════════════════════════════
 export const listByUser = query({
 	args: {
-		userId: v.id("users"),
 		limit: v.optional(v.number()),
 		status: v.optional(
 			v.union(
@@ -76,11 +80,14 @@ export const listByUser = query({
 		),
 	},
 	handler: async (ctx, args) => {
+		const user = await getCurrentUser(ctx);
+		if (!user) return [];
+
 		const limit = args.limit ?? 50;
 
 		const alertsQuery = ctx.db
 			.query("alerts")
-			.withIndex("by_user", (q) => q.eq("userId", args.userId))
+			.withIndex("by_user", (q) => q.eq("userId", user._id))
 			.order("desc");
 
 		const alerts = await alertsQuery.take(limit);
@@ -128,13 +135,22 @@ export const listByUser = query({
 // COUNT BY USER - Get alert counts for a user
 // ═══════════════════════════════════════════════════════════════
 export const countByUser = query({
-	args: {
-		userId: v.id("users"),
-	},
-	handler: async (ctx, args) => {
+	args: {},
+	handler: async (ctx) => {
+		const user = await getCurrentUser(ctx);
+		if (!user) {
+			return {
+				total: 0,
+				pending: 0,
+				sent: 0,
+				failed: 0,
+				unread: 0,
+			};
+		}
+
 		const alerts = await ctx.db
 			.query("alerts")
-			.withIndex("by_user", (q) => q.eq("userId", args.userId))
+			.withIndex("by_user", (q) => q.eq("userId", user._id))
 			.collect();
 
 		return {
@@ -151,13 +167,14 @@ export const countByUser = query({
 // GET UNREAD COUNT - Get count of unread sent alerts for header badge
 // ═══════════════════════════════════════════════════════════════
 export const getUnreadCount = query({
-	args: {
-		userId: v.id("users"),
-	},
-	handler: async (ctx, args) => {
+	args: {},
+	handler: async (ctx) => {
+		const user = await getCurrentUser(ctx);
+		if (!user) return 0;
+
 		const alerts = await ctx.db
 			.query("alerts")
-			.withIndex("by_user", (q) => q.eq("userId", args.userId))
+			.withIndex("by_user", (q) => q.eq("userId", user._id))
 			.collect();
 
 		// Count sent alerts that haven't been read
@@ -170,16 +187,18 @@ export const getUnreadCount = query({
 // ═══════════════════════════════════════════════════════════════
 export const getFeed = query({
 	args: {
-		userId: v.id("users"),
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
+		const user = await getCurrentUser(ctx);
+		if (!user) return [];
+
 		const limit = args.limit ?? 20;
 
 		// Get sent alerts ordered by most recent
 		const alerts = await ctx.db
 			.query("alerts")
-			.withIndex("by_user", (q) => q.eq("userId", args.userId))
+			.withIndex("by_user", (q) => q.eq("userId", user._id))
 			.order("desc")
 			.take(limit * 2); // Take more to filter
 
