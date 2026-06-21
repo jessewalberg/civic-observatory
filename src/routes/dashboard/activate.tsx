@@ -34,6 +34,7 @@ import { buildCoverageRequestHref } from "@/lib/landingConversion";
 import { NOINDEX_ROBOTS } from "@/lib/seo";
 import { requireAuth } from "@/lib/serverAuth";
 import { MEETING_TYPE_OPTIONS, TOPIC_OPTIONS } from "@/lib/subscriptionOptions";
+import { buildSubscriptionPreview } from "@/lib/subscriptionPreview";
 import { cn } from "@/lib/utils";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -151,6 +152,16 @@ function ActivationPage() {
 		query: searchQuery,
 		state: selectedState,
 	});
+	const activationPreview = selectedMunicipality
+		? buildSubscriptionPreview({
+				municipalityName: selectedMunicipality.name,
+				selectedTopics,
+				selectedMeetingTypes,
+				alertFrequency: "daily",
+				emailEnabled: true,
+				userTier: user.tier,
+			})
+		: null;
 	const isCheckingSelectedSubscription =
 		Boolean(selectedMunicipality) && existingSubscription === undefined;
 	const canOpenSubscriptionModal =
@@ -171,6 +182,14 @@ function ActivationPage() {
 				? current.filter((value) => value !== meetingType)
 				: [...current, meetingType],
 		);
+	};
+	const handleSearchQueryChange = (value: string) => {
+		setSearchQuery(value);
+		setSelectedMunicipalityId(null);
+	};
+	const handleStateChange = (value: string) => {
+		setSelectedState(value === "all" ? "" : value);
+		setSelectedMunicipalityId(null);
 	};
 
 	return (
@@ -214,15 +233,15 @@ function ActivationPage() {
 											type="search"
 											placeholder="Search covered municipalities"
 											value={searchQuery}
-											onChange={(event) => setSearchQuery(event.target.value)}
+											onChange={(event) =>
+												handleSearchQueryChange(event.target.value)
+											}
 											className="pl-9"
 										/>
 									</div>
 									<Select
 										value={selectedState || "all"}
-										onValueChange={(value) =>
-											setSelectedState(value === "all" ? "" : value)
-										}
+										onValueChange={handleStateChange}
 									>
 										<SelectTrigger className="w-full md:w-[220px]">
 											<MapPin className="mr-2 h-4 w-4 text-muted-foreground" />
@@ -413,6 +432,19 @@ function ActivationPage() {
 											? `${selectedMeetingTypes.length} meeting type filters`
 											: "All meeting types"}
 									</p>
+									{activationPreview && (
+										<div className="mt-4 rounded-md bg-muted/40 p-3">
+											<p className="text-sm font-medium text-foreground">
+												{activationPreview.title}
+											</p>
+											<p className="mt-1 text-sm text-muted-foreground">
+												{activationPreview.body}
+											</p>
+											<p className="mt-2 text-xs text-muted-foreground">
+												{activationPreview.delivery}
+											</p>
+										</div>
+									)}
 								</div>
 								{selectedMunicipality && isCheckingSelectedSubscription ? (
 									<Button className="mt-5 w-full" disabled>

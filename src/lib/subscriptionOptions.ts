@@ -38,11 +38,6 @@ export type MeetingTypeValue = (typeof MEETING_TYPE_OPTIONS)[number]["value"];
 export type AlertFrequency = (typeof ALERT_FREQUENCY_OPTIONS)[number]["value"];
 export type UserTier = "free" | "pro";
 
-export const MEETING_TYPE_LABELS = {
-	city_council: "City Council",
-	school_board: "School Board",
-	planning_commission: "Planning Commission",
-	zoning_board: "Zoning Board",
-	budget_committee: "Budget Committee",
-	other: "Other",
-} satisfies Record<MeetingTypeValue, string>;
+export const MEETING_TYPE_LABELS = Object.fromEntries(
+	MEETING_TYPE_OPTIONS.map(({ value, label }) => [value, label]),
+) as Record<MeetingTypeValue, string>;
