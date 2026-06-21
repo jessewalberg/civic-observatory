@@ -192,6 +192,58 @@ describe("coverage publication integration", () => {
 		});
 	});
 
+	it("bounds public municipality list and search results for activation pickers", async () => {
+		const t = setup();
+		const alphaId = await seedMunicipality(t, {
+			name: "Alpha Falls",
+			slug: "alpha-falls-connecticut",
+			state: "Connecticut",
+			coverageStatus: "published",
+		});
+		await seedMunicipality(t, {
+			name: "Beta Falls",
+			slug: "beta-falls-connecticut",
+			state: "Connecticut",
+			coverageStatus: "published",
+		});
+		const rhodeIslandId = await seedMunicipality(t, {
+			name: "Gamma Falls",
+			slug: "gamma-falls-rhode-island",
+			state: "Rhode Island",
+			coverageStatus: "published",
+		});
+		await seedMunicipality(t, {
+			name: "Hidden Falls",
+			slug: "hidden-falls-rhode-island",
+			state: "Rhode Island",
+			coverageStatus: "paused",
+		});
+
+		const limitedList = await t.query(
+			api.functions.municipalities.queries.list,
+			{
+				state: "Connecticut",
+				activeOnly: true,
+				limit: 1,
+			},
+		);
+		expect(limitedList.map((municipality) => municipality._id)).toEqual([
+			alphaId,
+		]);
+
+		const stateFilteredSearch = await t.query(
+			api.functions.municipalities.queries.search,
+			{
+				query: "Falls",
+				state: "Rhode Island",
+				limit: 5,
+			},
+		);
+		expect(stateFilteredSearch.map((municipality) => municipality._id)).toEqual(
+			[rhodeIslandId],
+		);
+	});
+
 	it("blocks subscriptions and alert candidates for unpublished or paused coverage", async () => {
 		const t = setup();
 		const userId = await seedUser(t);
@@ -291,6 +343,7 @@ async function seedMunicipality(
 	overrides: Partial<{
 		name: string;
 		slug: string;
+		state: string;
 		coverageStatus: "published" | "unpublished" | "paused";
 		isActive: boolean;
 		isVerified: boolean;
@@ -299,7 +352,7 @@ async function seedMunicipality(
 	return await t.run(async (ctx) =>
 		ctx.db.insert("municipalities", {
 			name: overrides.name ?? "Validation Falls",
-			state: "Connecticut",
+			state: overrides.state ?? "Connecticut",
 			slug: overrides.slug,
 			meetingsPageUrl: "https://example.test/agendas",
 			platform: "civicplus",
