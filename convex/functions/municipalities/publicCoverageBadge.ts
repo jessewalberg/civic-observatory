@@ -14,6 +14,19 @@ type CoverageBadgeMunicipality = {
 	lastScrapeStatus?: ScrapeStatus | null;
 };
 
+type PublicMunicipalityFields = CoverageBadgeMunicipality & {
+	_id: unknown;
+	_creationTime: number;
+	name: string;
+	state: string;
+	slug?: string;
+	county?: string;
+	population?: number;
+	timezone?: string;
+	websiteUrl?: string;
+	lastScrapedAt?: number | null;
+};
+
 const DEFAULT_FREQUENCY_HOURS = 24;
 const STALE_MULTIPLIER = 2;
 
@@ -108,20 +121,36 @@ export function withPublicCoverageBadge<T extends CoverageBadgeMunicipality>(
 }
 
 export function toSafePublicMunicipality<
-	T extends CoverageBadgeMunicipality & { lastScrapeError?: string | null },
+	T extends PublicMunicipalityFields & { lastScrapeError?: string | null },
 >(
 	municipality: T,
 	now = Date.now(),
-): Omit<T, "lastScrapeError"> & {
-	lastScrapeError?: never;
-	coverageBadge: PublicCoverageBadge;
-} {
-	const { lastScrapeError: _lastScrapeError, ...safeMunicipality } =
-		municipality;
+): T & { coverageBadge: PublicCoverageBadge } {
 	return {
-		...safeMunicipality,
+		_id: municipality._id,
+		_creationTime: municipality._creationTime,
+		name: municipality.name,
+		state: municipality.state,
+		...(municipality.slug !== undefined ? { slug: municipality.slug } : {}),
+		...(municipality.county !== undefined
+			? { county: municipality.county }
+			: {}),
+		...(municipality.population !== undefined
+			? { population: municipality.population }
+			: {}),
+		...(municipality.timezone !== undefined
+			? { timezone: municipality.timezone }
+			: {}),
+		...(municipality.websiteUrl !== undefined
+			? { websiteUrl: municipality.websiteUrl }
+			: {}),
+		...(municipality.lastScrapedAt !== undefined
+			? { lastScrapedAt: municipality.lastScrapedAt }
+			: {}),
+		isActive: municipality.isActive,
+		isVerified: municipality.isVerified,
 		coverageBadge: buildPublicCoverageBadge(municipality, now),
-	};
+	} as T & { coverageBadge: PublicCoverageBadge };
 }
 
 function getLatestHealth(

@@ -269,7 +269,16 @@ export const getRecent = query({
 					? includeInternal || isCoveragePublic(municipality)
 					: false,
 			)
-			.slice(0, limit);
+			.slice(0, limit)
+			.map(({ municipality, ...meeting }) => ({
+				...meeting,
+				municipality:
+					municipality && includeInternal
+						? withPublicCoverageBadge(municipality)
+						: municipality
+							? toSafePublicMunicipality(municipality)
+							: null,
+			}));
 	},
 });
 
