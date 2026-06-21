@@ -1,4 +1,4 @@
-export const SUBSCRIPTION_SETUP_PATH = "/dashboard/subscriptions";
+export const SUBSCRIPTION_SETUP_PATH = "/dashboard/activate";
 export const SIGN_UP_SETUP_PATH = "/sign-up/setup";
 export const SIGN_IN_SETUP_PATH = "/sign-in/setup";
 export const COVERAGE_REQUEST_EMAIL = "support@civicobservatory.com";

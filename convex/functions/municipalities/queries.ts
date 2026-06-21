@@ -6,6 +6,9 @@ import { buildMunicipalityCoverageHealth } from "./coverageHealth";
 import { getCoverageStatus, isCoveragePublic } from "./coveragePublication";
 import { buildMunicipalityOnboardingChecklist } from "./onboardingChecklist";
 
+const DEFAULT_SEARCH_LIMIT = 10;
+const MAX_RESULT_LIMIT = 100;
+
 // ═══════════════════════════════════════════════════════════════
 // LIST - All municipalities with optional state filter
 // ═══════════════════════════════════════════════════════════════
@@ -13,9 +16,11 @@ export const list = query({
 	args: {
 		state: v.optional(v.string()),
 		activeOnly: v.optional(v.boolean()),
+		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		const includeInternal = await canReadInternalCoverage(ctx);
+		const limit = clampResultLimit(args.limit, Number.POSITIVE_INFINITY);
 		// Filter by state if provided
 		const allMunicipalities = args.state
 			? await ctx.db
@@ -31,7 +36,9 @@ export const list = query({
 			return isCoveragePublic(municipality);
 		});
 
-		return filtered.sort((a, b) => a.name.localeCompare(b.name));
+		return filtered
+			.sort((a, b) => a.name.localeCompare(b.name))
+			.slice(0, limit);
 	},
 });
 
@@ -155,6 +162,7 @@ export const getWithMeetings = query({
 export const search = query({
 	args: {
 		query: v.string(),
+		state: v.optional(v.string()),
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
@@ -162,7 +170,7 @@ export const search = query({
 			return [];
 		}
 
-		const limit = args.limit ?? 10;
+		const limit = clampResultLimit(args.limit, DEFAULT_SEARCH_LIMIT);
 
 		const results = await ctx.db
 			.query("municipalities")
@@ -173,6 +181,9 @@ export const search = query({
 		return results
 			.filter((municipality) =>
 				includeInternal ? true : isCoveragePublic(municipality),
+			)
+			.filter((municipality) =>
+				args.state ? municipality.state === args.state : true,
 			)
 			.slice(0, limit);
 	},
@@ -539,6 +550,11 @@ function onboardingStatusRank(status: string): number {
 		completed: 3,
 	};
 	return rank[status] ?? 4;
+}
+
+function clampResultLimit(limit: number | undefined, fallback: number): number {
+	if (limit === undefined) return fallback;
+	return Math.max(1, Math.min(Math.floor(limit), MAX_RESULT_LIMIT));
 }
 
 async function canReadInternalCoverage(ctx: QueryCtx): Promise<boolean> {

@@ -21,46 +21,17 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import {
+	ALERT_FREQUENCY_OPTIONS,
+	MEETING_TYPE_OPTIONS,
+	TOPIC_OPTIONS,
+	type UserTier,
+} from "@/lib/subscriptionOptions";
+import { buildSubscriptionPreview } from "@/lib/subscriptionPreview";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 
-const MEETING_TYPES = [
-	{ value: "city_council", label: "City Council" },
-	{ value: "school_board", label: "School Board" },
-	{ value: "planning_commission", label: "Planning Commission" },
-	{ value: "zoning_board", label: "Zoning Board" },
-	{ value: "budget_committee", label: "Budget Committee" },
-	{ value: "other", label: "Other" },
-] as const;
-
-const TOPIC_CATEGORIES = [
-	"Budget & Finance",
-	"Housing & Development",
-	"Public Safety",
-	"Education",
-	"Transportation",
-	"Environment",
-	"Parks & Recreation",
-	"Utilities",
-	"Zoning",
-	"Health & Human Services",
-];
-
-const ALERT_FREQUENCIES = [
-	{
-		value: "immediate",
-		label: "Immediate",
-		description: "Get notified as soon as summaries are ready",
-	},
-	{ value: "daily", label: "Daily Digest", description: "Once per day at 8am" },
-	{
-		value: "weekly",
-		label: "Weekly Digest",
-		description: "Once per week on Mondays",
-	},
-] as const;
-
-const EMPTY_TOPIC_FILTERS: string[] = [];
+const EMPTY_FILTERS: string[] = [];
 
 interface Subscription {
 	_id: Id<"subscriptions">;
@@ -82,6 +53,8 @@ interface SubscriptionModalProps {
 	municipalityName: string;
 	existingSubscription?: Subscription | null;
 	defaultTopicFilters?: string[];
+	defaultMeetingTypes?: string[];
+	userTier?: UserTier;
 }
 
 export function SubscriptionModal({
@@ -90,7 +63,9 @@ export function SubscriptionModal({
 	municipalityId,
 	municipalityName,
 	existingSubscription,
-	defaultTopicFilters = EMPTY_TOPIC_FILTERS,
+	defaultTopicFilters = EMPTY_FILTERS,
+	defaultMeetingTypes = EMPTY_FILTERS,
+	userTier,
 }: SubscriptionModalProps) {
 	// Generate unique IDs for form elements
 	const baseId = useId();
@@ -109,10 +84,15 @@ export function SubscriptionModal({
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [isDeleting, setIsDeleting] = useState(false);
 	const defaultTopicFilterKey = defaultTopicFilters.join("|");
+	const defaultMeetingTypeKey = defaultMeetingTypes.join("|");
 
-	// Get user tier to check for immediate alerts
-	const user = useQuery(api.functions.users.queries.current, {});
-	const canUseImmediate = user?.tier === "pro";
+	// Get user tier to check for immediate alerts when a parent cannot pass it.
+	const queriedUser = useQuery(
+		api.functions.users.queries.current,
+		userTier ? "skip" : {},
+	);
+	const resolvedUserTier = userTier ?? queriedUser?.tier;
+	const canUseImmediate = resolvedUserTier === "pro";
 
 	// Mutations
 	const createSubscription = useMutation(
@@ -141,13 +121,28 @@ export function SubscriptionModal({
 		} else {
 			// Reset to defaults for new subscription
 			setSelectedTopics(defaultTopicFilterKey ? defaultTopicFilters : []);
-			setSelectedMeetingTypes([]);
+			setSelectedMeetingTypes(defaultMeetingTypeKey ? defaultMeetingTypes : []);
 			setAlertFrequency("daily");
 			setEmailEnabled(true);
 			setKeywordsInclude("");
 			setKeywordsExclude("");
 		}
-	}, [existingSubscription, defaultTopicFilterKey, defaultTopicFilters]);
+	}, [
+		existingSubscription,
+		defaultTopicFilterKey,
+		defaultTopicFilters,
+		defaultMeetingTypeKey,
+		defaultMeetingTypes,
+	]);
+
+	const preview = buildSubscriptionPreview({
+		municipalityName,
+		selectedTopics,
+		selectedMeetingTypes,
+		alertFrequency,
+		emailEnabled,
+		userTier: resolvedUserTier,
+	});
 
 	const handleTopicToggle = (topic: string) => {
 		setSelectedTopics((prev) =>
@@ -258,7 +253,7 @@ export function SubscriptionModal({
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
-								{ALERT_FREQUENCIES.map((freq) => (
+								{ALERT_FREQUENCY_OPTIONS.map((freq) => (
 									<SelectItem
 										key={freq.value}
 										value={freq.value}
@@ -292,7 +287,7 @@ export function SubscriptionModal({
 							all.
 						</p>
 						<div className="grid grid-cols-2 gap-2">
-							{MEETING_TYPES.map((type) => (
+							{MEETING_TYPE_OPTIONS.map((type) => (
 								<label
 									key={type.value}
 									htmlFor={`${baseId}-meeting-type-${type.value}`}
@@ -322,7 +317,7 @@ export function SubscriptionModal({
 							topics.
 						</p>
 						<div className="grid grid-cols-2 gap-2">
-							{TOPIC_CATEGORIES.map((topic) => (
+							{TOPIC_OPTIONS.map((topic) => (
 								<label
 									key={topic}
 									htmlFor={`${baseId}-topic-${topic}`}
@@ -385,6 +380,22 @@ export function SubscriptionModal({
 								</p>
 							</div>
 						</div>
+					</div>
+
+					{/* Alert Preview */}
+					<div className="rounded-md border border-border bg-muted/30 p-3">
+						<p className="text-sm font-medium text-foreground">
+							{preview.title}
+						</p>
+						<p className="mt-1 text-sm text-muted-foreground">{preview.body}</p>
+						<p className="mt-2 text-xs text-muted-foreground">
+							{preview.delivery}
+						</p>
+						{preview.proNotice && (
+							<p className="mt-2 text-xs font-medium text-primary">
+								{preview.proNotice}
+							</p>
+						)}
 					</div>
 
 					{/* Email Toggle */}

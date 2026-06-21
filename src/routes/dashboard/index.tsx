@@ -218,10 +218,10 @@ function EmptyFeed() {
 			<p className="text-muted-foreground mb-4">
 				Subscribe to municipalities to get notified about new meeting summaries.
 			</p>
-			<a href="/explore">
+			<a href="/dashboard/activate">
 				<Button>
 					<Plus className="h-4 w-4 mr-2" />
-					Browse Municipalities
+					Set Up Alerts
 				</Button>
 			</a>
 		</div>

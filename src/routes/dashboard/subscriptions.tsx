@@ -146,7 +146,7 @@ function SubscriptionsContent() {
 								preferences.
 							</p>
 						</div>
-						<a href="/explore">
+						<a href="/dashboard/activate">
 							<Button>
 								<Plus className="h-4 w-4 mr-2" />
 								Add New
@@ -199,10 +199,10 @@ function SubscriptionsContent() {
 									Subscribe to municipalities to get notified about new meeting
 									summaries.
 								</p>
-								<a href="/explore">
+								<a href="/dashboard/activate">
 									<Button>
 										<Plus className="h-4 w-4 mr-2" />
-										Browse Municipalities
+										Set Up Alerts
 									</Button>
 								</a>
 							</div>
@@ -363,6 +363,7 @@ function SubscriptionsContent() {
 					municipalityId={editingSubscription.municipalityId}
 					municipalityName={editingSubscription.municipality?.name ?? "Unknown"}
 					existingSubscription={editingSubscription}
+					userTier={user.tier}
 				/>
 			)}
 		</div>
