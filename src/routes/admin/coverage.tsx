@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import {
 	AlertCircle,
 	ArrowDown,
@@ -9,13 +9,17 @@ import {
 	CheckCircle2,
 	ClipboardCheck,
 	Clock,
+	Eye,
+	EyeOff,
 	FileText,
 	Loader2,
+	PauseCircle,
 	Search,
 	Shield,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -47,6 +51,9 @@ import {
 import { requireAuth } from "@/lib/serverAuth";
 import { cn } from "@/lib/utils";
 import { api } from "../../../convex/_generated/api";
+import type { Id } from "../../../convex/_generated/dataModel";
+
+type CoverageStatus = "published" | "unpublished" | "paused";
 
 type OnboardingChecklistRow = {
 	municipality: {
@@ -55,6 +62,10 @@ type OnboardingChecklistRow = {
 		state: string;
 		meetingsPageUrl?: string | null;
 		platform: "granicus" | "civicplus" | "generic" | "manual";
+		coverageStatus?: CoverageStatus;
+		coverageStatusReason?: string | null;
+		coverageStatusOverrideReason?: string | null;
+		coverageStatusUpdatedAt?: number | null;
 		isActive: boolean;
 		isVerified: boolean;
 	};
@@ -105,6 +116,12 @@ function CoverageContent() {
 		api.functions.municipalities.queries.listOnboardingChecklists,
 		{},
 	) as OnboardingChecklistRow[] | null | undefined;
+	const setCoverageStatus = useMutation(
+		api.functions.municipalities.mutations.setCoverageStatus,
+	);
+	const [coverageUpdatingIds, setCoverageUpdatingIds] = useState<Set<string>>(
+		() => new Set(),
+	);
 	const [filters, setFilters] = useState<CoverageDashboardFilters>({
 		healthState: "all",
 		platform: "all",
@@ -146,6 +163,69 @@ function CoverageContent() {
 			direction:
 				current.key === key && current.direction === "asc" ? "desc" : "asc",
 		}));
+	};
+
+	const handleCoverageStatusChange = async ({
+		municipalityId,
+		municipalityName,
+		status,
+	}: {
+		municipalityId: string;
+		municipalityName: string;
+		status: CoverageStatus;
+	}) => {
+		const reason = window.prompt(
+			status === "published"
+				? "Publish reason (optional)"
+				: `Reason for ${status} coverage (optional)`,
+		);
+		if (reason === null) return;
+
+		const id = municipalityId as Id<"municipalities">;
+		const reasonText = reason.trim() || undefined;
+		setCoverageUpdatingIds((current) => new Set(current).add(municipalityId));
+
+		try {
+			try {
+				await setCoverageStatus({
+					id,
+					status,
+					reason: reasonText,
+				});
+			} catch (error) {
+				const message =
+					error instanceof Error ? error.message : "Failed to update coverage";
+				if (status !== "published" || !/validation.*override/i.test(message)) {
+					throw error;
+				}
+
+				const overrideReason = window.prompt(
+					"Override reason required to publish without a passing validation",
+				);
+				if (!overrideReason?.trim()) {
+					throw error;
+				}
+
+				await setCoverageStatus({
+					id,
+					status,
+					reason: reasonText ?? "Operator override",
+					overrideReason: overrideReason.trim(),
+				});
+			}
+
+			toast.success(`${municipalityName} coverage ${status}`);
+		} catch (error) {
+			const message =
+				error instanceof Error ? error.message : "Failed to update coverage";
+			toast.error(message);
+		} finally {
+			setCoverageUpdatingIds((current) => {
+				const next = new Set(current);
+				next.delete(municipalityId);
+				return next;
+			});
+		}
 	};
 
 	if (coverageRows === undefined || onboardingChecklists === undefined) {
@@ -365,19 +445,21 @@ function CoverageContent() {
 									<TableRow>
 										<TableHead>Municipality</TableHead>
 										<TableHead>Status</TableHead>
+										<TableHead>Visibility</TableHead>
 										<TableHead>Source</TableHead>
 										<TableHead>Platform</TableHead>
 										<TableHead>Test Scrape</TableHead>
 										<TableHead>Summary</TableHead>
 										<TableHead>Publish</TableHead>
 										<TableHead>Next Action</TableHead>
+										<TableHead className="text-right">Controls</TableHead>
 									</TableRow>
 								</TableHeader>
 								<TableBody>
 									{nextChecklistRows.length === 0 ? (
 										<TableRow>
 											<TableCell
-												colSpan={8}
+												colSpan={10}
 												className="text-center py-8 text-muted-foreground"
 											>
 												No active onboarding checklist items.
@@ -398,6 +480,11 @@ function CoverageContent() {
 												</TableCell>
 												<TableCell>
 													<OnboardingStatusBadge status={row.overallStatus} />
+												</TableCell>
+												<TableCell>
+													<CoverageStatusBadge
+														status={coverageStatusFor(row.municipality)}
+													/>
 												</TableCell>
 												{[
 													"source_url",
@@ -428,6 +515,21 @@ function CoverageContent() {
 													<span className="text-sm text-foreground">
 														{row.nextAction ?? "Ready"}
 													</span>
+												</TableCell>
+												<TableCell className="min-w-[260px] text-right">
+													<CoverageStatusControls
+														status={coverageStatusFor(row.municipality)}
+														disabled={coverageUpdatingIds.has(
+															row.municipality.id,
+														)}
+														onChange={(status) =>
+															handleCoverageStatusChange({
+																municipalityId: row.municipality.id,
+																municipalityName: row.municipality.name,
+																status,
+															})
+														}
+													/>
 												</TableCell>
 											</TableRow>
 										))
@@ -605,6 +707,7 @@ function CoverageContent() {
 											sort={sort}
 											onSort={updateSort}
 										/>
+										<TableHead>Visibility</TableHead>
 										<SortableHead
 											label="Platform"
 											sortKey="platform"
@@ -641,13 +744,14 @@ function CoverageContent() {
 											sort={sort}
 											onSort={updateSort}
 										/>
+										<TableHead className="text-right">Controls</TableHead>
 									</TableRow>
 								</TableHeader>
 								<TableBody>
 									{rows.length === 0 ? (
 										<TableRow>
 											<TableCell
-												colSpan={8}
+												colSpan={10}
 												className="text-center py-10 text-muted-foreground"
 											>
 												No backend coverage data yet.
@@ -656,7 +760,7 @@ function CoverageContent() {
 									) : visibleRows.length === 0 ? (
 										<TableRow>
 											<TableCell
-												colSpan={8}
+												colSpan={10}
 												className="text-center py-10 text-muted-foreground"
 											>
 												No municipalities match these filters.
@@ -678,6 +782,11 @@ function CoverageContent() {
 												</TableCell>
 												<TableCell>
 													<HealthBadge state={row.health.state} />
+												</TableCell>
+												<TableCell>
+													<CoverageStatusBadge
+														status={coverageStatusFor(row.municipality)}
+													/>
 												</TableCell>
 												<TableCell>
 													<Badge
@@ -747,6 +856,21 @@ function CoverageContent() {
 															None
 														</span>
 													)}
+												</TableCell>
+												<TableCell className="min-w-[260px] text-right">
+													<CoverageStatusControls
+														status={coverageStatusFor(row.municipality)}
+														disabled={coverageUpdatingIds.has(
+															row.municipality.id,
+														)}
+														onChange={(status) =>
+															handleCoverageStatusChange({
+																municipalityId: row.municipality.id,
+																municipalityName: row.municipality.name,
+																status,
+															})
+														}
+													/>
 												</TableCell>
 											</TableRow>
 										))
@@ -888,6 +1012,81 @@ function OnboardingStatusBadge({
 			{short ? config[status].shortLabel : config[status].label}
 		</Badge>
 	);
+}
+
+function CoverageStatusBadge({ status }: { status: CoverageStatus }) {
+	const config: Record<
+		CoverageStatus,
+		{ label: string; variant: React.ComponentProps<typeof Badge>["variant"] }
+	> = {
+		published: { label: "Published", variant: "success" },
+		unpublished: { label: "Unpublished", variant: "secondary" },
+		paused: { label: "Paused", variant: "warning" },
+	};
+
+	return (
+		<Badge
+			variant={config[status].variant}
+			className="text-xs whitespace-nowrap"
+		>
+			{config[status].label}
+		</Badge>
+	);
+}
+
+function CoverageStatusControls({
+	status,
+	disabled,
+	onChange,
+}: {
+	status: CoverageStatus;
+	disabled: boolean;
+	onChange: (status: CoverageStatus) => void;
+}) {
+	const actions: Array<{
+		status: CoverageStatus;
+		label: string;
+		icon: React.ComponentType<{ className?: string }>;
+	}> = [
+		{ status: "published", label: "Publish", icon: Eye },
+		{ status: "paused", label: "Pause", icon: PauseCircle },
+		{ status: "unpublished", label: "Unpublish", icon: EyeOff },
+	];
+
+	return (
+		<div className="inline-flex items-center justify-end gap-1">
+			{actions.map((action) => {
+				const Icon = action.icon;
+				const isCurrent = action.status === status;
+				return (
+					<Button
+						key={action.status}
+						type="button"
+						size="sm"
+						variant={isCurrent ? "secondary" : "outline"}
+						disabled={disabled || isCurrent}
+						onClick={() => onChange(action.status)}
+						title={action.label}
+						className="h-8"
+					>
+						<Icon className="h-3.5 w-3.5 mr-1.5" />
+						{action.label}
+					</Button>
+				);
+			})}
+		</div>
+	);
+}
+
+function coverageStatusFor(municipality: {
+	coverageStatus?: CoverageStatus;
+	isActive: boolean;
+	isVerified: boolean;
+}): CoverageStatus {
+	if (municipality.coverageStatus) return municipality.coverageStatus;
+	return municipality.isActive && municipality.isVerified
+		? "published"
+		: "unpublished";
 }
 
 function MetricLine({ label, value }: { label: string; value: number }) {

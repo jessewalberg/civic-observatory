@@ -21,7 +21,8 @@ export type SubscriptionMatchSkipReason =
 	| "excluded_keyword"
 	| "included_keyword"
 	| "tier"
-	| "duplicate";
+	| "duplicate"
+	| "coverage_status";
 
 export type SubscriptionMatchResult =
 	| {

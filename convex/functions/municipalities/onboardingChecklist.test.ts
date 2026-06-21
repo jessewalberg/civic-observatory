@@ -112,7 +112,7 @@ describe("municipality onboarding checklist", () => {
 			first_summary: "completed",
 			publish_state: "next-action",
 		});
-		expect(checklist.nextAction).toBe("Publish or verify coverage");
+		expect(checklist.nextAction).toBe("Publish coverage");
 	});
 });
 

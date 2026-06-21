@@ -1,5 +1,8 @@
 import { v } from "convex/values";
-import { query } from "../../_generated/server";
+import type { Id } from "../../_generated/dataModel";
+import { type QueryCtx, query } from "../../_generated/server";
+import { getCurrentUser } from "../../lib/auth";
+import { isCoveragePublic } from "../municipalities/coveragePublication";
 
 // ═══════════════════════════════════════════════════════════════
 // SUMMARIES QUERIES
@@ -20,7 +23,8 @@ export const getSummaryByMeeting = query({
 			.withIndex("by_meeting", (q) => q.eq("meetingId", args.meetingId))
 			.first();
 
-		return summary;
+		if (!summary) return null;
+		return (await isMeetingVisible(ctx, args.meetingId)) ? summary : null;
 	},
 });
 
@@ -35,7 +39,7 @@ export const getRecentSummaries = query({
 	handler: async (ctx, args) => {
 		const limit = args.limit ?? 10;
 
-		const summaries = await ctx.db.query("summaries").order("desc").take(limit);
+		const summaries = await ctx.db.query("summaries").order("desc").collect();
 
 		// Enrich with meeting and municipality data
 		const enriched = await Promise.all(
@@ -53,7 +57,14 @@ export const getRecentSummaries = query({
 			}),
 		);
 
-		return enriched;
+		const includeInternal = await canReadInternalCoverage(ctx);
+		return enriched
+			.filter(({ municipality }) =>
+				municipality
+					? includeInternal || isCoveragePublic(municipality)
+					: false,
+			)
+			.slice(0, limit);
 	},
 });
 
@@ -72,7 +83,27 @@ export const listSummariesByTopics = query({
 		const allSummaries = await ctx.db.query("summaries").collect();
 
 		// Filter summaries that contain any of the requested topics
-		const matching = allSummaries.filter((summary) =>
+		const includeInternal = await canReadInternalCoverage(ctx);
+		const visibleSummaries = (
+			await Promise.all(
+				allSummaries.map(async (summary) => {
+					const meeting = await ctx.db.get(summary.meetingId);
+					const municipality = meeting
+						? await ctx.db.get(meeting.municipalityId)
+						: null;
+					if (
+						!municipality ||
+						(!includeInternal && !isCoveragePublic(municipality))
+					) {
+						return null;
+					}
+					return summary;
+				}),
+			)
+		).filter((summary): summary is (typeof allSummaries)[number] =>
+			Boolean(summary),
+		);
+		const matching = visibleSummaries.filter((summary) =>
 			args.topics.some((topic) =>
 				summary.topics
 					.map((t) => t.toLowerCase())
@@ -83,3 +114,21 @@ export const listSummariesByTopics = query({
 		return matching.sort((a, b) => b.createdAt - a.createdAt).slice(0, limit);
 	},
 });
+
+async function canReadInternalCoverage(ctx: QueryCtx): Promise<boolean> {
+	const caller = await getCurrentUser(ctx);
+	return Boolean(caller?.isAdmin);
+}
+
+async function isMeetingVisible(
+	ctx: QueryCtx,
+	meetingId: Id<"meetings">,
+): Promise<boolean> {
+	const meeting = await ctx.db.get(meetingId);
+	if (!meeting) return false;
+
+	const municipality = await ctx.db.get(meeting.municipalityId);
+	if (!municipality) return false;
+	if (isCoveragePublic(municipality)) return true;
+	return await canReadInternalCoverage(ctx);
+}

@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import type { Doc } from "../../_generated/dataModel";
 import { internalQuery, type QueryCtx, query } from "../../_generated/server";
 import { getCurrentUser } from "../../lib/auth";
+import { isCoveragePublic } from "../municipalities/coveragePublication";
 
 const STALE_QUEUED_THRESHOLD_MS = 30 * 60 * 1000;
 const DELIVERY_HEALTH_SCAN_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
@@ -439,6 +440,7 @@ export const getPendingByFrequency = internalQuery({
 			if (!meeting) continue;
 
 			const municipality = await ctx.db.get(meeting.municipalityId);
+			if (!municipality || !isCoveragePublic(municipality)) continue;
 
 			// Get summary
 			const summary = await ctx.db.get(alert.summaryId);
@@ -458,14 +460,12 @@ export const getPendingByFrequency = internalQuery({
 					meetingDate: meeting.meetingDate,
 					sourceUrl: meeting.sourceUrl,
 				},
-				municipality: municipality
-					? {
-							_id: municipality._id,
-							slug: municipality.slug,
-							name: municipality.name,
-							state: municipality.state,
-						}
-					: null,
+				municipality: {
+					_id: municipality._id,
+					slug: municipality.slug,
+					name: municipality.name,
+					state: municipality.state,
+				},
 				summary: summary
 					? {
 							_id: summary._id,
@@ -541,6 +541,8 @@ export const getPendingForUserDigest = internalQuery({
 			if (!meeting) continue;
 
 			const municipality = await ctx.db.get(meeting.municipalityId);
+			if (!municipality || !isCoveragePublic(municipality)) continue;
+
 			const summary = await ctx.db.get(alert.summaryId);
 
 			const userId = user._id.toString();
@@ -562,13 +564,11 @@ export const getPendingForUserDigest = internalQuery({
 					meetingDate: meeting.meetingDate,
 					sourceUrl: meeting.sourceUrl,
 				},
-				municipality: municipality
-					? {
-							name: municipality.name,
-							state: municipality.state,
-							slug: municipality.slug,
-						}
-					: null,
+				municipality: {
+					name: municipality.name,
+					state: municipality.state,
+					slug: municipality.slug,
+				},
 				summary: summary
 					? {
 							executiveSummary: summary.executiveSummary,

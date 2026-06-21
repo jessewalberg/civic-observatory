@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { mutation } from "../../_generated/server";
 import { getCurrentUser } from "../../lib/auth";
 import { SUBSCRIPTION_LIMITS } from "../../lib/constants/limits";
+import { isCoveragePublic } from "../municipalities/coveragePublication";
 
 // ═══════════════════════════════════════════════════════════════
 // CREATE - Create a new subscription with limit check
@@ -55,6 +56,11 @@ export const create = mutation({
 		const municipality = await ctx.db.get(args.municipalityId);
 		if (!municipality) {
 			throw new Error("Municipality not found");
+		}
+		if (!isCoveragePublic(municipality)) {
+			throw new Error(
+				"This municipality is not accepting subscriptions until coverage is published.",
+			);
 		}
 
 		// Check if user can use immediate alerts (Pro only)
