@@ -251,6 +251,7 @@ interface MeetingData {
 		name: string;
 		state: string;
 		slug?: string;
+		lastScrapedAt?: number;
 	} | null;
 }
 
@@ -834,6 +835,9 @@ type SummaryMetadataMeeting = {
 	contentHash?: string | null;
 	processingError?: string | null;
 	updatedAt?: number | null;
+	municipality?: {
+		lastScrapedAt?: number | null;
+	} | null;
 	summary: {
 		modelUsed?: string | null;
 		promptVersion?: string | null;
@@ -856,6 +860,9 @@ export function SummaryMetadataPanel({
 
 	const trust = getMeetingSourceTrust(meeting);
 	const reviewStatus = aiReviewStatusLabel(meeting.summary.status);
+	const lastCheckedAt = meeting.municipality?.lastScrapedAt ?? null;
+	const fallbackUpdatedAt = meeting.updatedAt ?? null;
+	const checkedOrUpdatedAt = lastCheckedAt ?? fallbackUpdatedAt;
 	const rows = [
 		{ label: "AI review status", value: reviewStatus },
 		{ label: "Model", value: meeting.summary.modelUsed },
@@ -876,10 +883,10 @@ export function SummaryMetadataPanel({
 		},
 		{ label: "Source type", value: trust.sourceTypeLabel },
 		{
-			label: "Source updated",
+			label: lastCheckedAt ? "Last checked" : "Record updated",
 			value:
-				typeof meeting.updatedAt === "number"
-					? formatDate(meeting.updatedAt)
+				typeof checkedOrUpdatedAt === "number"
+					? formatDate(checkedOrUpdatedAt)
 					: null,
 		},
 	].filter((row): row is { label: string; value: string } =>

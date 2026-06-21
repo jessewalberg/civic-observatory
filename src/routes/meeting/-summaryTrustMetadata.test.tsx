@@ -25,7 +25,7 @@ describe("meeting summary trust metadata", () => {
 		expect(screen.getByText("June 15")).toBeDefined();
 		expect(screen.getByText("Source type")).toBeDefined();
 		expect(screen.getByText("Scraped public record")).toBeDefined();
-		expect(screen.getByText("Source updated")).toBeDefined();
+		expect(screen.getByText("Last checked")).toBeDefined();
 		expect(screen.getByText("June 16")).toBeDefined();
 	});
 });
@@ -62,5 +62,6 @@ const meetingWithSummaryMetadata = {
 		_id: "municipality_1",
 		name: "Coventry",
 		state: "CT",
+		lastScrapedAt: Date.UTC(2026, 5, 16, 12),
 	},
 } as const;
