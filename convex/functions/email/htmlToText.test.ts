@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { htmlToText } from "./actions";
 
-describe("htmlToText (Cloudflare Email text fallback)", () => {
+describe("htmlToText (transactional email text fallback)", () => {
 	it("strips tags and decodes basic entities", () => {
 		const html = "<h1>Hi</h1><p>Meeting at 5&nbsp;PM &amp; later</p>";
 		const text = htmlToText(html);

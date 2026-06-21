@@ -167,6 +167,7 @@ interface MeetingData {
 		};
 	}>;
 	meetingUrl: string;
+	sourceUrl?: string;
 }
 
 interface EmailParams {
@@ -241,6 +242,11 @@ function renderKeyDecisions(decisions: MeetingData["keyDecisions"]): string {
 }
 
 function renderMeetingCard(meeting: MeetingData): string {
+	const sourceHref = safeSourceHref(meeting.sourceUrl);
+	const sourceLink = sourceHref
+		? `<a href="${escapeHtmlAttribute(sourceHref)}" class="btn btn-outline" style="margin-left: 8px;">View Source</a>`
+		: "";
+
 	return `
     <div class="meeting-card">
       <h3 class="meeting-title">${meeting.title}</h3>
@@ -254,8 +260,32 @@ function renderMeetingCard(meeting: MeetingData): string {
       </div>
       ${renderKeyDecisions(meeting.keyDecisions)}
       <a href="${meeting.meetingUrl}" class="btn">View Full Summary</a>
+      ${sourceLink}
     </div>
   `;
+}
+
+function safeSourceHref(sourceUrl: string | undefined): string | undefined {
+	const trimmed = sourceUrl?.trim();
+	if (!trimmed) return undefined;
+
+	try {
+		const url = new URL(trimmed);
+		return url.protocol === "http:" || url.protocol === "https:"
+			? url.href
+			: undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+function escapeHtmlAttribute(value: string): string {
+	return value
+		.replace(/&/g, "&amp;")
+		.replace(/"/g, "&quot;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/'/g, "&#39;");
 }
 
 // ═══════════════════════════════════════════════════════════════
