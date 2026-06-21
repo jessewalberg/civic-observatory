@@ -138,6 +138,7 @@ function AlertDeliveryHealthContent() {
 	}
 
 	const filteredCount = health.alerts.length;
+	const scanWindowDays = Math.round(health.scanWindowMs / 86_400_000);
 
 	return (
 		<div className="min-h-screen bg-background">
@@ -167,6 +168,10 @@ function AlertDeliveryHealthContent() {
 						<p className="text-muted-foreground">
 							Email alert queue, retry, and failure state across active delivery
 							rows.
+						</p>
+						<p className="text-xs text-muted-foreground mt-2">
+							Counts inspect up to {health.scanLimit} alert rows from the last{" "}
+							{scanWindowDays} days.
 						</p>
 					</div>
 
@@ -231,7 +236,11 @@ function AlertDeliveryHealthContent() {
 									Recent Delivery Rows
 								</h2>
 								<p className="text-xs text-muted-foreground mt-1">
-									{filteredCount} shown of {health.counts.total} total.
+									{filteredCount} shown of {health.scannedAlertCount} inspected
+									from the last {scanWindowDays} days.
+									{health.isScanCapped
+										? ` Scan capped at ${health.scanLimit} rows.`
+										: ""}{" "}
 									Generated {formatRelativeTime(health.generatedAt)}.
 								</p>
 							</div>

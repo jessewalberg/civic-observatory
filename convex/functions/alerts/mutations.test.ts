@@ -850,6 +850,82 @@ describe("admin alert delivery health", () => {
 		});
 	});
 
+	it("bounds delivery health scans to a recent inspection window", async () => {
+		const t = setup();
+		const now = Date.now();
+		await seedUser(t, {
+			clerkUserId: "user_delivery_window_admin",
+			email: "admin@example.test",
+			isAdmin: true,
+		});
+		await seedDeliveryAlert(t, {
+			status: "sent",
+			sentAt: now - 31 * 24 * 60 * 60 * 1000,
+			createdAt: now - 31 * 24 * 60 * 60 * 1000,
+		});
+		const recentFailedId = await seedDeliveryAlert(t, {
+			status: "failed",
+			deliveryFailureKind: "permanent",
+			deliveryError: "Sender domain not verified",
+			createdAt: now - 60 * 1000,
+		});
+		const asAdmin = t.withIdentity({
+			subject: "user_delivery_window_admin",
+			issuer: ISSUER,
+			email: "admin@example.test",
+		});
+
+		const health = await asAdmin.query(
+			api.functions.alerts.queries.getDeliveryHealth,
+			{ limit: 10 },
+		);
+
+		expect(health).toMatchObject({
+			scanWindowMs: 30 * 24 * 60 * 60 * 1000,
+			scanLimit: 5000,
+			scannedAlertCount: 1,
+			isScanCapped: false,
+			counts: {
+				total: 1,
+				sent: 0,
+				failed: 1,
+			},
+			alerts: [expect.objectContaining({ _id: recentFailedId })],
+		});
+		expect(health?.scanWindowStartedAt).toBeLessThanOrEqual(now);
+	});
+
+	it("reports when the delivery health scan reaches its cap", async () => {
+		const t = setup();
+		await seedUser(t, {
+			clerkUserId: "user_delivery_cap_admin",
+			email: "admin@example.test",
+			isAdmin: true,
+		});
+		await seedDeliveryAlert(t, { status: "pending" });
+		await seedDeliveryAlert(t, { status: "queued" });
+		const asAdmin = t.withIdentity({
+			subject: "user_delivery_cap_admin",
+			issuer: ISSUER,
+			email: "admin@example.test",
+		});
+
+		const health = await asAdmin.query(
+			api.functions.alerts.queries.getDeliveryHealth,
+			{ limit: 10, scanLimit: 1 },
+		);
+
+		expect(health).toMatchObject({
+			scanLimit: 1,
+			scannedAlertCount: 1,
+			isScanCapped: true,
+			counts: {
+				total: 1,
+			},
+		});
+		expect(health?.alerts).toHaveLength(1);
+	});
+
 	it("filters failed, retrying, and stale queued delivery rows", async () => {
 		const t = setup();
 		const now = Date.now();
