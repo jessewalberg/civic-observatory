@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-	buildCoverageRequestHref,
 	getLandingSetupCta,
 	isSetupAuthPath,
 	SIGN_UP_SETUP_PATH,
@@ -29,17 +28,5 @@ describe("landing conversion paths", () => {
 		expect(isSetupAuthPath("/sign-in/setup")).toBe(true);
 		expect(isSetupAuthPath("/sign-up")).toBe(false);
 		expect(isSetupAuthPath("/sign-up/anything-else")).toBe(false);
-	});
-
-	it("builds a coverage request mailto for unsupported searches", () => {
-		const href = buildCoverageRequestHref({
-			query: "Coventry",
-			state: "Connecticut",
-		});
-
-		expect(href).toContain("mailto:support@civicobservatory.com");
-		expect(decodeURIComponent(href)).toContain("Coverage request");
-		expect(decodeURIComponent(href)).toContain("Coventry");
-		expect(decodeURIComponent(href)).toContain("Connecticut");
 	});
 });

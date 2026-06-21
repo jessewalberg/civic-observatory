@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { Search } from "lucide-react";
 import { useState } from "react";
+import { CoverageRequestDialog } from "@/components/CoverageRequestDialog";
 import {
 	type PublicSummaryResult,
 	PublicSummaryResultCard,
@@ -46,6 +47,7 @@ export const Route = createFileRoute("/search")({
 function SearchPage() {
 	const search = Route.useSearch();
 	const [query, setQuery] = useState(search.q ?? "");
+	const [isCoverageRequestOpen, setIsCoverageRequestOpen] = useState(false);
 	const user = useConvexUser();
 	const trimmedQuery = query.trim();
 	const results = useQuery(
@@ -106,6 +108,13 @@ function SearchPage() {
 						<p className="mt-2 text-sm text-muted-foreground">
 							Try a broader topic or browse the topic feeds.
 						</p>
+						<Button
+							type="button"
+							className="mt-5"
+							onClick={() => setIsCoverageRequestOpen(true)}
+						>
+							Request coverage
+						</Button>
 					</div>
 				) : (
 					<div className="space-y-4">
@@ -124,6 +133,11 @@ function SearchPage() {
 					</div>
 				)}
 			</section>
+			<CoverageRequestDialog
+				open={isCoverageRequestOpen}
+				onOpenChange={setIsCoverageRequestOpen}
+				defaultMunicipalityName={query}
+			/>
 		</div>
 	);
 }

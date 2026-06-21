@@ -90,6 +90,49 @@ export default defineSchema({
 		.searchIndex("search_name", { searchField: "name" }),
 
 	// ═══════════════════════════════════════════════════════════════
+	// COVERAGE REQUESTS - Demand-driven municipality coverage queue
+	// ═══════════════════════════════════════════════════════════════
+	coverageRequests: defineTable({
+		municipalityName: v.string(),
+		state: v.string(),
+		websiteUrl: v.optional(v.string()),
+		meetingsPageUrl: v.optional(v.string()),
+		requesterEmail: v.string(),
+		requesterUserId: v.optional(v.id("users")),
+		topicInterests: v.array(v.string()),
+		notes: v.optional(v.string()),
+		status: v.union(
+			v.literal("requested"),
+			v.literal("discovered"),
+			v.literal("probed"),
+			v.literal("active"),
+			v.literal("rejected"),
+		),
+		priority: v.union(v.literal("low"), v.literal("medium"), v.literal("high")),
+		statusReason: v.optional(v.string()),
+		seededMunicipalityId: v.optional(v.id("municipalities")),
+		notificationStatus: v.optional(
+			v.union(
+				v.literal("queued"),
+				v.literal("sent"),
+				v.literal("failed"),
+				v.literal("skipped"),
+			),
+		),
+		notificationError: v.optional(v.string()),
+		notifiedAt: v.optional(v.number()),
+		providerMessageId: v.optional(v.string()),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+	})
+		.index("by_status", ["status"])
+		.index("by_priority_status", ["priority", "status"])
+		.index("by_requester_user", ["requesterUserId"])
+		.index("by_state_status", ["state", "status"])
+		.index("by_seeded_municipality", ["seededMunicipalityId"])
+		.index("by_created", ["createdAt"]),
+
+	// ═══════════════════════════════════════════════════════════════
 	// MEETINGS - Raw documents
 	// ═══════════════════════════════════════════════════════════════
 	meetings: defineTable({

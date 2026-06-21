@@ -3,6 +3,7 @@ import { useQuery } from "convex/react";
 import { Building2, MapPin, Search, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useMemo, useState } from "react";
+import { CoverageRequestDialog } from "@/components/CoverageRequestDialog";
 import {
 	MunicipalityCard,
 	MunicipalityCardSkeleton,
@@ -17,8 +18,8 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { buildCoverageRequestHref } from "@/lib/landingConversion";
 import { canonicalLink } from "@/lib/seo";
+import { US_STATES } from "@/lib/usStates";
 import { api } from "../../../convex/_generated/api";
 
 export const Route = createFileRoute("/explore/")({
@@ -57,60 +58,6 @@ export const Route = createFileRoute("/explore/")({
 	}),
 });
 
-// US States for filter dropdown
-const US_STATES = [
-	"Alabama",
-	"Alaska",
-	"Arizona",
-	"Arkansas",
-	"California",
-	"Colorado",
-	"Connecticut",
-	"Delaware",
-	"Florida",
-	"Georgia",
-	"Hawaii",
-	"Idaho",
-	"Illinois",
-	"Indiana",
-	"Iowa",
-	"Kansas",
-	"Kentucky",
-	"Louisiana",
-	"Maine",
-	"Maryland",
-	"Massachusetts",
-	"Michigan",
-	"Minnesota",
-	"Mississippi",
-	"Missouri",
-	"Montana",
-	"Nebraska",
-	"Nevada",
-	"New Hampshire",
-	"New Jersey",
-	"New Mexico",
-	"New York",
-	"North Carolina",
-	"North Dakota",
-	"Ohio",
-	"Oklahoma",
-	"Oregon",
-	"Pennsylvania",
-	"Rhode Island",
-	"South Carolina",
-	"South Dakota",
-	"Tennessee",
-	"Texas",
-	"Utah",
-	"Vermont",
-	"Virginia",
-	"Washington",
-	"West Virginia",
-	"Wisconsin",
-	"Wyoming",
-];
-
 const MUNICIPALITY_SKELETON_KEYS = [
 	"municipality-skeleton-1",
 	"municipality-skeleton-2",
@@ -125,6 +72,7 @@ const MUNICIPALITY_SKELETON_KEYS = [
 function ExplorePage() {
 	const [searchQuery, setSearchQuery] = useState("");
 	const [selectedState, setSelectedState] = useState<string>("");
+	const [isCoverageRequestOpen, setIsCoverageRequestOpen] = useState(false);
 
 	// Fetch municipalities - use search if query exists, otherwise list
 	const searchResults = useQuery(
@@ -178,10 +126,6 @@ function ExplorePage() {
 	};
 
 	const hasActiveFilters = searchQuery.trim() || selectedState;
-	const coverageRequestHref = buildCoverageRequestHref({
-		query: searchQuery,
-		state: selectedState,
-	});
 
 	return (
 		<div className="min-h-screen bg-background">
@@ -353,8 +297,8 @@ function ExplorePage() {
 									Clear filters
 								</Button>
 							)}
-							<Button asChild>
-								<a href={coverageRequestHref}>Request coverage</a>
+							<Button onClick={() => setIsCoverageRequestOpen(true)}>
+								Request coverage
 							</Button>
 						</div>
 					</motion.div>
@@ -390,6 +334,12 @@ function ExplorePage() {
 					</motion.div>
 				)}
 			</div>
+			<CoverageRequestDialog
+				open={isCoverageRequestOpen}
+				onOpenChange={setIsCoverageRequestOpen}
+				defaultMunicipalityName={searchQuery}
+				defaultState={selectedState}
+			/>
 		</div>
 	);
 }

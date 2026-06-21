@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useMemo, useState } from "react";
+import { CoverageRequestDialog } from "@/components/CoverageRequestDialog";
 import { SubscriptionModal } from "@/components/SubscriptionModal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,7 +31,6 @@ import {
 	getActivationFunnelSteps,
 	getSubscriptionLimitState,
 } from "@/lib/activationFlow";
-import { buildCoverageRequestHref } from "@/lib/landingConversion";
 import { NOINDEX_ROBOTS } from "@/lib/seo";
 import { requireAuth } from "@/lib/serverAuth";
 import { MEETING_TYPE_OPTIONS, TOPIC_OPTIONS } from "@/lib/subscriptionOptions";
@@ -68,6 +68,7 @@ function ActivationPage() {
 		[],
 	);
 	const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
+	const [isCoverageRequestOpen, setIsCoverageRequestOpen] = useState(false);
 
 	const user = useQuery(api.functions.users.queries.current, {});
 	const normalizedSearchQuery = searchQuery.trim();
@@ -147,10 +148,6 @@ function ActivationPage() {
 		hasSelectedMunicipality: Boolean(selectedMunicipality),
 		activeSubscriptions: subscriptionCount.active,
 		sentAlerts: alertCounts.sent,
-	});
-	const coverageRequestHref = buildCoverageRequestHref({
-		query: searchQuery,
-		state: selectedState,
 	});
 	const activationPreview = selectedMunicipality
 		? buildSubscriptionPreview({
@@ -273,8 +270,13 @@ function ActivationPage() {
 													: "municipalities"}
 											</p>
 										</div>
-										<Button asChild variant="ghost" size="sm">
-											<a href={coverageRequestHref}>Request coverage</a>
+										<Button
+											type="button"
+											variant="ghost"
+											size="sm"
+											onClick={() => setIsCoverageRequestOpen(true)}
+										>
+											Request coverage
 										</Button>
 									</div>
 								</div>
@@ -290,8 +292,12 @@ function ActivationPage() {
 											Send a coverage request and continue exploring available
 											municipalities.
 										</p>
-										<Button asChild className="mt-5">
-											<a href={coverageRequestHref}>Request coverage</a>
+										<Button
+											type="button"
+											className="mt-5"
+											onClick={() => setIsCoverageRequestOpen(true)}
+										>
+											Request coverage
 										</Button>
 									</div>
 								) : (
@@ -508,6 +514,13 @@ function ActivationPage() {
 					userTier={user.tier}
 				/>
 			)}
+			<CoverageRequestDialog
+				open={isCoverageRequestOpen}
+				onOpenChange={setIsCoverageRequestOpen}
+				defaultMunicipalityName={searchQuery}
+				defaultState={selectedState}
+				defaultTopicInterests={selectedTopics}
+			/>
 		</div>
 	);
 }
