@@ -4,6 +4,9 @@ import { internalQuery, query } from "../../_generated/server";
 import { getCurrentUser } from "../../lib/auth";
 
 const STALE_QUEUED_THRESHOLD_MS = 30 * 60 * 1000;
+const DELIVERY_HEALTH_SCAN_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+const DEFAULT_DELIVERY_HEALTH_SCAN_LIMIT = 5000;
+const MAX_DELIVERY_HEALTH_SCAN_LIMIT = 5000;
 
 // ═══════════════════════════════════════════════════════════════
 // GET BY ID - Get a single alert with full details
@@ -276,6 +279,7 @@ export const getDeliveryHealth = query({
 			),
 		),
 		limit: v.optional(v.number()),
+		scanLimit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		const caller = await getCurrentUser(ctx);
@@ -284,23 +288,21 @@ export const getDeliveryHealth = query({
 		}
 
 		const now = Date.now();
-		const alerts = await ctx.db.query("alerts").collect();
-		const counts = {
-			total: alerts.length,
-			pending: alerts.filter((alert) => alert.status === "pending").length,
-			queued: alerts.filter((alert) => alert.status === "queued").length,
-			staleQueued: alerts.filter((alert) => isStaleQueued(alert, now)).length,
-			sent: alerts.filter((alert) => alert.status === "sent").length,
-			failed: alerts.filter((alert) => alert.status === "failed").length,
-			skipped: alerts.filter((alert) => alert.status === "skipped").length,
-			retryable: alerts.filter(
-				(alert) => alert.deliveryFailureKind === "retryable",
-			).length,
-			permanent: alerts.filter(
-				(alert) => alert.deliveryFailureKind === "permanent",
-			).length,
-			exhausted: alerts.filter((alert) => isExhausted(alert)).length,
-		};
+		const scanWindowStartedAt = now - DELIVERY_HEALTH_SCAN_WINDOW_MS;
+		const scanLimit = clampInteger(
+			args.scanLimit ?? DEFAULT_DELIVERY_HEALTH_SCAN_LIMIT,
+			1,
+			MAX_DELIVERY_HEALTH_SCAN_LIMIT,
+		);
+		const scannedAlerts = await ctx.db
+			.query("alerts")
+			.withIndex("by_created_at", (q) =>
+				q.gte("createdAt", scanWindowStartedAt),
+			)
+			.order("desc")
+			.take(scanLimit + 1);
+		const alerts = scannedAlerts.slice(0, scanLimit);
+		const counts = countDeliveryHealthAlerts(alerts, now);
 
 		const filter = args.filter ?? "all";
 		const limit = Math.min(Math.max(args.limit ?? 50, 1), 200);
@@ -354,6 +356,11 @@ export const getDeliveryHealth = query({
 		return {
 			generatedAt: now,
 			staleQueuedThresholdMs: STALE_QUEUED_THRESHOLD_MS,
+			scanWindowMs: DELIVERY_HEALTH_SCAN_WINDOW_MS,
+			scanWindowStartedAt,
+			scanLimit,
+			scannedAlertCount: alerts.length,
+			isScanCapped: scannedAlerts.length > scanLimit,
 			counts,
 			alerts: alertRows,
 		};
@@ -575,6 +582,37 @@ export const checkDuplicate = internalQuery({
 });
 
 type AlertDoc = Doc<"alerts">;
+
+function countDeliveryHealthAlerts(alerts: AlertDoc[], now: number) {
+	const counts = {
+		total: 0,
+		pending: 0,
+		queued: 0,
+		staleQueued: 0,
+		sent: 0,
+		failed: 0,
+		skipped: 0,
+		retryable: 0,
+		permanent: 0,
+		exhausted: 0,
+	};
+
+	for (const alert of alerts) {
+		counts.total += 1;
+		counts[alert.status] += 1;
+		if (isStaleQueued(alert, now)) counts.staleQueued += 1;
+		if (alert.deliveryFailureKind === "retryable") counts.retryable += 1;
+		if (alert.deliveryFailureKind === "permanent") counts.permanent += 1;
+		if (isExhausted(alert)) counts.exhausted += 1;
+	}
+
+	return counts;
+}
+
+function clampInteger(value: number, min: number, max: number): number {
+	if (!Number.isFinite(value)) return min;
+	return Math.min(Math.max(Math.floor(value), min), max);
+}
 
 function isStaleQueued(alert: AlertDoc, now: number): boolean {
 	if (alert.status !== "queued") return false;
