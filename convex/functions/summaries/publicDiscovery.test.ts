@@ -81,6 +81,46 @@ describe("public summary discovery", () => {
 		]);
 		expect(results[0]?.topics).toEqual(["education", "transportation"]);
 	});
+
+	it("orders public discovery results by meeting date and applies limits after coverage gating", async () => {
+		const t = setup();
+		const publishedId = await seedMunicipality(t, {
+			name: "Date Falls",
+			coverageStatus: "published",
+		});
+		const hiddenId = await seedMunicipality(t, {
+			name: "Hidden Date Falls",
+			coverageStatus: "paused",
+		});
+		await seedSummaryBundle(t, publishedId, {
+			title: "Old budget hearing",
+			topics: ["budget"],
+			executiveSummary: "Older public summary.",
+			meetingDate: NOW - 2 * 86_400_000,
+		});
+		await seedSummaryBundle(t, hiddenId, {
+			title: "Newest hidden budget hearing",
+			topics: ["budget"],
+			executiveSummary: "Hidden summary should not consume the result limit.",
+			meetingDate: NOW + 86_400_000,
+		});
+		await seedSummaryBundle(t, publishedId, {
+			title: "Newest public budget hearing",
+			topics: ["budget"],
+			executiveSummary: "Newest visible summary.",
+			meetingDate: NOW,
+		});
+
+		const results = await t.query(
+			api.functions.summaries.queries.searchPublicSummaries,
+			{ limit: 2 },
+		);
+
+		expect(results.map((result) => result.title)).toEqual([
+			"Newest public budget hearing",
+			"Old budget hearing",
+		]);
+	});
 });
 
 async function seedMunicipality(
@@ -113,6 +153,7 @@ async function seedSummaryBundle(
 		title: string;
 		topics: string[];
 		executiveSummary: string;
+		meetingDate?: number;
 	},
 ) {
 	const meetingId = await t.run(async (ctx) =>
@@ -121,7 +162,7 @@ async function seedSummaryBundle(
 			title: overrides.title,
 			slug: overrides.title.toLowerCase().replaceAll(" ", "-"),
 			meetingType: "school_board",
-			meetingDate: NOW,
+			meetingDate: overrides.meetingDate ?? NOW,
 			sourceUrl: "https://example.test/agenda.pdf",
 			sourceType: "scraped",
 			status: "summarized",
@@ -153,7 +194,7 @@ async function seedSummaryBundle(
 			promptVersion: "test-prompt",
 			processingTimeMs: 1000,
 			municipalityId,
-			meetingDate: NOW,
+			meetingDate: overrides.meetingDate ?? NOW,
 			sourceUrl: "https://example.test/agenda.pdf",
 			sourceType: "scraped",
 			status: "summarized",
