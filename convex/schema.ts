@@ -6,10 +6,9 @@ export default defineSchema({
 	// USERS - Synced from Clerk
 	// ═══════════════════════════════════════════════════════════════
 	users: defineTable({
-		// clerkUserId is the Clerk subject (identity key). workosUserId is a
-		// dead WorkOS-era column kept optional so existing rows validate; it has
-		// no code references or index after Phase 6 and can be dropped once any
-		// remaining rows are cleared (a one-shot data migration).
+		// clerkUserId is the Clerk subject. workosUserId is a legacy column kept
+		// optional so existing rows validate; it has no index and can be dropped
+		// once remaining rows are cleared.
 		clerkUserId: v.optional(v.string()),
 		workosUserId: v.optional(v.string()),
 		email: v.string(),

@@ -6,7 +6,7 @@ import { api } from "../../convex/_generated/api";
 /**
  * Ensures the signed-in Clerk user has a Convex `users` row before any
  * identity-derived query/mutation needs it (dashboard feed, usage, admin
- * bootstrap). Replaces the deleted WorkOS `/api/auth/callback` upsert.
+ * bootstrap).
  *
  * Gated on `useConvexAuth().isAuthenticated` so it fires only after the Convex
  * WebSocket auth handshake (firing during the brief post-sign-in window would

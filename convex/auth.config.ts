@@ -8,8 +8,7 @@ const clerkJwtIssuerDomain =
 // set AND a Clerk JWT template named "convex"; until both exist no Clerk JWTs
 // validate and ctx.auth.getUserIdentity() returns null (so identity-gated
 // functions deny). The placeholder issuer is intentionally non-real so missing
-// configuration fails closed. Clerk is the only auth provider (WorkOS removed
-// in Phase 6).
+// configuration fails closed. Clerk is the only auth provider.
 export default {
 	providers: [
 		{
