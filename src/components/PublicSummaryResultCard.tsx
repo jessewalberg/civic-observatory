@@ -9,6 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { meetingPath, municipalityPath } from "@/lib/publicUrls";
 import type { Id } from "../../convex/_generated/dataModel";
+import {
+	CoverageReliabilityBadge,
+	type PublicCoverageBadge,
+} from "./CoverageReliabilityBadge";
 import { SubscribeButton } from "./SubscribeButton";
 
 type MeetingType =
@@ -41,6 +45,7 @@ export type PublicSummaryResult = {
 		slug?: string;
 		name: string;
 		state: string;
+		coverageBadge?: PublicCoverageBadge;
 	};
 };
 
@@ -113,6 +118,12 @@ export function PublicSummaryResultCard({
 							<MapPin className="h-3.5 w-3.5" />
 							{result.municipality.name}, {result.municipality.state}
 						</Link>
+						{result.municipality.coverageBadge && (
+							<CoverageReliabilityBadge
+								badge={result.municipality.coverageBadge}
+								className="mt-2"
+							/>
+						)}
 					</div>
 
 					<p className="text-sm leading-6 text-muted-foreground">

@@ -3,6 +3,11 @@ import type { Doc, Id } from "../../_generated/dataModel";
 import { type QueryCtx, query } from "../../_generated/server";
 import { getCurrentUser } from "../../lib/auth";
 import { isCoveragePublic } from "../municipalities/coveragePublication";
+import {
+	buildPublicCoverageBadge,
+	toSafePublicMunicipality,
+	withPublicCoverageBadge,
+} from "../municipalities/publicCoverageBadge";
 
 // ═══════════════════════════════════════════════════════════════
 // SUMMARIES QUERIES
@@ -40,6 +45,7 @@ export const getRecentSummaries = query({
 		const limit = args.limit ?? 10;
 
 		const summaries = await ctx.db.query("summaries").order("desc").collect();
+		const includeInternal = await canReadInternalCoverage(ctx);
 
 		// Enrich with meeting and municipality data
 		const enriched = await Promise.all(
@@ -52,12 +58,15 @@ export const getRecentSummaries = query({
 				return {
 					...summary,
 					meeting,
-					municipality,
+					municipality: municipality
+						? includeInternal
+							? withPublicCoverageBadge(municipality)
+							: toSafePublicMunicipality(municipality)
+						: null,
 				};
 			}),
 		);
 
-		const includeInternal = await canReadInternalCoverage(ctx);
 		return enriched
 			.filter(({ municipality }) =>
 				municipality
@@ -174,6 +183,7 @@ type PublicSummaryResult = {
 		slug?: string;
 		name: string;
 		state: string;
+		coverageBadge: ReturnType<typeof buildPublicCoverageBadge>;
 	};
 };
 
@@ -236,6 +246,7 @@ async function listPublicSummaryResults(
 				slug: municipality.slug,
 				name: municipality.name,
 				state: municipality.state,
+				coverageBadge: buildPublicCoverageBadge(municipality),
 			},
 		});
 

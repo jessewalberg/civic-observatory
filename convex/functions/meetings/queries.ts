@@ -3,6 +3,10 @@ import type { Id } from "../../_generated/dataModel";
 import { type QueryCtx, query } from "../../_generated/server";
 import { getCurrentUser } from "../../lib/auth";
 import { isCoveragePublic } from "../municipalities/coveragePublication";
+import {
+	toSafePublicMunicipality,
+	withPublicCoverageBadge,
+} from "../municipalities/publicCoverageBadge";
 
 // Meeting type validator
 const meetingTypeValidator = v.union(
@@ -105,6 +109,7 @@ export const listByMunicipality = query({
 
 		return {
 			meetings: meetingsWithSummaries,
+			municipalityCoverageBadge: municipality.coverageBadge,
 			nextCursor,
 			hasMore,
 			totalCount: meetings.length,
@@ -213,8 +218,11 @@ async function getVisibleMunicipality(
 ) {
 	const municipality = await ctx.db.get(municipalityId);
 	if (!municipality) return null;
-	if (isCoveragePublic(municipality)) return municipality;
-	if (await canReadInternalCoverage(ctx)) return municipality;
+	if (isCoveragePublic(municipality)) {
+		return toSafePublicMunicipality(municipality);
+	}
+	if (await canReadInternalCoverage(ctx))
+		return withPublicCoverageBadge(municipality);
 	return null;
 }
 
@@ -261,7 +269,16 @@ export const getRecent = query({
 					? includeInternal || isCoveragePublic(municipality)
 					: false,
 			)
-			.slice(0, limit);
+			.slice(0, limit)
+			.map(({ municipality, ...meeting }) => ({
+				...meeting,
+				municipality:
+					municipality && includeInternal
+						? withPublicCoverageBadge(municipality)
+						: municipality
+							? toSafePublicMunicipality(municipality)
+							: null,
+			}));
 	},
 });
 

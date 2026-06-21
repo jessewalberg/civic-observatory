@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
+import { CoverageReliabilityBadge } from "@/components/CoverageReliabilityBadge";
 import { MeetingCard, MeetingCardSkeleton } from "@/components/MeetingCard";
 import { SubscriptionModal } from "@/components/SubscriptionModal";
 import { Badge } from "@/components/ui/badge";
@@ -235,6 +236,8 @@ function MunicipalityDetailPage() {
 
 	const isLoading = municipality === undefined;
 	const hasActiveFilters = meetingType && meetingType !== "all";
+	const municipalityCoverageBadge =
+		meetingsData?.municipalityCoverageBadge ?? municipality?.coverageBadge;
 
 	const clearFilters = () => {
 		setMeetingType("");
@@ -311,9 +314,14 @@ function MunicipalityDetailPage() {
 									<h1 className="font-display text-3xl md:text-4xl font-bold text-foreground">
 										{municipality.name}
 									</h1>
-									{municipality.isVerified && (
+									{municipality.coverageBadge ? (
+										<CoverageReliabilityBadge
+											badge={municipality.coverageBadge}
+											showLastChecked
+										/>
+									) : municipality.isVerified ? (
 										<Badge variant="secondary">Verified</Badge>
-									)}
+									) : null}
 								</div>
 								<div className="flex flex-wrap items-center gap-4 text-muted-foreground">
 									<div className="flex items-center gap-1.5">
@@ -519,6 +527,7 @@ function MunicipalityDetailPage() {
 									status={meeting.status}
 									topics={meeting.summary?.topics}
 									summaryPreview={meeting.summary?.executiveSummary}
+									coverageBadge={municipalityCoverageBadge}
 								/>
 							</motion.div>
 						))}
