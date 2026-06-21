@@ -287,7 +287,7 @@ export const sendImmediateAlert = internalAction({
 
 		const emailParams: EmailParams = {
 			userName: user.name,
-			unsubscribeUrl: `${BASE_URL}/api/unsubscribe?subscription=${alert.subscriptionId}`,
+			unsubscribeUrl: `${BASE_URL}/dashboard/subscriptions`,
 			manageSubscriptionsUrl: `${BASE_URL}/dashboard/subscriptions`,
 			baseUrl: BASE_URL,
 		};
