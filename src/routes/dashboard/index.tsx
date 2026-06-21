@@ -54,13 +54,13 @@ function DashboardContent() {
 	// Get feed
 	const feed = useQuery(
 		api.functions.alerts.queries.getFeed,
-		user ? { userId: user._id, limit: 20 } : "skip",
+		user ? { limit: 20 } : "skip",
 	);
 
 	// Get alert counts
 	const alertCounts = useQuery(
 		api.functions.alerts.queries.countByUser,
-		user ? { userId: user._id } : "skip",
+		user ? {} : "skip",
 	);
 
 	// Get subscription count
@@ -92,7 +92,7 @@ function DashboardContent() {
 		setOptimisticUnreadCount(0);
 
 		try {
-			await markAllAsRead({ userId: user._id });
+			await markAllAsRead({});
 		} catch {
 			// Revert optimistic update on error
 			setOptimisticUnreadCount(null);
@@ -194,7 +194,6 @@ function DashboardContent() {
 									<FeedItem
 										key={item._id}
 										item={item}
-										userId={user._id}
 										onMarkRead={markAsRead}
 									/>
 								))}
@@ -257,25 +256,20 @@ interface FeedItemType {
 
 function FeedItem({
 	item,
-	userId,
 	onMarkRead,
 }: {
 	item: FeedItemType;
-	userId: Id<"users">;
-	onMarkRead: (args: {
-		alertId: Id<"alerts">;
-		userId: Id<"users">;
-	}) => Promise<undefined | null>;
+	onMarkRead: (args: { alertId: Id<"alerts"> }) => Promise<undefined | null>;
 }) {
 	// Mark as read when item becomes visible
 	useEffect(() => {
 		if (item.isNew) {
 			const timer = setTimeout(() => {
-				onMarkRead({ alertId: item._id, userId });
+				onMarkRead({ alertId: item._id });
 			}, 2000); // Mark as read after 2 seconds of being visible
 			return () => clearTimeout(timer);
 		}
-	}, [item._id, item.isNew, userId, onMarkRead]);
+	}, [item._id, item.isNew, onMarkRead]);
 
 	if (!item.meeting || !item.municipality) {
 		return null;

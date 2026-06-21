@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internalMutation, mutation } from "../../_generated/server";
+import { getCurrentUser } from "../../lib/auth";
 import { evaluateSubscriptionSummaryMatch } from "../subscriptions/matching";
 
 // ═══════════════════════════════════════════════════════════════
@@ -237,16 +238,15 @@ export const deleteOldAlerts = internalMutation({
 export const markAsRead = mutation({
 	args: {
 		alertId: v.id("alerts"),
-		userId: v.id("users"),
 	},
 	handler: async (ctx, args) => {
-		const alert = await ctx.db.get(args.alertId);
-		if (!alert) {
-			throw new Error("Alert not found");
+		const user = await getCurrentUser(ctx);
+		if (!user) {
+			throw new Error("User not found. Please sign in first.");
 		}
 
-		// Verify ownership
-		if (alert.userId !== args.userId) {
+		const alert = await ctx.db.get(args.alertId);
+		if (!alert || alert.userId !== user._id) {
 			throw new Error("Unauthorized");
 		}
 
@@ -263,16 +263,19 @@ export const markAsRead = mutation({
 // MARK ALL AS READ - Mark all alerts as read for a user
 // ═══════════════════════════════════════════════════════════════
 export const markAllAsRead = mutation({
-	args: {
-		userId: v.id("users"),
-	},
-	handler: async (ctx, args) => {
+	args: {},
+	handler: async (ctx) => {
+		const user = await getCurrentUser(ctx);
+		if (!user) {
+			throw new Error("User not found. Please sign in first.");
+		}
+
 		const now = Date.now();
 
 		// Get all unread sent alerts
 		const alerts = await ctx.db
 			.query("alerts")
-			.withIndex("by_user", (q) => q.eq("userId", args.userId))
+			.withIndex("by_user", (q) => q.eq("userId", user._id))
 			.collect();
 
 		const unreadAlerts = alerts.filter((a) => a.status === "sent" && !a.readAt);
