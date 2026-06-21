@@ -12,6 +12,7 @@
 		"format": "biome format",
 		"lint": "biome lint",
 		"check": "biome check",
+		"audit:auth": "node scripts/auth-surface-audit.mjs",
 		"audit:municipality": "node scripts/municipality-data-audit.mjs",
 		"requeue:municipality": "node scripts/requeue-municipality-meetings.mjs",
 		"smoke:core-loop": "bun scripts/core-loop-smoke.mjs",

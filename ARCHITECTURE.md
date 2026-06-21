@@ -46,9 +46,9 @@ import { v } from "convex/values";
 export default defineSchema({
   
   // ═══════════════════════════════════════════════════════════════
-  // USERS - keyed by Clerk subject (clerkUserId). workosUserId is a dead
+  // USERS - keyed by Clerk subject (clerkUserId)
   // ═══════════════════════════════════════════════════════════════
-  // WorkOS-era column kept optional until cleared (no index, no code refs).
+  // Legacy auth-provider column kept optional until cleared (no index).
   users: defineTable({
     clerkUserId: v.optional(v.string()),
     workosUserId: v.optional(v.string()),

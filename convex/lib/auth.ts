@@ -2,11 +2,9 @@ import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 
 /**
- * Identity bridge (WorkOS→Clerk migration, Phase 2 + Phase 6). The caller is
- * resolved SOLELY from the Clerk JWT via `ctx.auth.getUserIdentity()` — there
- * is no client-supplied id argument, so a caller can only ever act as itself.
- * (The WorkOS-era legacy fallback was removed in Phase 6 together with the
- * WorkOS client code.)
+ * Identity bridge. The caller is resolved solely from the Clerk JWT via
+ * `ctx.auth.getUserIdentity()`; there is no client-supplied id argument, so a
+ * caller can only ever act as itself.
  */
 
 type Ctx = QueryCtx | MutationCtx;
@@ -43,7 +41,7 @@ export async function getCurrentUser(ctx: Ctx): Promise<Doc<"users"> | null> {
 
 /**
  * Resolve or create the current Clerk-backed user row. This is deliberately
- * keyed only on the Clerk subject; email is not trusted for claiming legacy
+ * keyed only on the Clerk subject; email is not trusted for claiming existing
  * rows because it can be attacker-controlled.
  */
 export async function ensureCurrentUserFromIdentity(

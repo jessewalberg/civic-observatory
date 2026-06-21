@@ -7,9 +7,8 @@ import {
 } from "../../lib/auth";
 
 /**
- * Phase-2/6 identity bootstrap: on the first authenticated Clerk call, create
- * a fresh app user keyed by the Clerk subject. There is deliberately no
- * claim-by-email and no WorkOS-era fallback.
+ * On the first authenticated Clerk call, create a fresh app user keyed by the
+ * Clerk subject. There is deliberately no claim-by-email fallback.
  */
 export const ensureFromIdentity = mutation({
 	args: {},

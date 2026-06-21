@@ -12,6 +12,8 @@
 			"**/convex/**/*",
 			"**/.vscode/**/*",
 			"**/index.html",
+			"**/scripts/auth-surface-audit.mjs",
+			"**/scripts/auth-surface-audit.test.mjs",
 			"**/vite.config.ts",
 			"!**/src/routeTree.gen.ts",
 			"!**/src/styles.css",
