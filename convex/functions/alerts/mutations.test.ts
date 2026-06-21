@@ -13,6 +13,7 @@ async function seedUser(
 	o: {
 		clerkUserId: string;
 		email: string;
+		tier?: "free" | "pro";
 	},
 ) {
 	const now = Date.now();
@@ -20,7 +21,7 @@ async function seedUser(
 		ctx.db.insert("users", {
 			clerkUserId: o.clerkUserId,
 			email: o.email,
-			tier: "free",
+			tier: o.tier ?? "free",
 			createdAt: now,
 			lastLoginAt: now,
 		}),
@@ -97,6 +98,7 @@ async function seedAlert(
 			subscriptionId,
 			meetingId,
 			summaryId,
+			municipalityId,
 			matchedTopics: ["budget"],
 			status: "sent",
 			sentAt: now,
@@ -106,8 +108,8 @@ async function seedAlert(
 	);
 }
 
-describe("minimal dashboard alert generation", () => {
-	it("creates one unread feed item for an active municipality subscription", async () => {
+describe("alert candidate generation", () => {
+	it("creates one pending candidate for an active municipality subscription", async () => {
 		const t = setup();
 		const now = Date.now();
 		const userId = await t.run(async (ctx) =>
@@ -212,12 +214,13 @@ describe("minimal dashboard alert generation", () => {
 		expect(alerts[0]).toMatchObject({
 			userId,
 			subscriptionId,
+			municipalityId,
 			meetingId,
 			summaryId,
 			matchedTopics: ["budget", "other"],
-			status: "sent",
+			status: "pending",
 		});
-		expect(alerts[0].sentAt).toEqual(expect.any(Number));
+		expect(alerts[0].sentAt).toBeUndefined();
 		expect(alerts[0].scheduledFor).toBeUndefined();
 
 		const asUser = t.withIdentity({
@@ -228,13 +231,165 @@ describe("minimal dashboard alert generation", () => {
 		const feed = await asUser.query(api.functions.alerts.queries.getFeed, {
 			limit: 10,
 		});
-		expect(feed).toHaveLength(1);
-		expect(feed[0]).toMatchObject({
+		expect(feed).toEqual([]);
+
+		await t.mutation(internal.functions.alerts.mutations.markSent, {
+			alertId: alerts[0]._id,
+		});
+
+		const sentFeed = await asUser.query(api.functions.alerts.queries.getFeed, {
+			limit: 10,
+		});
+		expect(sentFeed).toHaveLength(1);
+		expect(sentFeed[0]).toMatchObject({
 			_id: alerts[0]._id,
 			isNew: true,
 			matchedTopics: ["budget", "other"],
 			meeting: { title: "Town Council Meeting: June 1, 2026" },
 			municipality: { name: "Coventry", state: "Connecticut" },
+		});
+	});
+
+	it("records skip reason counts for no-match, inactive, duplicate, and tier-gated candidates", async () => {
+		const t = setup();
+		const now = Date.now();
+		const municipalityId = await t.run(async (ctx) =>
+			ctx.db.insert("municipalities", {
+				name: "Coventry",
+				state: "Connecticut",
+				platform: "manual",
+				isActive: true,
+				isVerified: true,
+				createdAt: now,
+				updatedAt: now,
+			}),
+		);
+		const freeUserId = await seedUser(t, {
+			clerkUserId: "user_free_immediate",
+			email: "free@example.test",
+		});
+		const proUserId = await seedUser(t, {
+			clerkUserId: "user_pro_daily",
+			email: "pro@example.test",
+			tier: "pro",
+		});
+		const meetingId = await t.run(async (ctx) =>
+			ctx.db.insert("meetings", {
+				municipalityId,
+				title: "Town Council Bond Hearing",
+				meetingType: "city_council",
+				meetingDate: Date.UTC(2026, 5, 18),
+				sourceType: "manual_entry",
+				sourceUrl: "https://example.test/agenda.pdf",
+				rawContent: "Council discussed park bond spending.",
+				status: "summarized",
+				createdAt: now,
+				updatedAt: now,
+			}),
+		);
+		const summaryId = await t.run(async (ctx) =>
+			ctx.db.insert("summaries", {
+				meetingId,
+				version: 1,
+				executiveSummary: "Council reviewed a park bond.",
+				keyDecisions: [],
+				discussionTopics: [],
+				upcomingItems: [],
+				topics: ["budget"],
+				modelUsed: "test",
+				promptVersion: "test",
+				processingTimeMs: 1,
+				municipalityId,
+				meetingDate: Date.UTC(2026, 5, 18),
+				sourceUrl: "https://example.test/agenda.pdf",
+				sourceType: "manual_entry",
+				sourceContentHash: "candidate-skip-test",
+				status: "summarized",
+				createdAt: now,
+			}),
+		);
+
+		await t.run(async (ctx) =>
+			Promise.all([
+				ctx.db.insert("subscriptions", {
+					userId: proUserId as Id<"users">,
+					municipalityId: municipalityId as Id<"municipalities">,
+					alertFrequency: "daily",
+					emailEnabled: true,
+					isActive: true,
+					createdAt: now,
+					updatedAt: now,
+				}),
+				ctx.db.insert("subscriptions", {
+					userId: proUserId as Id<"users">,
+					municipalityId: municipalityId as Id<"municipalities">,
+					topicFilters: ["Zoning"],
+					alertFrequency: "daily",
+					emailEnabled: true,
+					isActive: true,
+					createdAt: now,
+					updatedAt: now,
+				}),
+				ctx.db.insert("subscriptions", {
+					userId: proUserId as Id<"users">,
+					municipalityId: municipalityId as Id<"municipalities">,
+					alertFrequency: "daily",
+					emailEnabled: true,
+					isActive: false,
+					createdAt: now,
+					updatedAt: now,
+				}),
+				ctx.db.insert("subscriptions", {
+					userId: freeUserId as Id<"users">,
+					municipalityId: municipalityId as Id<"municipalities">,
+					alertFrequency: "immediate",
+					emailEnabled: true,
+					isActive: true,
+					createdAt: now,
+					updatedAt: now,
+				}),
+			]),
+		);
+
+		await expect(
+			t.mutation(internal.functions.alerts.mutations.generateAlerts, {
+				meetingId: meetingId as Id<"meetings">,
+				summaryId: summaryId as Id<"summaries">,
+			}),
+		).resolves.toMatchObject({
+			created: 1,
+			skipped: 3,
+			skippedByReason: {
+				inactive: 1,
+				topic: 1,
+				tier: 1,
+			},
+			errors: [],
+		});
+
+		await expect(
+			t.mutation(internal.functions.alerts.mutations.generateAlerts, {
+				meetingId: meetingId as Id<"meetings">,
+				summaryId: summaryId as Id<"summaries">,
+			}),
+		).resolves.toMatchObject({
+			created: 0,
+			skipped: 4,
+			skippedByReason: {
+				duplicate: 1,
+				inactive: 1,
+				topic: 1,
+				tier: 1,
+			},
+			errors: [],
+		});
+
+		const alerts = await t.run(async (ctx) => ctx.db.query("alerts").collect());
+		expect(alerts).toHaveLength(1);
+		expect(alerts[0]).toMatchObject({
+			userId: proUserId,
+			municipalityId,
+			status: "pending",
 		});
 	});
 });

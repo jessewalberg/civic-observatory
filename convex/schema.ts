@@ -258,6 +258,8 @@ export default defineSchema({
 		subscriptionId: v.id("subscriptions"),
 		meetingId: v.id("meetings"),
 		summaryId: v.id("summaries"),
+		// Optional so historical alert rows still validate; new candidates set it.
+		municipalityId: v.optional(v.id("municipalities")),
 
 		matchedTopics: v.array(v.string()),
 		matchedKeywords: v.optional(v.array(v.string())),
