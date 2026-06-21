@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	type CoverageDashboardRow,
+	getCoverageAlerts,
 	getCoverageDashboardRows,
 	getCoverageDashboardStats,
 } from "./coverageDashboard";
@@ -68,6 +69,48 @@ describe("coverage dashboard table model", () => {
 			coverageAttention: 2,
 		});
 	});
+
+	it("creates deduped active alert digest rows for repeated failures and stale coverage", () => {
+		const rows = coverageRows();
+		const recovered = row({
+			name: "Recovered Town",
+			state: "VT",
+			platform: "civicplus",
+			healthState: "live",
+			lastScrapedAt: NOW - HOUR,
+			lastSummarizedAt: NOW - HOUR,
+			documentAvailabilityPct: 100,
+			summaryCoveragePct: 100,
+			lastFailure: { message: "older timeout", at: NOW - 72 * HOUR },
+			scrapeJobSample: { total: 3, completed: 2, partial: 0, failed: 1 },
+			lastSuccessAt: NOW - HOUR,
+		});
+
+		const alerts = getCoverageAlerts([...rows, rows[1], recovered]);
+
+		expect(alerts.map((alert) => alert.id)).toEqual([
+			"municipality_Failtown:repeated-failure",
+			"municipality_Stale City:stale",
+		]);
+		expect(alerts[0]).toMatchObject({
+			severity: "critical",
+			municipalityName: "Failtown",
+			platform: "granicus",
+			reason: "agenda page returned 500",
+			lastSuccessAt: NOW - 12 * HOUR,
+			suggestedAction:
+				"Inspect scraper logs, confirm the agenda URL still works, then retry the scraper.",
+		});
+		expect(alerts[1]).toMatchObject({
+			severity: "warning",
+			municipalityName: "Stale City",
+			platform: "generic",
+			reason: "No successful scrape inside the freshness window.",
+			lastSuccessAt: NOW - 72 * HOUR,
+			suggestedAction:
+				"Run a manual scrape or check whether the meeting source changed.",
+		});
+	});
 });
 
 function coverageRows(): CoverageDashboardRow[] {
@@ -88,6 +131,7 @@ function coverageRows(): CoverageDashboardRow[] {
 			platform: "granicus",
 			healthState: "failing",
 			lastScrapedAt: NOW - 2 * HOUR,
+			lastSuccessAt: NOW - 12 * HOUR,
 			lastSummarizedAt: null,
 			documentAvailabilityPct: 0,
 			summaryCoveragePct: 0,
@@ -116,6 +160,8 @@ function row({
 	documentAvailabilityPct,
 	summaryCoveragePct,
 	lastFailure = null,
+	scrapeJobSample,
+	lastSuccessAt = lastScrapedAt,
 }: {
 	name: string;
 	state: string;
@@ -126,6 +172,8 @@ function row({
 	documentAvailabilityPct: number;
 	summaryCoveragePct: number;
 	lastFailure?: CoverageDashboardRow["health"]["lastFailure"];
+	scrapeJobSample?: CoverageDashboardRow["health"]["scrapeJobSample"];
+	lastSuccessAt?: number | null;
 }): CoverageDashboardRow {
 	const ageMs = lastScrapedAt ? Math.max(0, NOW - lastScrapedAt) : null;
 
@@ -142,12 +190,19 @@ function row({
 			state: healthState,
 			freshness: {
 				lastScrapedAt,
+				lastSuccessAt,
 				ageMs,
 				frequencyHours: 24,
 				staleAfterMs: 48 * HOUR,
 				isStale: healthState === "stale",
 			},
 			scrapeSuccessRate: healthState === "failing" ? 0 : 1,
+			scrapeJobSample: scrapeJobSample ?? {
+				total: 3,
+				completed: healthState === "failing" ? 1 : 3,
+				partial: 0,
+				failed: healthState === "failing" ? 2 : 0,
+			},
 			documentAvailabilityPct,
 			summaryStatus: {
 				totalMeetings: 2,

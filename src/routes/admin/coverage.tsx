@@ -39,6 +39,7 @@ import {
 	type CoverageDashboardRow,
 	type CoverageDashboardSort,
 	type CoverageHealthState,
+	getCoverageAlerts,
 	getCoverageDashboardRows,
 	getCoverageDashboardStats,
 } from "@/lib/coverageDashboard";
@@ -86,6 +87,7 @@ function CoverageContent() {
 
 	const rows = coverageRows ?? [];
 	const stats = useMemo(() => getCoverageDashboardStats(rows), [rows]);
+	const coverageAlerts = useMemo(() => getCoverageAlerts(rows), [rows]);
 	const visibleRows = useMemo(
 		() => getCoverageDashboardRows(rows, filters, sort),
 		[rows, filters, sort],
@@ -217,6 +219,85 @@ function CoverageContent() {
 							variant={stats.coverageAttention > 0 ? "warning" : "success"}
 						/>
 					</div>
+
+					<Card className="mb-6">
+						<div className="p-4 border-b border-border flex items-center justify-between gap-4">
+							<div>
+								<h2 className="font-display text-lg font-semibold text-foreground">
+									Active Coverage Alerts
+								</h2>
+								<p className="text-xs text-muted-foreground">
+									Computed digest rows for stale coverage and repeated failures
+								</p>
+							</div>
+							<Badge
+								variant={coverageAlerts.length > 0 ? "warning" : "success"}
+								className="text-xs"
+							>
+								{coverageAlerts.length} active
+							</Badge>
+						</div>
+						<div className="divide-y divide-border">
+							{coverageAlerts.length === 0 ? (
+								<div className="p-4 text-sm text-muted-foreground">
+									No active stale or repeated-failure coverage alerts.
+								</div>
+							) : (
+								coverageAlerts.map((alert) => (
+									<div
+										key={alert.id}
+										className="grid gap-3 p-4 lg:grid-cols-[minmax(180px,1fr)_120px_minmax(220px,1.4fr)_140px_minmax(220px,1.4fr)] lg:items-start"
+									>
+										<div>
+											<div className="flex items-center gap-2">
+												<Badge
+													variant={
+														alert.severity === "critical"
+															? "destructive"
+															: "warning"
+													}
+													className="text-xs"
+												>
+													{alert.kind === "repeated-failure"
+														? "Repeated failure"
+														: "Stale"}
+												</Badge>
+											</div>
+											<p className="mt-2 font-medium text-foreground">
+												{alert.municipalityName}
+											</p>
+										</div>
+										<div>
+											<p className="text-xs text-muted-foreground">Platform</p>
+											<p className="text-sm capitalize text-foreground">
+												{alert.platform}
+											</p>
+										</div>
+										<div>
+											<p className="text-xs text-muted-foreground">Reason</p>
+											<p className="text-sm text-foreground">{alert.reason}</p>
+										</div>
+										<div>
+											<p className="text-xs text-muted-foreground">
+												Last success
+											</p>
+											<p className="text-sm text-foreground">
+												{formatRelativeTime(alert.lastSuccessAt)}
+											</p>
+										</div>
+										<div>
+											<p className="text-xs text-muted-foreground">
+												Suggested action
+											</p>
+											<p className="text-sm text-foreground">
+												{alert.suggestedAction}
+											</p>
+										</div>
+									</div>
+								))
+							)}
+						</div>
+					</Card>
 
 					<Card className="mb-6">
 						<div className="p-4 border-b border-border">
