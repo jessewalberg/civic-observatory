@@ -1,10 +1,13 @@
 import { useUser } from "@clerk/tanstack-react-start";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useQuery } from "convex/react";
 import {
 	ArrowRight,
 	Bell,
 	Building2,
+	CalendarDays,
 	ChevronRight,
+	ExternalLink,
 	FileText,
 	MapPin,
 	Newspaper,
@@ -19,6 +22,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getLandingSetupCta } from "@/lib/landingConversion";
 import { canonicalLink, generateHomeJsonLd } from "@/lib/seo";
+import {
+	buildSourceProofExamples,
+	SOURCE_PROOF_FALLBACK_COPY,
+} from "@/lib/sourceProof";
+import { formatDate } from "@/lib/utils";
+import { api } from "../../convex/_generated/api";
 
 export const Route = createFileRoute("/")({
 	component: LandingPage,
@@ -88,6 +97,14 @@ const audiences = [
 function LandingPage() {
 	const { isSignedIn } = useUser();
 	const primarySetupCta = getLandingSetupCta(isSignedIn);
+	const recentSummaries = useQuery(
+		api.functions.summaries.queries.getRecentSummaries,
+		{
+			limit: 6,
+		},
+	);
+	const sourceProofExamples = buildSourceProofExamples(recentSummaries ?? []);
+	const isLoadingSourceProof = recentSummaries === undefined;
 
 	return (
 		<div className="min-h-screen bg-background text-foreground overflow-hidden">
@@ -384,6 +401,98 @@ function LandingPage() {
 							</motion.div>
 						))}
 					</div>
+				</section>
+
+				{/* Source-backed proof */}
+				<section className="mx-auto max-w-7xl px-6 py-24">
+					<motion.div
+						className="text-center mb-12"
+						initial={{ opacity: 0, y: 20 }}
+						whileInView={{ opacity: 1, y: 0 }}
+						viewport={{ once: true }}
+					>
+						<Badge
+							variant="outline"
+							className="mb-4 border-primary/30 bg-primary/5 text-xs uppercase tracking-[0.2em] font-mono"
+						>
+							Source-backed proof
+						</Badge>
+						<h2 className="text-3xl md:text-4xl font-semibold mb-4">
+							Inspect the source behind each brief
+						</h2>
+						<p className="text-muted-foreground text-lg max-w-2xl mx-auto">
+							When a public source link is available, Civic Observatory keeps it
+							attached to the meeting summary so readers can verify context.
+						</p>
+					</motion.div>
+
+					{isLoadingSourceProof ? (
+						<Card className="border-border/50 bg-card/70 p-8 text-center">
+							<p className="text-muted-foreground">
+								Checking current source-backed summaries...
+							</p>
+						</Card>
+					) : sourceProofExamples.length > 0 ? (
+						<div className="grid gap-6 md:grid-cols-3">
+							{sourceProofExamples.map((example, index) => (
+								<motion.div
+									key={example.summaryId}
+									initial={{ opacity: 0, y: 30 }}
+									whileInView={{ opacity: 1, y: 0 }}
+									viewport={{ once: true }}
+									transition={{ delay: index * 0.1 }}
+								>
+									<Card className="h-full border-border/50 bg-gradient-to-b from-card to-card/50">
+										<CardHeader className="space-y-3">
+											<div className="flex items-center gap-2 text-muted-foreground text-xs">
+												<CalendarDays className="h-4 w-4 text-primary" />
+												<span>{formatDate(example.meetingDate)}</span>
+											</div>
+											<CardTitle className="text-xl leading-tight">
+												{example.meetingTitle}
+											</CardTitle>
+											<p className="text-sm text-muted-foreground">
+												{example.municipality}
+											</p>
+										</CardHeader>
+										<CardContent className="space-y-5">
+											<p className="text-sm text-muted-foreground leading-relaxed">
+												{example.summaryExcerpt}
+											</p>
+											<div className="flex flex-wrap gap-3">
+												<Button variant="outline" size="sm" asChild>
+													<a href={example.meetingPath}>Read summary</a>
+												</Button>
+												<Button variant="ghost" size="sm" asChild>
+													<a
+														href={example.sourceUrl}
+														target="_blank"
+														rel="noopener noreferrer"
+														className="gap-2"
+													>
+														Source
+														<ExternalLink className="h-3 w-3" />
+													</a>
+												</Button>
+											</div>
+										</CardContent>
+									</Card>
+								</motion.div>
+							))}
+						</div>
+					) : (
+						<Card className="border-border/50 bg-card/70 p-8 text-center">
+							<div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
+								<FileText className="h-6 w-6 text-primary" />
+							</div>
+							<h3 className="font-display text-xl font-semibold mb-2">
+								No source-backed summaries yet
+							</h3>
+							<p className="text-muted-foreground max-w-2xl mx-auto">
+								{SOURCE_PROOF_FALLBACK_COPY}
+							</p>
+						</Card>
+					)}
 				</section>
 
 				{/* Value Props / Audiences */}
