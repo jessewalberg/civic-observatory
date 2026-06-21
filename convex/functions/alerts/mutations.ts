@@ -1,10 +1,13 @@
 import { v } from "convex/values";
 import { internalMutation, mutation } from "../../_generated/server";
 import { getCurrentUser } from "../../lib/auth";
-import { evaluateSubscriptionSummaryMatch } from "../subscriptions/matching";
+import {
+	evaluateSubscriptionSummaryMatch,
+	type SubscriptionMatchSkipReason,
+} from "../subscriptions/matching";
 
 // ═══════════════════════════════════════════════════════════════
-// GENERATE ALERTS - Create in-app feed alerts for municipality subscriptions
+// GENERATE ALERTS - Create pending alert candidates for matching subscriptions
 // Called after a summary is created
 // ═══════════════════════════════════════════════════════════════
 export const generateAlerts = internalMutation({
@@ -22,6 +25,7 @@ export const generateAlerts = internalMutation({
 			return {
 				created: 0,
 				skipped: 0,
+				skippedByReason: {},
 				errors: [!meeting ? "Meeting not found" : "Summary not found"],
 			};
 		}
@@ -37,7 +41,15 @@ export const generateAlerts = internalMutation({
 		const results = {
 			created: 0,
 			skipped: 0,
+			skippedByReason: {} as Partial<
+				Record<SubscriptionMatchSkipReason, number>
+			>,
 			errors: [] as string[],
+		};
+		const recordSkip = (reason: SubscriptionMatchSkipReason) => {
+			results.skipped++;
+			results.skippedByReason[reason] =
+				(results.skippedByReason[reason] ?? 0) + 1;
 		};
 
 		for (const subscription of subscriptions) {
@@ -62,7 +74,7 @@ export const generateAlerts = internalMutation({
 					hasExistingAlert: Boolean(existing),
 				});
 				if (!match.matches) {
-					results.skipped++;
+					recordSkip(match.reason);
 					continue;
 				}
 
@@ -71,10 +83,10 @@ export const generateAlerts = internalMutation({
 					subscriptionId: subscription._id,
 					meetingId: args.meetingId,
 					summaryId: args.summaryId,
+					municipalityId: meeting.municipalityId,
 					matchedTopics: match.matchedTopics,
 					matchedKeywords: match.matchedKeywords,
-					status: "sent",
-					sentAt: now,
+					status: "pending",
 					createdAt: now,
 				});
 
