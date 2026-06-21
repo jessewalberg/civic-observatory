@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { internalMutation, mutation } from "../../_generated/server";
 import { getCurrentUser } from "../../lib/auth";
+import { isCoveragePublic } from "../municipalities/coveragePublication";
 import {
 	evaluateSubscriptionSummaryMatch,
 	type SubscriptionMatchSkipReason,
@@ -36,6 +37,7 @@ export const generateAlerts = internalMutation({
 				q.eq("municipalityId", meeting.municipalityId),
 			)
 			.collect();
+		const municipality = await ctx.db.get(meeting.municipalityId);
 
 		const now = Date.now();
 		const results = {
@@ -51,6 +53,15 @@ export const generateAlerts = internalMutation({
 			results.skippedByReason[reason] =
 				(results.skippedByReason[reason] ?? 0) + 1;
 		};
+
+		if (!municipality || !isCoveragePublic(municipality)) {
+			for (const subscription of subscriptions) {
+				if (subscription.isActive) {
+					recordSkip("coverage_status");
+				}
+			}
+			return results;
+		}
 
 		for (const subscription of subscriptions) {
 			try {

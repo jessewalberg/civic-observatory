@@ -64,6 +64,19 @@ export default defineSchema({
 		),
 		lastScrapeError: v.optional(v.string()),
 
+		// Public coverage visibility. isActive remains scraper scheduling state.
+		coverageStatus: v.optional(
+			v.union(
+				v.literal("published"),
+				v.literal("unpublished"),
+				v.literal("paused"),
+			),
+		),
+		coverageStatusUpdatedAt: v.optional(v.number()),
+		coverageStatusUpdatedByUserId: v.optional(v.id("users")),
+		coverageStatusReason: v.optional(v.string()),
+		coverageStatusOverrideReason: v.optional(v.string()),
+
 		isActive: v.boolean(),
 		isVerified: v.boolean(),
 		createdAt: v.number(),
@@ -73,6 +86,7 @@ export default defineSchema({
 		.index("by_slug", ["slug"])
 		.index("by_platform", ["platform"])
 		.index("by_active", ["isActive"])
+		.index("by_coverage_status", ["coverageStatus"])
 		.searchIndex("search_name", { searchField: "name" }),
 
 	// ═══════════════════════════════════════════════════════════════
@@ -434,6 +448,30 @@ export default defineSchema({
 		createdAt: v.number(),
 		completedAt: v.number(),
 		durationMs: v.number(),
+	})
+		.index("by_municipality_created", ["municipalityId", "createdAt"])
+		.index("by_created", ["createdAt"]),
+
+	// ═══════════════════════════════════════════════════════════════
+	// COVERAGE PUBLICATION EVENTS - Operator audit trail
+	// ═══════════════════════════════════════════════════════════════
+	coveragePublicationEvents: defineTable({
+		municipalityId: v.id("municipalities"),
+		fromStatus: v.union(
+			v.literal("published"),
+			v.literal("unpublished"),
+			v.literal("paused"),
+		),
+		toStatus: v.union(
+			v.literal("published"),
+			v.literal("unpublished"),
+			v.literal("paused"),
+		),
+		reason: v.optional(v.string()),
+		overrideReason: v.optional(v.string()),
+		triggeredByUserId: v.optional(v.id("users")),
+		latestValidationRunId: v.optional(v.id("scraperValidationRuns")),
+		createdAt: v.number(),
 	})
 		.index("by_municipality_created", ["municipalityId", "createdAt"])
 		.index("by_created", ["createdAt"]),

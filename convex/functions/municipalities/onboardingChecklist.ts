@@ -1,3 +1,5 @@
+import { type CoverageStatus, getCoverageStatus } from "./coveragePublication";
+
 type Platform = "granicus" | "civicplus" | "generic" | "manual";
 type ValidationStatus = "passed" | "partial" | "failed";
 type CheckStatus = "pass" | "warning" | "fail" | "not_applicable";
@@ -35,6 +37,10 @@ export type MunicipalityOnboardingInput = {
 		state: string;
 		meetingsPageUrl?: string | null;
 		platform: Platform;
+		coverageStatus?: CoverageStatus;
+		coverageStatusReason?: string | null;
+		coverageStatusOverrideReason?: string | null;
+		coverageStatusUpdatedAt?: number | null;
 		isActive: boolean;
 		isVerified: boolean;
 	};
@@ -299,14 +305,15 @@ function publishStateStep(
 		);
 	}
 
-	if (input.municipality.isActive && input.municipality.isVerified) {
+	const coverageStatus = getCoverageStatus(input.municipality);
+	if (coverageStatus === "published") {
 		return {
 			key: "publish_state",
 			label: "Publish State",
 			status: "completed",
-			detail: "Coverage is active and verified.",
+			detail: "Coverage is published.",
 			nextAction: null,
-			updatedAt: null,
+			updatedAt: input.municipality.coverageStatusUpdatedAt ?? null,
 		};
 	}
 
@@ -314,11 +321,12 @@ function publishStateStep(
 		key: "publish_state",
 		label: "Publish State",
 		status: "next-action",
-		detail: input.municipality.isActive
-			? "Coverage is active but not verified."
-			: "Coverage is not active.",
-		nextAction: "Publish or verify coverage",
-		updatedAt: null,
+		detail:
+			coverageStatus === "paused"
+				? "Coverage is paused."
+				: "Coverage is unpublished.",
+		nextAction: "Publish coverage",
+		updatedAt: input.municipality.coverageStatusUpdatedAt ?? null,
 	};
 }
 

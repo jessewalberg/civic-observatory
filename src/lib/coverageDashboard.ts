@@ -12,6 +12,7 @@ export type CoverageDashboardRow = {
 		name: string;
 		state: string;
 		platform: "granicus" | "civicplus" | "generic" | "manual";
+		coverageStatus?: "published" | "unpublished" | "paused";
 		isActive: boolean;
 		isVerified: boolean;
 	};

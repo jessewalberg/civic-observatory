@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import type { Id } from "../../_generated/dataModel";
 import { type QueryCtx, query } from "../../_generated/server";
 import { getCurrentUser } from "../../lib/auth";
+import { isCoveragePublic } from "../municipalities/coveragePublication";
 
 // Meeting type validator
 const meetingTypeValidator = v.union(
@@ -35,6 +36,16 @@ export const listByMunicipality = query({
 		cursor: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
+		const municipality = await getVisibleMunicipality(ctx, args.municipalityId);
+		if (!municipality) {
+			return {
+				meetings: [],
+				nextCursor: null,
+				hasMore: false,
+				totalCount: 0,
+			};
+		}
+
 		const limit = args.limit ?? 10;
 
 		// Get meetings for this municipality, ordered by date descending
@@ -109,7 +120,14 @@ export const get = query({
 		id: v.id("meetings"),
 	},
 	handler: async (ctx, args) => {
-		return await ctx.db.get(args.id);
+		const meeting = await ctx.db.get(args.id);
+		if (!meeting) return null;
+
+		const municipality = await getVisibleMunicipality(
+			ctx,
+			meeting.municipalityId,
+		);
+		return municipality ? meeting : null;
 	},
 });
 
@@ -124,12 +142,16 @@ export const getWithSummary = query({
 		const meeting = await ctx.db.get(args.id);
 		if (!meeting) return null;
 
+		const municipality = await getVisibleMunicipality(
+			ctx,
+			meeting.municipalityId,
+		);
+		if (!municipality) return null;
+
 		const summary = await ctx.db
 			.query("summaries")
 			.withIndex("by_meeting", (q) => q.eq("meetingId", args.id))
 			.first();
-
-		const municipality = await ctx.db.get(meeting.municipalityId);
 
 		return {
 			...meeting,
@@ -153,12 +175,16 @@ export const getWithSummaryByIdentifier = query({
 			bySlug ?? (await getMeetingByLegacyId(ctx, args.identifier));
 		if (!meeting) return null;
 
+		const municipality = await getVisibleMunicipality(
+			ctx,
+			meeting.municipalityId,
+		);
+		if (!municipality) return null;
+
 		const summary = await ctx.db
 			.query("summaries")
 			.withIndex("by_meeting", (q) => q.eq("meetingId", meeting._id))
 			.first();
-
-		const municipality = await ctx.db.get(meeting.municipalityId);
 
 		return {
 			...meeting,
@@ -174,6 +200,22 @@ async function getMeetingByLegacyId(ctx: QueryCtx, identifier: string) {
 	} catch {
 		return null;
 	}
+}
+
+async function canReadInternalCoverage(ctx: QueryCtx): Promise<boolean> {
+	const caller = await getCurrentUser(ctx);
+	return Boolean(caller?.isAdmin);
+}
+
+async function getVisibleMunicipality(
+	ctx: QueryCtx,
+	municipalityId: Id<"municipalities">,
+) {
+	const municipality = await ctx.db.get(municipalityId);
+	if (!municipality) return null;
+	if (isCoveragePublic(municipality)) return municipality;
+	if (await canReadInternalCoverage(ctx)) return municipality;
+	return null;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -198,9 +240,6 @@ export const getRecent = query({
 			meetings = meetings.filter((m) => m.status === "summarized");
 		}
 
-		// Take limit
-		meetings = meetings.slice(0, limit);
-
 		// Get summaries and municipalities
 		const meetingsWithDetails = await Promise.all(
 			meetings.map(async (meeting) => {
@@ -215,7 +254,14 @@ export const getRecent = query({
 			}),
 		);
 
-		return meetingsWithDetails;
+		const includeInternal = await canReadInternalCoverage(ctx);
+		return meetingsWithDetails
+			.filter(({ municipality }) =>
+				municipality
+					? includeInternal || isCoveragePublic(municipality)
+					: false,
+			)
+			.slice(0, limit);
 	},
 });
 
@@ -227,6 +273,9 @@ export const countByMunicipality = query({
 		municipalityId: v.id("municipalities"),
 	},
 	handler: async (ctx, args) => {
+		const municipality = await getVisibleMunicipality(ctx, args.municipalityId);
+		if (!municipality) return 0;
+
 		const meetings = await ctx.db
 			.query("meetings")
 			.withIndex("by_municipality", (q) =>
@@ -246,6 +295,9 @@ export const getMeetingTypes = query({
 		municipalityId: v.id("municipalities"),
 	},
 	handler: async (ctx, args) => {
+		const municipality = await getVisibleMunicipality(ctx, args.municipalityId);
+		if (!municipality) return [];
+
 		const meetings = await ctx.db
 			.query("meetings")
 			.withIndex("by_municipality", (q) =>

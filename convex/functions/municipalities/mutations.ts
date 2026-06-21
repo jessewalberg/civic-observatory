@@ -5,6 +5,10 @@ import { internalMutation, mutation } from "../../_generated/server";
 import { STATE_NAMES } from "../../data/index";
 import { requireAdmin as requireAdminBridge } from "../../lib/auth";
 import { createMunicipalitySlug } from "../../lib/seoSlugs";
+import {
+	evaluateCoveragePublishRequest,
+	getCoverageStatus,
+} from "./coveragePublication";
 
 // Valid US state names for validation
 const VALID_STATES = new Set(STATE_NAMES);
@@ -42,6 +46,12 @@ const scrapeStatusValidator = v.union(
 	v.literal("success"),
 	v.literal("failed"),
 	v.literal("partial"),
+);
+
+const coverageStatusValidator = v.union(
+	v.literal("published"),
+	v.literal("unpublished"),
+	v.literal("paused"),
 );
 
 // Identity-first admin check via the shared bridge.
@@ -89,6 +99,7 @@ export const create = mutation({
 			meetingsPageUrl: args.meetingsPageUrl,
 			platform: args.platform,
 			scrapeConfig: args.scrapeConfig,
+			coverageStatus: "unpublished",
 			isActive: args.isActive ?? true,
 			isVerified: args.isVerified ?? false,
 			createdAt: now,
@@ -304,6 +315,83 @@ export const verify = mutation({
 		return { isVerified: args.verified };
 	},
 });
+
+// ═══════════════════════════════════════════════════════════════
+// SET COVERAGE STATUS - Publish, pause, or unpublish public coverage
+// ═══════════════════════════════════════════════════════════════
+export const setCoverageStatus = mutation({
+	args: {
+		id: v.id("municipalities"),
+		status: coverageStatusValidator,
+		reason: v.optional(v.string()),
+		overrideReason: v.optional(v.string()),
+	},
+	handler: async (ctx, args) => {
+		const caller = await requireAdmin(ctx);
+		const existing = await ctx.db.get(args.id);
+		if (!existing) {
+			throw new Error("Municipality not found");
+		}
+
+		const fromStatus = getCoverageStatus(existing);
+		const reason = normalizeOptionalText(args.reason);
+		const overrideReason = normalizeOptionalText(args.overrideReason);
+		const latestValidation =
+			args.status === "published"
+				? await ctx.db
+						.query("scraperValidationRuns")
+						.withIndex("by_municipality_created", (q) =>
+							q.eq("municipalityId", args.id),
+						)
+						.order("desc")
+						.first()
+				: null;
+
+		const publicationEvaluation =
+			args.status === "published"
+				? evaluateCoveragePublishRequest({
+						latestValidation,
+						overrideReason,
+					})
+				: ({ allowed: true, mode: "validation" } as const);
+
+		if (!publicationEvaluation.allowed) {
+			throw new Error(publicationEvaluation.reason);
+		}
+
+		const now = Date.now();
+		await ctx.db.patch(args.id, {
+			coverageStatus: args.status,
+			coverageStatusUpdatedAt: now,
+			coverageStatusUpdatedByUserId: caller._id,
+			coverageStatusReason: reason,
+			coverageStatusOverrideReason: overrideReason,
+			updatedAt: now,
+		});
+
+		await ctx.db.insert("coveragePublicationEvents", {
+			municipalityId: args.id,
+			fromStatus,
+			toStatus: args.status,
+			reason,
+			overrideReason,
+			triggeredByUserId: caller._id,
+			latestValidationRunId:
+				args.status === "published" &&
+				publicationEvaluation.mode === "validation"
+					? latestValidation?._id
+					: undefined,
+			createdAt: now,
+		});
+
+		return { coverageStatus: args.status };
+	},
+});
+
+function normalizeOptionalText(value: string | undefined): string | undefined {
+	const trimmed = value?.trim();
+	return trimmed ? trimmed : undefined;
+}
 
 // ═══════════════════════════════════════════════════════════════
 // FIX STATE - One-time fix for bad state values (e.g. "CT" → "Connecticut")

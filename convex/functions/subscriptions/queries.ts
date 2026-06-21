@@ -1,6 +1,10 @@
 import { v } from "convex/values";
 import { internalQuery, query } from "../../_generated/server";
 import { getCurrentUser } from "../../lib/auth";
+import {
+	getCoverageStatus,
+	isCoveragePublic,
+} from "../municipalities/coveragePublication";
 import { evaluateSubscriptionSummaryMatch } from "./matching";
 
 // ═══════════════════════════════════════════════════════════════
@@ -30,6 +34,7 @@ export const listByUser = query({
 								_id: municipality._id,
 								name: municipality.name,
 								state: municipality.state,
+								coverageStatus: getCoverageStatus(municipality),
 							}
 						: null,
 				};
@@ -50,6 +55,11 @@ export const getForMunicipality = query({
 	handler: async (ctx, args) => {
 		const user = await getCurrentUser(ctx);
 		if (!user) {
+			return null;
+		}
+
+		const municipality = await ctx.db.get(args.municipalityId);
+		if (!municipality || !isCoveragePublic(municipality)) {
 			return null;
 		}
 
@@ -88,6 +98,7 @@ export const getById = query({
 						_id: municipality._id,
 						name: municipality.name,
 						state: municipality.state,
+						coverageStatus: getCoverageStatus(municipality),
 					}
 				: null,
 		};
@@ -130,6 +141,9 @@ export const getMatchingForSummary = internalQuery({
 		// Get the meeting and summary
 		const meeting = await ctx.db.get(args.meetingId);
 		if (!meeting) return [];
+
+		const municipality = await ctx.db.get(meeting.municipalityId);
+		if (!municipality || !isCoveragePublic(municipality)) return [];
 
 		const summary = await ctx.db.get(args.summaryId);
 		if (!summary) return [];
@@ -191,11 +205,23 @@ export const getByFrequency = internalQuery({
 		// Get all active subscriptions with the given frequency
 		const subscriptions = await ctx.db.query("subscriptions").collect();
 
-		return subscriptions.filter(
-			(sub) =>
-				sub.isActive &&
-				sub.emailEnabled &&
-				sub.alertFrequency === args.frequency,
+		const visibleSubscriptions = await Promise.all(
+			subscriptions.map(async (sub) => {
+				if (
+					!sub.isActive ||
+					!sub.emailEnabled ||
+					sub.alertFrequency !== args.frequency
+				) {
+					return null;
+				}
+				const municipality = await ctx.db.get(sub.municipalityId);
+				return municipality && isCoveragePublic(municipality) ? sub : null;
+			}),
+		);
+
+		return visibleSubscriptions.filter(
+			(subscription): subscription is (typeof subscriptions)[number] =>
+				Boolean(subscription),
 		);
 	},
 });

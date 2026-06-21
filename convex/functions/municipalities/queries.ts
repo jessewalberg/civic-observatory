@@ -1,8 +1,9 @@
 import { v } from "convex/values";
-import type { Id } from "../../_generated/dataModel";
-import { query } from "../../_generated/server";
+import type { Doc, Id } from "../../_generated/dataModel";
+import { type QueryCtx, query } from "../../_generated/server";
 import { getCurrentUser } from "../../lib/auth";
 import { buildMunicipalityCoverageHealth } from "./coverageHealth";
+import { getCoverageStatus, isCoveragePublic } from "./coveragePublication";
 import { buildMunicipalityOnboardingChecklist } from "./onboardingChecklist";
 
 // ═══════════════════════════════════════════════════════════════
@@ -14,6 +15,7 @@ export const list = query({
 		activeOnly: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
+		const includeInternal = await canReadInternalCoverage(ctx);
 		// Filter by state if provided
 		const allMunicipalities = args.state
 			? await ctx.db
@@ -22,10 +24,12 @@ export const list = query({
 					.collect()
 			: await ctx.db.query("municipalities").collect();
 
-		// Filter by active status if requested, then sort by name
-		const filtered = args.activeOnly
-			? allMunicipalities.filter((m) => m.isActive)
-			: allMunicipalities;
+		// Public callers only see published coverage. Admins can inspect raw rows.
+		const filtered = allMunicipalities.filter((municipality) => {
+			if (args.activeOnly) return isCoveragePublic(municipality);
+			if (includeInternal) return true;
+			return isCoveragePublic(municipality);
+		});
 
 		return filtered.sort((a, b) => a.name.localeCompare(b.name));
 	},
@@ -39,7 +43,7 @@ export const get = query({
 		id: v.id("municipalities"),
 	},
 	handler: async (ctx, args) => {
-		return await ctx.db.get(args.id);
+		return await getVisibleMunicipality(ctx, args.id);
 	},
 });
 
@@ -48,10 +52,11 @@ export const getBySlug = query({
 		slug: v.string(),
 	},
 	handler: async (ctx, args) => {
-		return await ctx.db
+		const municipality = await ctx.db
 			.query("municipalities")
 			.withIndex("by_slug", (q) => q.eq("slug", args.slug))
 			.first();
+		return await filterVisibleMunicipality(ctx, municipality);
 	},
 });
 
@@ -66,11 +71,14 @@ export const getByIdentifier = query({
 			.first();
 
 		if (bySlug) {
-			return bySlug;
+			return await filterVisibleMunicipality(ctx, bySlug);
 		}
 
 		try {
-			return await ctx.db.get(args.identifier as Id<"municipalities">);
+			return await getVisibleMunicipality(
+				ctx,
+				args.identifier as Id<"municipalities">,
+			);
 		} catch {
 			return null;
 		}
@@ -86,7 +94,7 @@ export const getWithMeetings = query({
 		meetingLimit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		const municipality = await ctx.db.get(args.id);
+		const municipality = await getVisibleMunicipality(ctx, args.id);
 		if (!municipality) return null;
 
 		const limit = args.meetingLimit ?? 10;
@@ -134,9 +142,14 @@ export const search = query({
 		const results = await ctx.db
 			.query("municipalities")
 			.withSearchIndex("search_name", (q) => q.search("name", args.query))
-			.take(limit);
+			.take(Math.min(limit * 5, 100));
 
-		return results;
+		const includeInternal = await canReadInternalCoverage(ctx);
+		return results
+			.filter((municipality) =>
+				includeInternal ? true : isCoveragePublic(municipality),
+			)
+			.slice(0, limit);
 	},
 });
 
@@ -148,12 +161,14 @@ export const listByState = query({
 		activeOnly: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
+		const includeInternal = await canReadInternalCoverage(ctx);
 		let municipalities = await ctx.db.query("municipalities").collect();
 
-		// Filter by active status if requested
-		if (args.activeOnly) {
-			municipalities = municipalities.filter((m) => m.isActive);
-		}
+		municipalities = municipalities.filter((municipality) => {
+			if (args.activeOnly) return isCoveragePublic(municipality);
+			if (includeInternal) return true;
+			return isCoveragePublic(municipality);
+		});
 
 		// Group by state
 		const byState: Record<
@@ -234,7 +249,7 @@ export const getStats = query({
 		id: v.id("municipalities"),
 	},
 	handler: async (ctx, args) => {
-		const municipality = await ctx.db.get(args.id);
+		const municipality = await getVisibleMunicipality(ctx, args.id);
 		if (!municipality) return null;
 
 		// Count meetings
@@ -317,6 +332,7 @@ export const listCoverageHealth = query({
 						platform: municipality.platform,
 						isActive: municipality.isActive,
 						isVerified: municipality.isVerified,
+						coverageStatus: getCoverageStatus(municipality),
 					},
 					health: buildMunicipalityCoverageHealth({
 						now,
@@ -409,6 +425,12 @@ export const listOnboardingChecklists = query({
 						state: municipality.state,
 						meetingsPageUrl: municipality.meetingsPageUrl ?? null,
 						platform: municipality.platform,
+						coverageStatus: getCoverageStatus(municipality),
+						coverageStatusReason: municipality.coverageStatusReason ?? null,
+						coverageStatusOverrideReason:
+							municipality.coverageStatusOverrideReason ?? null,
+						coverageStatusUpdatedAt:
+							municipality.coverageStatusUpdatedAt ?? null,
 						isActive: municipality.isActive,
 						isVerified: municipality.isVerified,
 					},
@@ -461,6 +483,25 @@ export const listOnboardingChecklists = query({
 	},
 });
 
+export const listCoveragePublicationEvents = query({
+	args: {
+		municipalityId: v.id("municipalities"),
+		limit: v.optional(v.number()),
+	},
+	handler: async (ctx, args) => {
+		const caller = await getCurrentUser(ctx);
+		if (!caller?.isAdmin) return null;
+
+		return await ctx.db
+			.query("coveragePublicationEvents")
+			.withIndex("by_municipality_created", (q) =>
+				q.eq("municipalityId", args.municipalityId),
+			)
+			.order("desc")
+			.take(Math.max(1, Math.min(args.limit ?? 20, 100)));
+	},
+});
+
 function onboardingStatusRank(status: string): number {
 	const rank: Record<string, number> = {
 		failed: 0,
@@ -469,4 +510,24 @@ function onboardingStatusRank(status: string): number {
 		completed: 3,
 	};
 	return rank[status] ?? 4;
+}
+
+async function canReadInternalCoverage(ctx: QueryCtx): Promise<boolean> {
+	const caller = await getCurrentUser(ctx);
+	return Boolean(caller?.isAdmin);
+}
+
+async function getVisibleMunicipality(ctx: QueryCtx, id: Id<"municipalities">) {
+	const municipality = await ctx.db.get(id);
+	return await filterVisibleMunicipality(ctx, municipality);
+}
+
+async function filterVisibleMunicipality(
+	ctx: QueryCtx,
+	municipality: Doc<"municipalities"> | null,
+) {
+	if (!municipality) return null;
+	if (isCoveragePublic(municipality)) return municipality;
+	if (await canReadInternalCoverage(ctx)) return municipality;
+	return null;
 }
