@@ -1,5 +1,7 @@
 import type { Doc } from "../../_generated/dataModel";
 
+export type SubscriptionAlertKind = "summary" | "agenda_preview";
+
 const NON_DISCRIMINATING_TOPIC_TOKENS = new Set([
 	"and",
 	"for",
@@ -22,7 +24,8 @@ export type SubscriptionMatchSkipReason =
 	| "included_keyword"
 	| "tier"
 	| "duplicate"
-	| "coverage_status";
+	| "coverage_status"
+	| "agenda_preference";
 
 export type SubscriptionMatchResult =
 	| {
@@ -40,12 +43,14 @@ export function evaluateSubscriptionSummaryMatch({
 	user,
 	meeting,
 	summary,
+	alertKind = "summary",
 	hasExistingAlert = false,
 }: {
 	subscription: Doc<"subscriptions">;
 	user: Doc<"users"> | null;
 	meeting: Doc<"meetings">;
 	summary: Doc<"summaries">;
+	alertKind?: SubscriptionAlertKind;
 	hasExistingAlert?: boolean;
 }): SubscriptionMatchResult {
 	if (!subscription.isActive) {
@@ -66,6 +71,13 @@ export function evaluateSubscriptionSummaryMatch({
 
 	if (subscription.alertFrequency === "immediate" && user.tier !== "pro") {
 		return { matches: false, reason: "tier" };
+	}
+
+	if (
+		alertKind === "agenda_preview" &&
+		subscription.agendaAlertsEnabled !== true
+	) {
+		return { matches: false, reason: "agenda_preference" };
 	}
 
 	if (

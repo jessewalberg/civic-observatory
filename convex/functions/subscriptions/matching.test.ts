@@ -60,17 +60,20 @@ async function seedMeetingAndSummary(
 			| "zoning_board"
 			| "budget_committee"
 			| "other";
+		meetingDate?: number;
+		summaryKind?: "summary" | "agenda_preview";
 		executiveSummary?: string;
 		topics?: string[];
 	} = {},
 ) {
 	const now = Date.now();
+	const meetingDate = options.meetingDate ?? Date.UTC(2026, 5, 18);
 	const meetingId = await t.run(async (ctx) =>
 		ctx.db.insert("meetings", {
 			municipalityId,
 			title: "Town Council Bond Hearing",
 			meetingType: options.meetingType ?? ("city_council" as const),
-			meetingDate: Date.UTC(2026, 5, 18),
+			meetingDate,
 			sourceType: "manual_entry" as const,
 			sourceUrl: "https://example.test/agenda.pdf",
 			rawContent:
@@ -108,10 +111,11 @@ async function seedMeetingAndSummary(
 			promptVersion: "test",
 			processingTimeMs: 1,
 			municipalityId,
-			meetingDate: Date.UTC(2026, 5, 18),
+			meetingDate,
 			sourceUrl: "https://example.test/agenda.pdf",
 			sourceType: "manual_entry" as const,
 			sourceContentHash: "summary-hash",
+			kind: options.summaryKind,
 			status: "summarized" as const,
 			createdAt: now,
 		}),
@@ -356,6 +360,141 @@ describe("subscription summary matching model", () => {
 		).resolves.toEqual([]);
 	});
 
+	it("requires agenda-preview opt-in for future meeting summary matches", async () => {
+		const t = setup();
+		const municipalityId = await seedMunicipality(t, "Coventry");
+		const optedOutUserId = await seedUser(t, {
+			clerkUserId: "user_agenda_out",
+			email: "agenda-out@example.test",
+		});
+		const optedInUserId = await seedUser(t, {
+			clerkUserId: "user_agenda_in",
+			email: "agenda-in@example.test",
+		});
+		const { meetingId, summaryId } = await seedMeetingAndSummary(
+			t,
+			municipalityId as Id<"municipalities">,
+			{
+				meetingDate: Date.now() + 7 * 24 * 60 * 60 * 1000,
+				summaryKind: "agenda_preview",
+				executiveSummary:
+					"Agenda includes a bond hearing and public safety staffing item.",
+				topics: ["budget", "public safety"],
+			},
+		);
+		const [optedOutSubscriptionId, optedInSubscriptionId] = await t.run(
+			async (ctx) =>
+				Promise.all([
+					ctx.db.insert("subscriptions", {
+						userId: optedOutUserId as Id<"users">,
+						municipalityId: municipalityId as Id<"municipalities">,
+						alertFrequency: "daily" as const,
+						emailEnabled: true,
+						isActive: true,
+						createdAt: Date.now(),
+						updatedAt: Date.now(),
+					}),
+					ctx.db.insert("subscriptions", {
+						userId: optedInUserId as Id<"users">,
+						municipalityId: municipalityId as Id<"municipalities">,
+						topicFilters: ["Budget & Finance"],
+						alertFrequency: "daily" as const,
+						emailEnabled: true,
+						isActive: true,
+						agendaAlertsEnabled: true,
+						createdAt: Date.now(),
+						updatedAt: Date.now(),
+					}),
+				]),
+		);
+
+		await expect(
+			t.query(internal.functions.subscriptions.queries.getMatchingForSummary, {
+				meetingId,
+				summaryId,
+			}),
+		).resolves.toMatchObject([
+			{
+				subscription: { _id: optedInSubscriptionId },
+				matchedTopics: ["budget"],
+			},
+		]);
+
+		await expect(
+			t.mutation(internal.functions.alerts.mutations.generateAlerts, {
+				meetingId,
+				summaryId,
+			}),
+		).resolves.toMatchObject({
+			created: 1,
+			skipped: 1,
+			skippedByReason: {
+				agenda_preference: 1,
+			},
+			errors: [],
+		});
+
+		const alerts = await t.run(async (ctx) => ctx.db.query("alerts").collect());
+		expect(alerts).toHaveLength(1);
+		expect(alerts[0]).toMatchObject({
+			userId: optedInUserId,
+			subscriptionId: optedInSubscriptionId,
+			meetingId,
+			summaryId,
+			kind: "agenda_preview",
+		});
+		expect(alerts[0].subscriptionId).not.toBe(optedOutSubscriptionId);
+
+		const secondAgendaSummaryId = await t.run(async (ctx) =>
+			ctx.db.insert("summaries", {
+				meetingId,
+				version: 2,
+				executiveSummary:
+					"Updated agenda still includes a bond hearing and public safety item.",
+				keyDecisions: [],
+				discussionTopics: [
+					{
+						topic: "Bond hearing",
+						summary: "Council will hear public input on bond funding.",
+						category: "budget",
+					},
+				],
+				upcomingItems: [],
+				topics: ["budget", "public safety"],
+				modelUsed: "test",
+				promptVersion: "test",
+				processingTimeMs: 1,
+				municipalityId: municipalityId as Id<"municipalities">,
+				meetingDate: Date.now() + 7 * 24 * 60 * 60 * 1000,
+				sourceUrl: "https://example.test/agenda.pdf",
+				sourceType: "manual_entry",
+				sourceContentHash: "summary-hash-updated",
+				kind: "agenda_preview",
+				status: "summarized",
+				createdAt: Date.now(),
+			}),
+		);
+
+		await expect(
+			t.mutation(internal.functions.alerts.mutations.generateAlerts, {
+				meetingId,
+				summaryId: secondAgendaSummaryId as Id<"summaries">,
+			}),
+		).resolves.toMatchObject({
+			created: 0,
+			skipped: 2,
+			skippedByReason: {
+				agenda_preference: 1,
+				duplicate: 1,
+			},
+			errors: [],
+		});
+
+		await expect(
+			t.run(async (ctx) => ctx.db.query("alerts").collect()),
+		).resolves.toHaveLength(1);
+	});
+
 	it("derives public subscription ownership from the Clerk identity", async () => {
 		const t = setup();
 		const municipalityId = await seedMunicipality(t, "Coventry");
@@ -391,6 +530,7 @@ describe("subscription summary matching model", () => {
 			ctx.db.get(subscriptionId as Id<"subscriptions">),
 		);
 		expect(row?.userId).toBe(ownerId);
+		expect(row?.agendaAlertsEnabled).toBe(false);
 
 		await expect(
 			asAttacker.mutation(api.functions.subscriptions.mutations.update, {
@@ -403,8 +543,14 @@ describe("subscription summary matching model", () => {
 			asOwner.mutation(api.functions.subscriptions.mutations.update, {
 				subscriptionId: subscriptionId as Id<"subscriptions">,
 				alertFrequency: "weekly",
+				agendaAlertsEnabled: true,
 			}),
 		).resolves.toMatchObject({ success: true });
+
+		const updatedRow = await t.run(async (ctx) =>
+			ctx.db.get(subscriptionId as Id<"subscriptions">),
+		);
+		expect(updatedRow?.agendaAlertsEnabled).toBe(true);
 	});
 
 	it("denies free users when creating or updating Pro-only immediate subscriptions", async () => {

@@ -168,6 +168,7 @@ interface MeetingData {
 	}>;
 	meetingUrl: string;
 	sourceUrl?: string;
+	alertKind?: "summary" | "agenda_preview";
 }
 
 interface EmailParams {
@@ -242,9 +243,16 @@ function renderKeyDecisions(decisions: MeetingData["keyDecisions"]): string {
 }
 
 function renderMeetingCard(meeting: MeetingData): string {
+	const isAgendaPreview = meeting.alertKind === "agenda_preview";
 	const sourceHref = safeSourceHref(meeting.sourceUrl);
 	const sourceLink = sourceHref
 		? `<a href="${escapeHtmlAttribute(sourceHref)}" class="btn btn-outline" style="margin-left: 8px;">View Source</a>`
+		: "";
+	const actionLabel = isAgendaPreview
+		? "View Meeting Agenda"
+		: "View Full Summary";
+	const previewNotice = isAgendaPreview
+		? `<p style="font-size: 13px; color: #2563eb; font-weight: 600; margin: 0 0 12px 0;">Upcoming agenda preview based on published agenda content.</p>`
 		: "";
 
 	return `
@@ -254,15 +262,53 @@ function renderMeetingCard(meeting: MeetingData): string {
         ${formatMeetingType(meeting.meetingType)} | ${meeting.municipalityName}, ${meeting.municipalityState}<br>
         ${formatDate(meeting.meetingDate)}
       </div>
+      ${previewNotice}
       <div class="meeting-summary">${meeting.executiveSummary}</div>
       <div class="topics">
         ${renderTopics(meeting.topics, meeting.matchedTopics)}
       </div>
       ${renderKeyDecisions(meeting.keyDecisions)}
-      <a href="${meeting.meetingUrl}" class="btn">View Full Summary</a>
+      <a href="${meeting.meetingUrl}" class="btn">${actionLabel}</a>
       ${sourceLink}
     </div>
   `;
+}
+
+function countAgendaPreviews(meetings: MeetingData[]): number {
+	return meetings.filter((meeting) => meeting.alertKind === "agenda_preview")
+		.length;
+}
+
+function describeDigestItems(meetings: MeetingData[]): {
+	subjectLabel: string;
+	introLabel: string;
+} {
+	const agendaPreviewCount = countAgendaPreviews(meetings);
+	const hasOnlyAgendaPreviews =
+		meetings.length > 0 && agendaPreviewCount === meetings.length;
+	const hasMixedAlertKinds =
+		agendaPreviewCount > 0 && agendaPreviewCount < meetings.length;
+
+	if (hasOnlyAgendaPreviews) {
+		const agendaPreviewNoun =
+			meetings.length === 1 ? "agenda preview" : "agenda previews";
+		return {
+			subjectLabel: `${meetings.length} ${agendaPreviewNoun}`,
+			introLabel: `upcoming ${agendaPreviewNoun}`,
+		};
+	}
+
+	if (hasMixedAlertKinds) {
+		return {
+			subjectLabel: `${meetings.length} meeting updates`,
+			introLabel: "meeting updates, including summaries and agenda previews,",
+		};
+	}
+
+	return {
+		subjectLabel: `${meetings.length} new ${meetings.length === 1 ? "summary" : "summaries"}`,
+		introLabel: `new meeting ${meetings.length === 1 ? "summary" : "summaries"}`,
+	};
 }
 
 function safeSourceHref(sourceUrl: string | undefined): string | undefined {
@@ -295,7 +341,13 @@ export function immediateAlertTemplate(
 	meeting: MeetingData,
 	params: EmailParams,
 ): { subject: string; html: string } {
-	const subject = `New Summary: ${meeting.title} - ${meeting.municipalityName}`;
+	const isAgendaPreview = meeting.alertKind === "agenda_preview";
+	const subject = isAgendaPreview
+		? `Agenda Preview: ${meeting.title} - ${meeting.municipalityName}`
+		: `New Summary: ${meeting.title} - ${meeting.municipalityName}`;
+	const intro = isAgendaPreview
+		? "An upcoming agenda preview is available that matches your subscription:"
+		: "A new meeting summary is available that matches your subscription:";
 
 	const html = `
 <!DOCTYPE html>
@@ -314,7 +366,7 @@ export function immediateAlertTemplate(
     <div class="content">
       <p style="font-size: 16px; margin-bottom: 24px;">
         ${params.userName ? `Hi ${params.userName},` : "Hi there,"}<br><br>
-        A new meeting summary is available that matches your subscription:
+        ${intro}
       </p>
 
       ${renderMeetingCard(meeting)}
@@ -354,8 +406,9 @@ export function dailyDigestTemplate(
 		month: "long",
 		day: "numeric",
 	});
+	const digestItems = describeDigestItems(meetings);
 
-	const subject = `Daily Digest: ${meetings.length} new ${meetings.length === 1 ? "summary" : "summaries"} - ${date}`;
+	const subject = `Daily Digest: ${digestItems.subjectLabel} - ${date}`;
 
 	const meetingsHtml = meetings.map(renderMeetingCard).join("");
 
@@ -378,7 +431,7 @@ export function dailyDigestTemplate(
         ${params.userName ? `Hi ${params.userName},` : "Hi there,"}
       </p>
       <p style="font-size: 16px; margin-bottom: 24px;">
-        Here's your daily digest with <strong>${meetings.length}</strong> new meeting ${meetings.length === 1 ? "summary" : "summaries"} matching your subscriptions:
+        Here's your daily digest with <strong>${meetings.length}</strong> ${digestItems.introLabel} matching your subscriptions:
       </p>
 
       ${meetingsHtml}
@@ -428,8 +481,9 @@ export function weeklyDigestTemplate(
 	const weekEnd = new Date();
 
 	const dateRange = `${weekStart.toLocaleDateString("en-US", { month: "short", day: "numeric" })} - ${weekEnd.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+	const digestItems = describeDigestItems(meetings);
 
-	const subject = `Weekly Digest: ${meetings.length} summaries - ${dateRange}`;
+	const subject = `Weekly Digest: ${digestItems.subjectLabel} - ${dateRange}`;
 
 	// Group meetings by municipality
 	const byMunicipality = meetings.reduce(
@@ -495,7 +549,7 @@ export function weeklyDigestTemplate(
     <div class="content">
       <p style="font-size: 16px; margin-bottom: 24px;">
         ${params.userName ? `Hi ${params.userName},` : "Hi there,"}<br><br>
-        Here's your weekly summary of local government activity matching your interests:
+        Here's your weekly digest of ${digestItems.introLabel} matching your interests:
       </p>
 
       ${statsHtml}

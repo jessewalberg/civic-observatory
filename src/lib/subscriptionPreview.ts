@@ -11,6 +11,7 @@ export type SubscriptionPreviewInput = {
 	selectedMeetingTypes: string[];
 	alertFrequency: AlertFrequency;
 	emailEnabled: boolean;
+	agendaAlertsEnabled?: boolean;
 	userTier?: UserTier;
 };
 
@@ -18,6 +19,7 @@ export type SubscriptionPreview = {
 	title: string;
 	body: string;
 	delivery: string;
+	agendaNotice: string;
 	proNotice: string | null;
 };
 
@@ -39,6 +41,7 @@ export function buildSubscriptionPreview({
 	selectedMeetingTypes,
 	alertFrequency,
 	emailEnabled,
+	agendaAlertsEnabled = false,
 	userTier,
 }: SubscriptionPreviewInput): SubscriptionPreview {
 	const meetingTypeText = formatList(
@@ -59,6 +62,9 @@ export function buildSubscriptionPreview({
 		delivery: emailEnabled
 			? "Email delivery is on."
 			: "Email delivery is off; alerts still appear in your dashboard.",
+		agendaNotice: agendaAlertsEnabled
+			? "Pre-meeting agenda preview alerts are on."
+			: "Pre-meeting agenda preview alerts are off.",
 		proNotice:
 			alertFrequency === "immediate" && userTier !== "pro"
 				? "Immediate email alerts require Pro. Daily and weekly digests are available on Free."

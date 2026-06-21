@@ -381,6 +381,7 @@ interface Subscription {
 	keywordsExclude?: string[];
 	alertFrequency: "immediate" | "daily" | "weekly";
 	emailEnabled: boolean;
+	agendaAlertsEnabled?: boolean;
 	isActive: boolean;
 	municipality?: {
 		_id: Id<"municipalities">;

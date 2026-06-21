@@ -86,6 +86,23 @@ type UserDigest = {
 	alerts: DigestAlert[];
 };
 
+type MeetingDataSource = {
+	alert: Doc<"alerts">;
+	meeting: Pick<
+		Doc<"meetings">,
+		"_id" | "slug" | "title" | "meetingType" | "meetingDate" | "sourceUrl"
+	>;
+	municipality:
+		| Pick<Doc<"municipalities">, "_id" | "slug" | "name" | "state">
+		| Pick<Doc<"municipalities">, "slug" | "name" | "state">
+		| null;
+	summary:
+		| (Pick<Doc<"summaries">, "executiveSummary" | "topics" | "sourceUrl"> & {
+				keyDecisions?: Doc<"summaries">["keyDecisions"];
+		  })
+		| null;
+};
+
 /** Minimal HTML→text fallback so transactional email has a text part
  * (improves deliverability; spam filters prefer both HTML and text). */
 export function htmlToText(html: string): string {
@@ -101,6 +118,28 @@ export function htmlToText(html: string): string {
 		.replace(/&gt;/g, ">")
 		.replace(/\n{3,}/g, "\n\n")
 		.trim();
+}
+
+function buildMeetingData(
+	{ alert, meeting, municipality, summary }: MeetingDataSource,
+	options: { includeKeyDecisions?: boolean } = {},
+): MeetingData {
+	return {
+		title: meeting.title,
+		meetingType: meeting.meetingType,
+		meetingDate: meeting.meetingDate,
+		sourceUrl: emailSourceUrl(meeting.sourceUrl, summary?.sourceUrl),
+		municipalityName: municipality?.name ?? "Unknown Municipality",
+		municipalityState: municipality?.state ?? "",
+		executiveSummary: summary?.executiveSummary ?? "",
+		topics: summary?.topics ?? [],
+		matchedTopics: alert.matchedTopics,
+		keyDecisions: options.includeKeyDecisions
+			? (summary?.keyDecisions ?? []).slice(0, 3)
+			: [],
+		meetingUrl: meetingUrl(meeting, alert.meetingId),
+		alertKind: alert.kind ?? "summary",
+	};
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -238,7 +277,7 @@ export const sendImmediateAlert = internalAction({
 			return { success: false, error: "Alert not found or not ready" };
 		}
 
-		const { alert, user, meeting, municipality, summary } = alertInfo;
+		const { alert, user, summary } = alertInfo;
 		const deliveryKey = `alert/${alert._id}`;
 
 		if (!summary) {
@@ -270,20 +309,9 @@ export const sendImmediateAlert = internalAction({
 			};
 		}
 
-		// Build meeting data for template
-		const meetingData: MeetingData = {
-			title: meeting.title,
-			meetingType: meeting.meetingType,
-			meetingDate: meeting.meetingDate,
-			sourceUrl: emailSourceUrl(meeting.sourceUrl, summary.sourceUrl),
-			municipalityName: municipality?.name ?? "Unknown Municipality",
-			municipalityState: municipality?.state ?? "",
-			executiveSummary: summary.executiveSummary,
-			topics: summary.topics,
-			matchedTopics: alert.matchedTopics,
-			keyDecisions: summary.keyDecisions.slice(0, 3),
-			meetingUrl: meetingUrl(meeting),
-		};
+		const meetingData = buildMeetingData(alertInfo, {
+			includeKeyDecisions: true,
+		});
 
 		const emailParams: EmailParams = {
 			userName: user.name,
@@ -408,22 +436,7 @@ export const sendDailyDigest = internalAction({
 			}
 			const maxAttemptCount = queued.attemptCount;
 
-			// Build meeting data for all alerts
-			const meetings: MeetingData[] = userAlerts.map(
-				({ alert, meeting, municipality, summary }) => ({
-					title: meeting.title,
-					meetingType: meeting.meetingType,
-					meetingDate: meeting.meetingDate,
-					sourceUrl: emailSourceUrl(meeting.sourceUrl, summary?.sourceUrl),
-					municipalityName: municipality?.name ?? "Unknown Municipality",
-					municipalityState: municipality?.state ?? "",
-					executiveSummary: summary?.executiveSummary ?? "",
-					topics: summary?.topics ?? [],
-					matchedTopics: alert.matchedTopics,
-					keyDecisions: [],
-					meetingUrl: meetingUrl(meeting, alert.meetingId),
-				}),
-			);
+			const meetings = userAlerts.map((alert) => buildMeetingData(alert));
 
 			const emailParams: EmailParams = {
 				userName: user.name,
@@ -568,22 +581,7 @@ export const sendWeeklyDigest = internalAction({
 			}
 			const maxAttemptCount = queued.attemptCount;
 
-			// Build meeting data for all alerts
-			const meetings: MeetingData[] = userAlerts.map(
-				({ alert, meeting, municipality, summary }) => ({
-					title: meeting.title,
-					meetingType: meeting.meetingType,
-					meetingDate: meeting.meetingDate,
-					sourceUrl: emailSourceUrl(meeting.sourceUrl, summary?.sourceUrl),
-					municipalityName: municipality?.name ?? "Unknown Municipality",
-					municipalityState: municipality?.state ?? "",
-					executiveSummary: summary?.executiveSummary ?? "",
-					topics: summary?.topics ?? [],
-					matchedTopics: alert.matchedTopics,
-					keyDecisions: [],
-					meetingUrl: meetingUrl(meeting, alert.meetingId),
-				}),
-			);
+			const meetings = userAlerts.map((alert) => buildMeetingData(alert));
 
 			// Count unique municipalities
 			const uniqueMunicipalities = new Set(

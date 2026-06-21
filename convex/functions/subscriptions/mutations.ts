@@ -20,6 +20,7 @@ export const create = mutation({
 			v.literal("weekly"),
 		),
 		emailEnabled: v.optional(v.boolean()),
+		agendaAlertsEnabled: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
 		const user = await getCurrentUser(ctx);
@@ -80,6 +81,7 @@ export const create = mutation({
 			keywordsExclude: args.keywordsExclude,
 			alertFrequency: args.alertFrequency,
 			emailEnabled: args.emailEnabled ?? true,
+			agendaAlertsEnabled: args.agendaAlertsEnabled ?? false,
 			isActive: true,
 			createdAt: Date.now(),
 			updatedAt: Date.now(),
@@ -103,6 +105,7 @@ export const update = mutation({
 			v.union(v.literal("immediate"), v.literal("daily"), v.literal("weekly")),
 		),
 		emailEnabled: v.optional(v.boolean()),
+		agendaAlertsEnabled: v.optional(v.boolean()),
 		isActive: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
@@ -148,6 +151,9 @@ export const update = mutation({
 		}
 		if (args.emailEnabled !== undefined) {
 			updates.emailEnabled = args.emailEnabled;
+		}
+		if (args.agendaAlertsEnabled !== undefined) {
+			updates.agendaAlertsEnabled = args.agendaAlertsEnabled;
 		}
 		if (args.isActive !== undefined) {
 			updates.isActive = args.isActive;

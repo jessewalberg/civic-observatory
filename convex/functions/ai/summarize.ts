@@ -12,15 +12,24 @@ import { ocrPdf } from "./ocrPdf";
 const MAX_CONTENT_LENGTH = 45000;
 const MIN_EXTRACTED_CONTENT_LENGTH = 100;
 
+const summaryKindValidator = v.union(
+	v.literal("summary"),
+	v.literal("agenda_preview"),
+);
+
+type SummaryKind = "summary" | "agenda_preview";
+
 // ═══════════════════════════════════════════════════════════════
 // SUMMARIZE MEETING - Main action to process a meeting
 // ═══════════════════════════════════════════════════════════════
 export const summarizeMeeting = internalAction({
 	args: {
 		meetingId: v.id("meetings"),
+		kind: v.optional(summaryKindValidator),
 	},
 	handler: async (ctx, args): Promise<{ success: boolean; error?: string }> => {
 		const startTime = Date.now();
+		const summaryKind: SummaryKind = args.kind ?? "summary";
 
 		try {
 			// 1. Update status to processing
@@ -133,55 +142,51 @@ export const summarizeMeeting = internalAction({
 			// 6. Create the summary record
 			const processingTimeMs = Date.now() - startTime;
 
-			await ctx.runMutation(internal.functions.ai.mutations.createSummary, {
-				meetingId: args.meetingId,
-				summary: {
-					...summary,
-					modelUsed: "anthropic/claude-sonnet-4",
-					promptVersion: "1.0",
-					processingTimeMs,
+			const summaryId = await ctx.runMutation(
+				internal.functions.ai.mutations.createSummary,
+				{
+					meetingId: args.meetingId,
+					kind: summaryKind,
+					summary: {
+						...summary,
+						modelUsed: "anthropic/claude-sonnet-4",
+						promptVersion: "1.0",
+						processingTimeMs,
+					},
 				},
-			});
+			);
 
-			// 7. Update meeting status to summarized
+			// 7. Update meeting status. Agenda previews keep the meeting pending
+			// so final post-meeting summarization can still run after the date.
 			await ctx.runMutation(
 				internal.functions.ai.mutations.updateMeetingStatus,
 				{
 					meetingId: args.meetingId,
-					status: "summarized",
+					status: summaryKind === "agenda_preview" ? "pending" : "summarized",
 				},
 			);
 
-			// 8. Get the summary ID and trigger alert generation
-			const savedSummary = await ctx.runQuery(
-				internal.functions.ai.queries.getSummaryByMeeting,
+			// 8. Trigger alert generation for the summary record just created.
+			await ctx.runMutation(
+				internal.functions.alerts.mutations.generateAlerts,
 				{
+					summaryId,
 					meetingId: args.meetingId,
 				},
 			);
-
-			if (savedSummary) {
-				await ctx.runMutation(
-					internal.functions.alerts.mutations.generateAlerts,
-					{
-						summaryId: savedSummary._id,
-						meetingId: args.meetingId,
-					},
-				);
-			}
 
 			return { success: true };
 		} catch (error) {
 			const errorMessage =
 				error instanceof Error ? error.message : "Unknown error";
 
-			// Update meeting status to failed
+			// Agenda preview failures should not block final post-meeting processing.
 			try {
 				await ctx.runMutation(
 					internal.functions.ai.mutations.updateMeetingStatus,
 					{
 						meetingId: args.meetingId,
-						status: "failed",
+						status: summaryKind === "agenda_preview" ? "pending" : "failed",
 						error: errorMessage,
 					},
 				);

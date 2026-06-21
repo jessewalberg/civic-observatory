@@ -43,6 +43,7 @@ interface Subscription {
 	keywordsExclude?: string[];
 	alertFrequency: "immediate" | "daily" | "weekly";
 	emailEnabled: boolean;
+	agendaAlertsEnabled?: boolean;
 	isActive: boolean;
 }
 
@@ -79,6 +80,7 @@ export function SubscriptionModal({
 		"immediate" | "daily" | "weekly"
 	>("daily");
 	const [emailEnabled, setEmailEnabled] = useState(true);
+	const [agendaAlertsEnabled, setAgendaAlertsEnabled] = useState(false);
 	const [keywordsInclude, setKeywordsInclude] = useState("");
 	const [keywordsExclude, setKeywordsExclude] = useState("");
 	const [isSubmitting, setIsSubmitting] = useState(false);
@@ -112,6 +114,7 @@ export function SubscriptionModal({
 			setSelectedMeetingTypes(existingSubscription.meetingTypes ?? []);
 			setAlertFrequency(existingSubscription.alertFrequency);
 			setEmailEnabled(existingSubscription.emailEnabled);
+			setAgendaAlertsEnabled(existingSubscription.agendaAlertsEnabled === true);
 			setKeywordsInclude(
 				existingSubscription.keywordsInclude?.join(", ") ?? "",
 			);
@@ -124,6 +127,7 @@ export function SubscriptionModal({
 			setSelectedMeetingTypes(defaultMeetingTypeKey ? defaultMeetingTypes : []);
 			setAlertFrequency("daily");
 			setEmailEnabled(true);
+			setAgendaAlertsEnabled(false);
 			setKeywordsInclude("");
 			setKeywordsExclude("");
 		}
@@ -141,6 +145,7 @@ export function SubscriptionModal({
 		selectedMeetingTypes,
 		alertFrequency,
 		emailEnabled,
+		agendaAlertsEnabled,
 		userTier: resolvedUserTier,
 	});
 
@@ -180,6 +185,7 @@ export function SubscriptionModal({
 					keywordsExclude: parsedExclude.length > 0 ? parsedExclude : undefined,
 					alertFrequency,
 					emailEnabled,
+					agendaAlertsEnabled,
 				});
 				toast.success("Subscription updated");
 			} else {
@@ -192,6 +198,7 @@ export function SubscriptionModal({
 					keywordsExclude: parsedExclude.length > 0 ? parsedExclude : undefined,
 					alertFrequency,
 					emailEnabled,
+					agendaAlertsEnabled,
 				});
 				toast.success(`Subscribed to ${municipalityName}`);
 			}
@@ -391,12 +398,35 @@ export function SubscriptionModal({
 						<p className="mt-2 text-xs text-muted-foreground">
 							{preview.delivery}
 						</p>
+						<p className="mt-2 text-xs text-muted-foreground">
+							{preview.agendaNotice}
+						</p>
 						{preview.proNotice && (
 							<p className="mt-2 text-xs font-medium text-primary">
 								{preview.proNotice}
 							</p>
 						)}
 					</div>
+
+					{/* Agenda Preview Toggle */}
+					<label
+						htmlFor={`${baseId}-agenda-alerts`}
+						className="flex items-center justify-between p-3 rounded-md border border-border"
+					>
+						<div>
+							<p className="text-sm font-medium">Agenda Preview Alerts</p>
+							<p className="text-xs text-muted-foreground">
+								Notify me before meetings when published agendas match.
+							</p>
+						</div>
+						<Checkbox
+							id={`${baseId}-agenda-alerts`}
+							checked={agendaAlertsEnabled}
+							onCheckedChange={(checked) =>
+								setAgendaAlertsEnabled(checked === true)
+							}
+						/>
+					</label>
 
 					{/* Email Toggle */}
 					<label

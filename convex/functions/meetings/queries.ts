@@ -99,10 +99,7 @@ export const listByMunicipality = query({
 		// Get summaries for these meetings
 		const meetingsWithSummaries = await Promise.all(
 			pageMeetings.map(async (meeting) => {
-				const summary = await ctx.db
-					.query("summaries")
-					.withIndex("by_meeting", (q) => q.eq("meetingId", meeting._id))
-					.first();
+				const summary = await getFinalSummaryForMeeting(ctx, meeting._id);
 				return { ...meeting, summary };
 			}),
 		);
@@ -153,10 +150,7 @@ export const getWithSummary = query({
 		);
 		if (!municipality) return null;
 
-		const summary = await ctx.db
-			.query("summaries")
-			.withIndex("by_meeting", (q) => q.eq("meetingId", args.id))
-			.first();
+		const summary = await getFinalSummaryForMeeting(ctx, args.id);
 
 		return {
 			...meeting,
@@ -186,10 +180,7 @@ export const getWithSummaryByIdentifier = query({
 		);
 		if (!municipality) return null;
 
-		const summary = await ctx.db
-			.query("summaries")
-			.withIndex("by_meeting", (q) => q.eq("meetingId", meeting._id))
-			.first();
+		const summary = await getFinalSummaryForMeeting(ctx, meeting._id);
 
 		return {
 			...meeting,
@@ -205,6 +196,20 @@ async function getMeetingByLegacyId(ctx: QueryCtx, identifier: string) {
 	} catch {
 		return null;
 	}
+}
+
+async function getFinalSummaryForMeeting(
+	ctx: QueryCtx,
+	meetingId: Id<"meetings">,
+) {
+	const summaries = await ctx.db
+		.query("summaries")
+		.withIndex("by_meeting", (q) => q.eq("meetingId", meetingId))
+		.collect();
+	return (
+		summaries.find((summary) => (summary.kind ?? "summary") === "summary") ??
+		null
+	);
 }
 
 async function canReadInternalCoverage(ctx: QueryCtx): Promise<boolean> {
@@ -252,10 +257,7 @@ export const getRecent = query({
 		const meetingsWithDetails = await Promise.all(
 			meetings.map(async (meeting) => {
 				const [summary, municipality] = await Promise.all([
-					ctx.db
-						.query("summaries")
-						.withIndex("by_meeting", (q) => q.eq("meetingId", meeting._id))
-						.first(),
+					getFinalSummaryForMeeting(ctx, meeting._id),
 					ctx.db.get(meeting.municipalityId),
 				]);
 				return { ...meeting, summary, municipality };
