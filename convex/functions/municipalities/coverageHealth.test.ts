@@ -40,6 +40,14 @@ describe("municipality coverage health metrics", () => {
 			partial: 0,
 			failed: 1,
 		});
+		expect(health.latestScrape).toEqual({
+			status: "completed",
+			at: NOW - HOUR,
+			meetingsFound: 3,
+			meetingsCreated: 2,
+			meetingsSkipped: 1,
+			meetingsFailed: 0,
+		});
 		expect(health.documentAvailabilityPct).toBe(100);
 		expect(health.summaryStatus.summaryCoveragePct).toBe(100);
 		expect(health.lastFailure?.message).toBe("timeout");
@@ -134,6 +142,10 @@ function job(
 		status: "completed",
 		createdAt: NOW - HOUR,
 		completedAt: NOW - HOUR,
+		meetingsFound: 3,
+		meetingsCreated: 2,
+		meetingsSkipped: 1,
+		meetingsFailed: 0,
 		...overrides,
 	};
 }

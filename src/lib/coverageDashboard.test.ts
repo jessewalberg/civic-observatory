@@ -4,6 +4,7 @@ import {
 	getCoverageAlerts,
 	getCoverageDashboardRows,
 	getCoverageDashboardStats,
+	getCoveragePlatformStats,
 } from "./coverageDashboard";
 
 const NOW = Date.UTC(2026, 5, 21, 12);
@@ -36,6 +37,32 @@ describe("coverage dashboard table model", () => {
 		).toEqual(["Liveville"]);
 	});
 
+	it("filters by explicit state, active state, and verification state", () => {
+		const rows = [
+			...coverageRows(),
+			row({
+				name: "Inactiveburg",
+				state: "CT",
+				platform: "manual",
+				healthState: "unsupported",
+				lastScrapedAt: null,
+				lastSummarizedAt: null,
+				documentAvailabilityPct: 0,
+				summaryCoveragePct: 0,
+				isActive: false,
+				isVerified: false,
+			}),
+		];
+
+		expect(
+			getCoverageDashboardRows(rows, {
+				state: "CT",
+				activity: "inactive",
+				verification: "unverified",
+			}).map((row) => row.municipality.name),
+		).toEqual(["Inactiveburg"]);
+	});
+
 	it("sorts by operational timestamps and coverage percentages", () => {
 		const rows = coverageRows();
 
@@ -59,15 +86,64 @@ describe("coverage dashboard table model", () => {
 	it("summarizes health counts for operator scan cards", () => {
 		expect(getCoverageDashboardStats(coverageRows())).toEqual({
 			total: 3,
+			active: 3,
+			inactive: 0,
+			verified: 3,
 			live: 1,
 			stale: 1,
 			failing: 1,
+			broken: 1,
 			pending: 0,
 			unsupported: 0,
 			neverProbed: 0,
 			withFailures: 1,
 			coverageAttention: 2,
 		});
+	});
+
+	it("breaks health down by scraper platform", () => {
+		expect(getCoveragePlatformStats(coverageRows())).toEqual([
+			{
+				platform: "granicus",
+				total: 1,
+				live: 0,
+				stale: 0,
+				failing: 1,
+				pending: 0,
+				unsupported: 0,
+				neverProbed: 0,
+			},
+			{
+				platform: "civicplus",
+				total: 1,
+				live: 1,
+				stale: 0,
+				failing: 0,
+				pending: 0,
+				unsupported: 0,
+				neverProbed: 0,
+			},
+			{
+				platform: "generic",
+				total: 1,
+				live: 0,
+				stale: 1,
+				failing: 0,
+				pending: 0,
+				unsupported: 0,
+				neverProbed: 0,
+			},
+			{
+				platform: "manual",
+				total: 0,
+				live: 0,
+				stale: 0,
+				failing: 0,
+				pending: 0,
+				unsupported: 0,
+				neverProbed: 0,
+			},
+		]);
 	});
 
 	it("creates deduped active alert digest rows for repeated failures and stale coverage", () => {
@@ -162,6 +238,8 @@ function row({
 	lastFailure = null,
 	scrapeJobSample,
 	lastSuccessAt = lastScrapedAt,
+	isActive = true,
+	isVerified = true,
 }: {
 	name: string;
 	state: string;
@@ -174,6 +252,8 @@ function row({
 	lastFailure?: CoverageDashboardRow["health"]["lastFailure"];
 	scrapeJobSample?: CoverageDashboardRow["health"]["scrapeJobSample"];
 	lastSuccessAt?: number | null;
+	isActive?: boolean;
+	isVerified?: boolean;
 }): CoverageDashboardRow {
 	const ageMs = lastScrapedAt ? Math.max(0, NOW - lastScrapedAt) : null;
 
@@ -183,8 +263,8 @@ function row({
 			name,
 			state,
 			platform,
-			isActive: true,
-			isVerified: true,
+			isActive,
+			isVerified,
 		},
 		health: {
 			state: healthState,
@@ -203,6 +283,16 @@ function row({
 				partial: 0,
 				failed: healthState === "failing" ? 2 : 0,
 			},
+			latestScrape: lastScrapedAt
+				? {
+						status: healthState === "failing" ? "failed" : "completed",
+						at: lastScrapedAt,
+						meetingsFound: 2,
+						meetingsCreated: summaryCoveragePct === 100 ? 2 : 1,
+						meetingsSkipped: summaryCoveragePct === 100 ? 0 : 1,
+						meetingsFailed: summaryCoveragePct === 0 ? 2 : 0,
+					}
+				: null,
 			documentAvailabilityPct,
 			summaryStatus: {
 				totalMeetings: 2,

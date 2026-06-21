@@ -40,6 +40,9 @@ describe("municipality coverage health query", () => {
 		await seedScrapeJob(t, liveId, {
 			status: "completed",
 			completedAt: successCompletedAt,
+			meetingsFound: 7,
+			meetingsCreated: 3,
+			meetingsSkipped: 4,
 		});
 		await seedScrapeJob(t, failingId, {
 			status: "failed",
@@ -68,6 +71,14 @@ describe("municipality coverage health query", () => {
 		expect(byId[liveId]?.summaryStatus.lastSummarizedAt).toBe(summaryCreatedAt);
 		expect(byId[liveId]?.freshness.lastSuccessAt).toBe(successCompletedAt);
 		expect(byId[liveId]?.scrapeJobSample.completed).toBe(1);
+		expect(byId[liveId]?.latestScrape).toMatchObject({
+			status: "completed",
+			at: successCompletedAt,
+			meetingsFound: 7,
+			meetingsCreated: 3,
+			meetingsSkipped: 4,
+			meetingsFailed: 0,
+		});
 		expect(byId[failingId]?.state).toBe("failing");
 		expect(byId[failingId]?.lastFailure?.message).toBe(
 			"agenda page returned 500",
@@ -201,6 +212,10 @@ async function seedScrapeJob(
 	overrides: Partial<{
 		status: "pending" | "running" | "completed" | "failed" | "partial";
 		completedAt: number;
+		meetingsFound: number;
+		meetingsCreated: number;
+		meetingsSkipped: number;
+		meetingsFailed: number;
 		errors: Array<{ message: string; timestamp: number }>;
 	}>,
 ) {
@@ -209,8 +224,10 @@ async function seedScrapeJob(
 			municipalityId,
 			status: overrides.status ?? "completed",
 			completedAt: overrides.completedAt ?? Date.now(),
-			meetingsFound: 1,
-			meetingsCreated: 1,
+			meetingsFound: overrides.meetingsFound ?? 1,
+			meetingsCreated: overrides.meetingsCreated ?? 1,
+			meetingsSkipped: overrides.meetingsSkipped ?? 0,
+			meetingsFailed: overrides.meetingsFailed ?? 0,
 			errors: overrides.errors,
 			triggeredBy: "manual",
 			createdAt: Date.now(),

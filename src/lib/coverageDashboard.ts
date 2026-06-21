@@ -33,6 +33,14 @@ export type CoverageDashboardRow = {
 			partial: number;
 			failed: number;
 		};
+		latestScrape: {
+			status: "pending" | "running" | "completed" | "failed" | "partial";
+			at: number;
+			meetingsFound: number;
+			meetingsCreated: number;
+			meetingsSkipped: number;
+			meetingsFailed: number;
+		} | null;
 		documentAvailabilityPct: number;
 		summaryStatus: {
 			totalMeetings: number;
@@ -66,6 +74,9 @@ export type CoverageAlert = {
 
 export type CoverageDashboardFilters = {
 	search?: string;
+	state?: string;
+	activity?: "all" | "active" | "inactive";
+	verification?: "all" | "verified" | "unverified";
 	healthState?: CoverageHealthState | "all";
 	platform?: CoverageDashboardRow["municipality"]["platform"] | "all";
 	freshness?: "all" | "fresh" | "stale" | "never";
@@ -110,6 +121,12 @@ const HEALTH_RANK: Record<CoverageHealthState, number> = {
 };
 
 const REPEATED_FAILURE_THRESHOLD = 2;
+const PLATFORM_ORDER: CoverageDashboardRow["municipality"]["platform"][] = [
+	"granicus",
+	"civicplus",
+	"generic",
+	"manual",
+];
 
 export function getCoverageDashboardRows(
 	rows: CoverageDashboardRow[],
@@ -124,9 +141,13 @@ export function getCoverageDashboardRows(
 export function getCoverageDashboardStats(rows: CoverageDashboardRow[]) {
 	return {
 		total: rows.length,
+		active: rows.filter((row) => row.municipality.isActive).length,
+		inactive: rows.filter((row) => !row.municipality.isActive).length,
+		verified: rows.filter((row) => row.municipality.isVerified).length,
 		live: rows.filter((row) => row.health.state === "live").length,
 		stale: rows.filter((row) => row.health.state === "stale").length,
 		failing: rows.filter((row) => row.health.state === "failing").length,
+		broken: rows.filter((row) => row.health.state === "failing").length,
 		pending: rows.filter((row) => row.health.state === "pending").length,
 		unsupported: rows.filter((row) => row.health.state === "unsupported")
 			.length,
@@ -135,6 +156,31 @@ export function getCoverageDashboardStats(rows: CoverageDashboardRow[]) {
 		withFailures: rows.filter(hasFailure).length,
 		coverageAttention: rows.filter(needsCoverageAttention).length,
 	};
+}
+
+export function getCoveragePlatformStats(rows: CoverageDashboardRow[]) {
+	return PLATFORM_ORDER.map((platform) => {
+		const platformRows = rows.filter(
+			(row) => row.municipality.platform === platform,
+		);
+
+		return {
+			platform,
+			total: platformRows.length,
+			live: platformRows.filter((row) => row.health.state === "live").length,
+			stale: platformRows.filter((row) => row.health.state === "stale").length,
+			failing: platformRows.filter((row) => row.health.state === "failing")
+				.length,
+			pending: platformRows.filter((row) => row.health.state === "pending")
+				.length,
+			unsupported: platformRows.filter(
+				(row) => row.health.state === "unsupported",
+			).length,
+			neverProbed: platformRows.filter(
+				(row) => row.health.state === "never-probed",
+			).length,
+		};
+	});
 }
 
 export function getCoverageAlerts(
@@ -170,6 +216,24 @@ function matchesFilters(
 			row.health.state,
 		].some((value) => value.toLowerCase().includes(search))
 	) {
+		return false;
+	}
+
+	if (filters.state?.trim() && filters.state !== "all") {
+		if (row.municipality.state !== filters.state) return false;
+	}
+
+	if (filters.activity === "active" && !row.municipality.isActive) {
+		return false;
+	}
+	if (filters.activity === "inactive" && row.municipality.isActive) {
+		return false;
+	}
+
+	if (filters.verification === "verified" && !row.municipality.isVerified) {
+		return false;
+	}
+	if (filters.verification === "unverified" && row.municipality.isVerified) {
 		return false;
 	}
 
