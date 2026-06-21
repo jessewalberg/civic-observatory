@@ -41,6 +41,7 @@ export type CoverageHealthInput = {
 	}>;
 	summaries: Array<{
 		meetingId: string;
+		createdAt?: number | null;
 	}>;
 	scrapeJobs: Array<{
 		status: ScrapeJobStatus;
@@ -73,6 +74,7 @@ export type MunicipalityCoverageHealth = {
 		failed: number;
 		skipped: number;
 		summaryCoveragePct: number;
+		lastSummarizedAt: number | null;
 	};
 	lastFailure: {
 		message: string;
@@ -189,7 +191,16 @@ function summaryStatus(
 	return {
 		...byStatus,
 		summaryCoveragePct: percent(input.summaries.length, input.meetings.length),
+		lastSummarizedAt: latestTimestamp(input.summaries),
 	};
+}
+
+function latestTimestamp(summaries: CoverageHealthInput["summaries"]) {
+	const timestamps = summaries
+		.map((summary) => summary.createdAt)
+		.filter((createdAt): createdAt is number => typeof createdAt === "number");
+
+	return timestamps.length > 0 ? Math.max(...timestamps) : null;
 }
 
 function findLastFailure(

@@ -328,7 +328,14 @@ export const listCoverageHealth = query({
 							documentStorageId: meeting.documentStorageId ?? null,
 						})),
 						summaries: summaries.flatMap((summary) =>
-							summary ? [{ meetingId: summary.meetingId }] : [],
+							summary
+								? [
+										{
+											meetingId: summary.meetingId,
+											createdAt: summary.createdAt,
+										},
+									]
+								: [],
 						),
 						scrapeJobs: scrapeJobs.map((job) => ({
 							status: job.status,

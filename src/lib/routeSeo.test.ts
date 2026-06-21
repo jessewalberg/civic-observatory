@@ -2,6 +2,7 @@ import { isNotFound, isRedirect } from "@tanstack/react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Route as RootRoute } from "../routes/__root";
 import { Route as AdminAlertsRoute } from "../routes/admin/alerts";
+import { Route as AdminCoverageRoute } from "../routes/admin/coverage";
 import { Route as AdminIndexRoute } from "../routes/admin/index";
 import { Route as AdminInvestigationsRoute } from "../routes/admin/investigations";
 import { Route as AdminMunicipalitiesRoute } from "../routes/admin/municipalities";
@@ -83,6 +84,7 @@ describe("route SEO indexability", () => {
 	it("marks admin routes as noindex", () => {
 		for (const route of [
 			AdminIndexRoute,
+			AdminCoverageRoute,
 			AdminMunicipalitiesRoute,
 			AdminUsersRoute,
 			AdminScrapersRoute,
