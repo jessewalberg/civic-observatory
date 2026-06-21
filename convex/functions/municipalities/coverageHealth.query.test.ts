@@ -13,6 +13,7 @@ describe("municipality coverage health query", () => {
 		const t = setup();
 		await seedAdmin(t);
 		const summaryCreatedAt = Date.now() - 30_000;
+		const successCompletedAt = Date.now() - 45_000;
 		const liveId = await seedMunicipality(t, {
 			name: "Liveville",
 			lastScrapedAt: Date.now() - 60 * 60 * 1000,
@@ -36,7 +37,10 @@ describe("municipality coverage health query", () => {
 		});
 		await seedSummary(t, liveMeetingId, liveId, summaryCreatedAt);
 		await seedMeeting(t, failingId, { status: "failed" });
-		await seedScrapeJob(t, liveId, { status: "completed" });
+		await seedScrapeJob(t, liveId, {
+			status: "completed",
+			completedAt: successCompletedAt,
+		});
 		await seedScrapeJob(t, failingId, {
 			status: "failed",
 			errors: [{ message: "agenda page returned 500", timestamp: Date.now() }],
@@ -62,6 +66,8 @@ describe("municipality coverage health query", () => {
 		expect(byId[liveId]?.documentAvailabilityPct).toBe(100);
 		expect(byId[liveId]?.summaryStatus.summaryCoveragePct).toBe(100);
 		expect(byId[liveId]?.summaryStatus.lastSummarizedAt).toBe(summaryCreatedAt);
+		expect(byId[liveId]?.freshness.lastSuccessAt).toBe(successCompletedAt);
+		expect(byId[liveId]?.scrapeJobSample.completed).toBe(1);
 		expect(byId[failingId]?.state).toBe("failing");
 		expect(byId[failingId]?.lastFailure?.message).toBe(
 			"agenda page returned 500",
@@ -194,6 +200,7 @@ async function seedScrapeJob(
 	municipalityId: Id<"municipalities">,
 	overrides: Partial<{
 		status: "pending" | "running" | "completed" | "failed" | "partial";
+		completedAt: number;
 		errors: Array<{ message: string; timestamp: number }>;
 	}>,
 ) {
@@ -201,7 +208,7 @@ async function seedScrapeJob(
 		ctx.db.insert("scrapeJobs", {
 			municipalityId,
 			status: overrides.status ?? "completed",
-			completedAt: Date.now(),
+			completedAt: overrides.completedAt ?? Date.now(),
 			meetingsFound: 1,
 			meetingsCreated: 1,
 			errors: overrides.errors,

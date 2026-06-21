@@ -59,12 +59,19 @@ export type MunicipalityCoverageHealth = {
 	state: CoverageHealthState;
 	freshness: {
 		lastScrapedAt: number | null;
+		lastSuccessAt: number | null;
 		ageMs: number | null;
 		frequencyHours: number;
 		staleAfterMs: number;
 		isStale: boolean;
 	};
 	scrapeSuccessRate: number | null;
+	scrapeJobSample: {
+		total: number;
+		completed: number;
+		partial: number;
+		failed: number;
+	};
 	documentAvailabilityPct: number;
 	summaryStatus: {
 		totalMeetings: number;
@@ -108,6 +115,7 @@ export function buildMunicipalityCoverageHealth(
 	);
 	const latestTerminalJob = terminalJobs[0] ?? null;
 	const lastFailure = findLastFailure(input);
+	const lastSuccessAt = findLastSuccess(input, terminalJobs);
 
 	let state: CoverageHealthState;
 	if (!isSupported) {
@@ -131,12 +139,14 @@ export function buildMunicipalityCoverageHealth(
 		state,
 		freshness: {
 			lastScrapedAt,
+			lastSuccessAt,
 			ageMs,
 			frequencyHours,
 			staleAfterMs,
 			isStale,
 		},
 		scrapeSuccessRate: scrapeSuccessRate(terminalJobs),
+		scrapeJobSample: scrapeJobSample(terminalJobs),
 		documentAvailabilityPct: documentAvailabilityPct(input.meetings),
 		summaryStatus: summaryStatus(input),
 		lastFailure,
@@ -155,6 +165,17 @@ function scrapeSuccessRate(
 	}, 0);
 
 	return score / jobs.length;
+}
+
+function scrapeJobSample(
+	jobs: CoverageHealthInput["scrapeJobs"],
+): MunicipalityCoverageHealth["scrapeJobSample"] {
+	return {
+		total: jobs.length,
+		completed: jobs.filter((job) => job.status === "completed").length,
+		partial: jobs.filter((job) => job.status === "partial").length,
+		failed: jobs.filter((job) => job.status === "failed").length,
+	};
 }
 
 function documentAvailabilityPct(
@@ -229,6 +250,26 @@ function findLastFailure(
 				at: job.completedAt ?? job.createdAt,
 			};
 		}
+	}
+
+	return null;
+}
+
+function findLastSuccess(
+	input: CoverageHealthInput,
+	jobs: CoverageHealthInput["scrapeJobs"],
+) {
+	for (const job of jobs) {
+		if (job.status === "completed") {
+			return job.completedAt ?? job.createdAt;
+		}
+	}
+
+	if (
+		input.municipality.lastScrapeStatus === "success" &&
+		input.municipality.lastScrapedAt
+	) {
+		return input.municipality.lastScrapedAt;
 	}
 
 	return null;

@@ -32,7 +32,14 @@ describe("municipality coverage health metrics", () => {
 
 		expect(health.state).toBe("live");
 		expect(health.freshness.isStale).toBe(false);
+		expect(health.freshness.lastSuccessAt).toBe(NOW - HOUR);
 		expect(health.scrapeSuccessRate).toBeCloseTo(2 / 3);
+		expect(health.scrapeJobSample).toEqual({
+			total: 3,
+			completed: 2,
+			partial: 0,
+			failed: 1,
+		});
 		expect(health.documentAvailabilityPct).toBe(100);
 		expect(health.summaryStatus.summaryCoveragePct).toBe(100);
 		expect(health.lastFailure?.message).toBe("timeout");
@@ -126,6 +133,7 @@ function job(
 	return {
 		status: "completed",
 		createdAt: NOW - HOUR,
+		completedAt: NOW - HOUR,
 		...overrides,
 	};
 }

@@ -19,12 +19,19 @@ export type CoverageDashboardRow = {
 		state: CoverageHealthState;
 		freshness: {
 			lastScrapedAt: number | null;
+			lastSuccessAt: number | null;
 			ageMs: number | null;
 			frequencyHours: number;
 			staleAfterMs: number;
 			isStale: boolean;
 		};
 		scrapeSuccessRate: number | null;
+		scrapeJobSample: {
+			total: number;
+			completed: number;
+			partial: number;
+			failed: number;
+		};
 		documentAvailabilityPct: number;
 		summaryStatus: {
 			totalMeetings: number;
@@ -42,6 +49,18 @@ export type CoverageDashboardRow = {
 			url?: string;
 		} | null;
 	};
+};
+
+export type CoverageAlert = {
+	id: string;
+	kind: "repeated-failure" | "stale";
+	severity: "critical" | "warning";
+	municipalityId: string;
+	municipalityName: string;
+	platform: CoverageDashboardRow["municipality"]["platform"];
+	reason: string;
+	lastSuccessAt: number | null;
+	suggestedAction: string;
 };
 
 export type CoverageDashboardFilters = {
@@ -89,6 +108,8 @@ const HEALTH_RANK: Record<CoverageHealthState, number> = {
 	live: 5,
 };
 
+const REPEATED_FAILURE_THRESHOLD = 2;
+
 export function getCoverageDashboardRows(
 	rows: CoverageDashboardRow[],
 	filters: CoverageDashboardFilters = {},
@@ -113,6 +134,25 @@ export function getCoverageDashboardStats(rows: CoverageDashboardRow[]) {
 		withFailures: rows.filter(hasFailure).length,
 		coverageAttention: rows.filter(needsCoverageAttention).length,
 	};
+}
+
+export function getCoverageAlerts(
+	rows: CoverageDashboardRow[],
+): CoverageAlert[] {
+	const byId = new Map<string, CoverageAlert>();
+
+	for (const row of rows) {
+		const alert = coverageAlert(row);
+		if (alert && !byId.has(alert.id)) {
+			byId.set(alert.id, alert);
+		}
+	}
+
+	return [...byId.values()].sort((a, b) => {
+		const severity = severityRank(a.severity) - severityRank(b.severity);
+		if (severity !== 0) return severity;
+		return a.municipalityName.localeCompare(b.municipalityName);
+	});
 }
 
 function matchesFilters(
@@ -288,4 +328,51 @@ function coverageRank(row: CoverageDashboardRow) {
 	if (row.health.documentAvailabilityPct < 100) return 2;
 	if (row.health.summaryStatus.summaryCoveragePct < 100) return 3;
 	return 4;
+}
+
+function coverageAlert(row: CoverageDashboardRow): CoverageAlert | null {
+	if (isRepeatedFailure(row)) {
+		return {
+			id: `${row.municipality.id}:repeated-failure`,
+			kind: "repeated-failure",
+			severity: "critical",
+			municipalityId: row.municipality.id,
+			municipalityName: row.municipality.name,
+			platform: row.municipality.platform,
+			reason: row.health.lastFailure?.message ?? "Repeated scrape failures.",
+			lastSuccessAt: row.health.freshness.lastSuccessAt,
+			suggestedAction:
+				"Inspect scraper logs, confirm the agenda URL still works, then retry the scraper.",
+		};
+	}
+
+	if (row.health.state === "stale") {
+		return {
+			id: `${row.municipality.id}:stale`,
+			kind: "stale",
+			severity: "warning",
+			municipalityId: row.municipality.id,
+			municipalityName: row.municipality.name,
+			platform: row.municipality.platform,
+			reason: "No successful scrape inside the freshness window.",
+			lastSuccessAt:
+				row.health.freshness.lastSuccessAt ??
+				row.health.freshness.lastScrapedAt,
+			suggestedAction:
+				"Run a manual scrape or check whether the meeting source changed.",
+		};
+	}
+
+	return null;
+}
+
+function isRepeatedFailure(row: CoverageDashboardRow) {
+	return (
+		row.health.state === "failing" &&
+		row.health.scrapeJobSample.failed >= REPEATED_FAILURE_THRESHOLD
+	);
+}
+
+function severityRank(severity: CoverageAlert["severity"]) {
+	return severity === "critical" ? 0 : 1;
 }
