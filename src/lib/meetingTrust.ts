@@ -1,4 +1,4 @@
-type SourceType = "scraped" | "uploaded" | "manual_entry";
+export type SourceType = "scraped" | "uploaded" | "manual_entry";
 type MeetingStatus =
 	| "pending"
 	| "processing"
@@ -13,19 +13,33 @@ export type MeetingSourceTrustState =
 	| "missing-source"
 	| "failed";
 
-export interface MeetingSourceTrustInput {
-	status: MeetingStatus;
+export interface MeetingSourceMetadataInput {
 	sourceUrl?: string | null;
 	sourceType?: SourceType | null;
 	contentHash?: string | null;
 	processingError?: string | null;
 	summary?: {
-		status?: SummaryStatus | null;
 		sourceUrl?: string | null;
 		sourceType?: SourceType | null;
 		sourceContentHash?: string | null;
 		error?: string | null;
 	} | null;
+}
+
+export interface MeetingSourceTrustInput extends MeetingSourceMetadataInput {
+	status: MeetingStatus;
+	summary?:
+		| (MeetingSourceMetadataInput["summary"] & {
+				status?: SummaryStatus | null;
+		  })
+		| null;
+}
+
+export interface MeetingSourceMetadata {
+	sourceUrl: string | null;
+	sourceType: SourceType | null;
+	contentHash: string | null;
+	error: string | null;
 }
 
 export interface MeetingSourceTrust {
@@ -38,14 +52,23 @@ export interface MeetingSourceTrust {
 	error: string | null;
 }
 
+export function getMeetingSourceMetadata(
+	meeting: MeetingSourceMetadataInput,
+): MeetingSourceMetadata {
+	return {
+		sourceUrl: meeting.summary?.sourceUrl ?? meeting.sourceUrl ?? null,
+		sourceType: meeting.summary?.sourceType ?? meeting.sourceType ?? null,
+		contentHash:
+			meeting.summary?.sourceContentHash ?? meeting.contentHash ?? null,
+		error: meeting.summary?.error ?? meeting.processingError ?? null,
+	};
+}
+
 export function getMeetingSourceTrust(
 	meeting: MeetingSourceTrustInput,
 ): MeetingSourceTrust {
-	const sourceUrl = meeting.summary?.sourceUrl ?? meeting.sourceUrl ?? null;
-	const sourceType = meeting.summary?.sourceType ?? meeting.sourceType ?? null;
-	const contentHash =
-		meeting.summary?.sourceContentHash ?? meeting.contentHash ?? null;
-	const error = meeting.summary?.error ?? meeting.processingError ?? null;
+	const { sourceUrl, sourceType, contentHash, error } =
+		getMeetingSourceMetadata(meeting);
 	const hasUsableSummary =
 		meeting.status === "summarized" &&
 		Boolean(meeting.summary) &&
