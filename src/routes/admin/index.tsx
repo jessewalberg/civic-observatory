@@ -165,7 +165,7 @@ function AdminContent() {
 					</div>
 
 					{/* Quick Links */}
-					<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+					<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4 mb-8">
 						<QuickLink
 							to="/admin/municipalities"
 							icon={Building2}
@@ -183,6 +183,12 @@ function AdminContent() {
 							icon={Server}
 							label="Scrapers"
 							description="Scraper status"
+						/>
+						<QuickLink
+							to="/admin/coverage"
+							icon={BarChart3}
+							label="Coverage"
+							description="Health table"
 						/>
 						<QuickLink
 							to="/admin/alerts"

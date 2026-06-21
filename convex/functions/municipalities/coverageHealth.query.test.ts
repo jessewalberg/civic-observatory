@@ -12,6 +12,7 @@ describe("municipality coverage health query", () => {
 	it("derives coverage health from Convex municipality, meeting, summary, and scrape job rows", async () => {
 		const t = setup();
 		await seedAdmin(t);
+		const summaryCreatedAt = Date.now() - 30_000;
 		const liveId = await seedMunicipality(t, {
 			name: "Liveville",
 			lastScrapedAt: Date.now() - 60 * 60 * 1000,
@@ -33,7 +34,7 @@ describe("municipality coverage health query", () => {
 			status: "summarized",
 			sourceUrl: "https://example.test/live.pdf",
 		});
-		await seedSummary(t, liveMeetingId, liveId);
+		await seedSummary(t, liveMeetingId, liveId, summaryCreatedAt);
 		await seedMeeting(t, failingId, { status: "failed" });
 		await seedScrapeJob(t, liveId, { status: "completed" });
 		await seedScrapeJob(t, failingId, {
@@ -60,11 +61,36 @@ describe("municipality coverage health query", () => {
 		expect(byId[liveId]?.state).toBe("live");
 		expect(byId[liveId]?.documentAvailabilityPct).toBe(100);
 		expect(byId[liveId]?.summaryStatus.summaryCoveragePct).toBe(100);
+		expect(byId[liveId]?.summaryStatus.lastSummarizedAt).toBe(summaryCreatedAt);
 		expect(byId[failingId]?.state).toBe("failing");
 		expect(byId[failingId]?.lastFailure?.message).toBe(
 			"agenda page returned 500",
 		);
 		expect(byId[unsupportedId]?.state).toBe("unsupported");
+	});
+
+	it("returns null for non-admin callers so dashboard access is backend-enforced", async () => {
+		const t = setup();
+		await t.run(async (ctx) =>
+			ctx.db.insert("users", {
+				clerkUserId: "user_clerk",
+				email: "user@example.com",
+				tier: "free",
+				isAdmin: false,
+				createdAt: Date.now(),
+				lastLoginAt: Date.now(),
+			}),
+		);
+
+		const asUser = t.withIdentity({
+			subject: "user_clerk",
+			issuer: ISSUER,
+			email: "user@example.com",
+		});
+
+		await expect(
+			asUser.query(api.functions.municipalities.queries.listCoverageHealth, {}),
+		).resolves.toBeNull();
 	});
 });
 
@@ -140,6 +166,7 @@ async function seedSummary(
 	t: ReturnType<typeof convexTest>,
 	meetingId: Id<"meetings">,
 	municipalityId: Id<"municipalities">,
+	createdAt = Date.now(),
 ) {
 	await t.run(async (ctx) =>
 		ctx.db.insert("summaries", {
@@ -157,7 +184,7 @@ async function seedSummary(
 			meetingDate: Date.now(),
 			sourceType: "scraped",
 			status: "summarized",
-			createdAt: Date.now(),
+			createdAt,
 		}),
 	);
 }
