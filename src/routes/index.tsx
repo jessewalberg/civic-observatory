@@ -4,7 +4,6 @@ import {
 	Bell,
 	Building2,
 	ChevronRight,
-	Clock,
 	FileText,
 	MapPin,
 	Newspaper,
@@ -202,8 +201,8 @@ function LandingPage() {
 								transition={{ delay: 0.5 }}
 							>
 								<div className="flex items-center gap-2">
-									<Clock className="h-4 w-4 text-primary" />
-									<span>5 min summaries</span>
+									<FileText className="h-4 w-4 text-primary" />
+									<span>Source-backed briefs</span>
 								</div>
 								<div className="h-4 w-px bg-border" />
 								<div className="flex items-center gap-2">
@@ -315,8 +314,8 @@ function LandingPage() {
 							<span className="text-primary">Summarized</span>
 						</h2>
 						<p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-							No more skimming 200-page agendas or watching 4-hour recordings.
-							Get straight to what matters.
+							Spend less time digging through agendas and recordings. Get
+							straight to what matters.
 						</p>
 					</motion.div>
 
@@ -461,9 +460,8 @@ function LandingPage() {
 									</span>
 								</h2>
 								<p className="text-lg text-muted-foreground max-w-2xl mx-auto mb-8">
-									Join thousands of informed citizens who never miss an
-									important vote, zoning change, or budget decision in their
-									community.
+									Start with supported municipalities, follow the topics you
+									care about, and get alerts when new summaries match.
 								</p>
 								<div className="flex flex-wrap justify-center gap-4">
 									<Button size="lg" className="gap-2 text-base px-10" asChild>
@@ -487,7 +485,7 @@ function LandingPage() {
 									</Button>
 								</div>
 								<p className="text-sm text-muted-foreground mt-6">
-									No credit card required • 50 free summaries per month
+									No credit card required • 50 free summary views per day
 								</p>
 							</motion.div>
 						</div>
