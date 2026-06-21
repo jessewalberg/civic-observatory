@@ -3,6 +3,7 @@ import type { Id } from "../../_generated/dataModel";
 import { query } from "../../_generated/server";
 import { getCurrentUser } from "../../lib/auth";
 import { buildMunicipalityCoverageHealth } from "./coverageHealth";
+import { buildMunicipalityOnboardingChecklist } from "./onboardingChecklist";
 
 // ═══════════════════════════════════════════════════════════════
 // LIST - All municipalities with optional state filter
@@ -353,3 +354,119 @@ export const listCoverageHealth = query({
 		);
 	},
 });
+
+// ═══════════════════════════════════════════════════════════════
+// LIST ONBOARDING CHECKLISTS - Operator setup workflow per municipality
+// ═══════════════════════════════════════════════════════════════
+export const listOnboardingChecklists = query({
+	args: {},
+	handler: async (ctx) => {
+		const caller = await getCurrentUser(ctx);
+		if (!caller?.isAdmin) return null;
+
+		const now = Date.now();
+		const municipalities = await ctx.db.query("municipalities").collect();
+
+		const rows = await Promise.all(
+			municipalities.map(async (municipality) => {
+				const [latestValidation, scrapeJobs, meetings] = await Promise.all([
+					ctx.db
+						.query("scraperValidationRuns")
+						.withIndex("by_municipality_created", (q) =>
+							q.eq("municipalityId", municipality._id),
+						)
+						.order("desc")
+						.first(),
+					ctx.db
+						.query("scrapeJobs")
+						.withIndex("by_municipality", (q) =>
+							q.eq("municipalityId", municipality._id),
+						)
+						.order("desc")
+						.take(5),
+					ctx.db
+						.query("meetings")
+						.withIndex("by_municipality", (q) =>
+							q.eq("municipalityId", municipality._id),
+						)
+						.collect(),
+				]);
+
+				const summaries = await Promise.all(
+					meetings.map((meeting) =>
+						ctx.db
+							.query("summaries")
+							.withIndex("by_meeting", (q) => q.eq("meetingId", meeting._id))
+							.first(),
+					),
+				);
+
+				return buildMunicipalityOnboardingChecklist({
+					now,
+					municipality: {
+						id: municipality._id,
+						name: municipality.name,
+						state: municipality.state,
+						meetingsPageUrl: municipality.meetingsPageUrl ?? null,
+						platform: municipality.platform,
+						isActive: municipality.isActive,
+						isVerified: municipality.isVerified,
+					},
+					latestValidation: latestValidation
+						? {
+								status: latestValidation.status,
+								createdAt: latestValidation.createdAt,
+								stats: {
+									meetingsFound: latestValidation.stats.meetingsFound,
+								},
+								checks: latestValidation.checks.map((check) => ({
+									name: check.name,
+									status: check.status,
+									message: check.message,
+								})),
+							}
+						: null,
+					scrapeJobs: scrapeJobs.map((job) => ({
+						status: job.status,
+						createdAt: job.createdAt,
+						completedAt: job.completedAt ?? null,
+						meetingsFound: job.meetingsFound ?? null,
+						errors: job.errors ?? null,
+					})),
+					meetings: meetings.map((meeting) => ({
+						id: meeting._id,
+						status: meeting.status,
+					})),
+					summaries: summaries.flatMap((summary) =>
+						summary
+							? [
+									{
+										meetingId: summary.meetingId,
+										createdAt: summary.createdAt,
+									},
+								]
+							: [],
+					),
+				});
+			}),
+		);
+
+		return rows.sort((a, b) => {
+			const statusRank =
+				onboardingStatusRank(a.overallStatus) -
+				onboardingStatusRank(b.overallStatus);
+			if (statusRank !== 0) return statusRank;
+			return a.municipality.name.localeCompare(b.municipality.name);
+		});
+	},
+});
+
+function onboardingStatusRank(status: string): number {
+	const rank: Record<string, number> = {
+		failed: 0,
+		"next-action": 1,
+		blocked: 2,
+		completed: 3,
+	};
+	return rank[status] ?? 4;
+}
