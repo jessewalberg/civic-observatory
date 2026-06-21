@@ -1,7 +1,7 @@
 "use node";
 
 import { v } from "convex/values";
-import { api, internal } from "../../_generated/api";
+import { internal } from "../../_generated/api";
 import type { Doc } from "../../_generated/dataModel";
 import { internalAction } from "../../_generated/server";
 
@@ -49,7 +49,7 @@ export const probeOne = internalAction({
 	},
 	handler: async (ctx, args): Promise<ProbeOneResult> => {
 		const municipality = (await ctx.runQuery(
-			api.functions.municipalities.queries.get,
+			internal.functions.municipalities.queries.internalGet,
 			{ id: args.municipalityId },
 		)) as Doc<"municipalities"> | null;
 
@@ -159,7 +159,7 @@ export const probeByState = internalAction({
 	},
 	handler: async (ctx, args): Promise<ProbeByStateResult> => {
 		const municipalities = (await ctx.runQuery(
-			api.functions.municipalities.queries.list,
+			internal.functions.municipalities.queries.internalList,
 			{ state: args.state },
 		)) as Doc<"municipalities">[];
 
@@ -228,7 +228,7 @@ export const probeAll = internalAction({
 	handler: async (ctx, args) => {
 		// Get all states from the database
 		const allMunicipalities = (await ctx.runQuery(
-			api.functions.municipalities.queries.list,
+			internal.functions.municipalities.queries.internalList,
 			{},
 		)) as Doc<"municipalities">[];
 
