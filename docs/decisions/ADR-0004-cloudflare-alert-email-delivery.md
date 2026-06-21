@@ -73,3 +73,15 @@ the rare case where Cloudflare accepted a message but the action died before the
 `sent` state transition, recovery can resend after the 30-minute timeout. The
 stored delivery key and provider message ID are diagnostics/correlation
 metadata, not provider-enforced deduplication.
+
+## Update 2026-06-21: Alert Preference Links
+
+THE-208 closes alert email preference links by routing both manage and
+unsubscribe footer actions to `/dashboard/subscriptions`. That route uses the
+authenticated subscription owner mutations that already support pausing and
+removing subscriptions, so immediate, daily, and weekly email templates share
+one working preference-management path.
+
+This is not a tokenized one-click unsubscribe design. If Civic Observatory needs
+unauthenticated one-click unsubscribe later, add a signed subscription token and
+route before changing email footer links back to a public endpoint.
