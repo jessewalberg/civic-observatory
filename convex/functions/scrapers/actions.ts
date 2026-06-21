@@ -236,11 +236,8 @@ export const runScraper = internalAction({
 						},
 					);
 
-					// Schedule summarization for past meetings only.
-					// Future meetings are stored as agenda previews and summarized after the meeting date.
 					const isFutureMeeting = meeting.meetingDate > Date.now();
 					if (
-						!isFutureMeeting &&
 						shouldQueueSummarization({
 							rawContent,
 							sourceUrl: sourceUrlForMeeting,
@@ -250,7 +247,10 @@ export const runScraper = internalAction({
 						await ctx.scheduler.runAfter(
 							0,
 							internal.functions.ai.summarize.summarizeMeeting,
-							{ meetingId },
+							{
+								meetingId,
+								kind: isFutureMeeting ? "agenda_preview" : "summary",
+							},
 						);
 					}
 

@@ -23,10 +23,7 @@ export const getSummaryByMeeting = query({
 		meetingId: v.id("meetings"),
 	},
 	handler: async (ctx, args) => {
-		const summary = await ctx.db
-			.query("summaries")
-			.withIndex("by_meeting", (q) => q.eq("meetingId", args.meetingId))
-			.first();
+		const summary = await getFinalSummaryForMeeting(ctx, args.meetingId);
 
 		if (!summary) return null;
 		return (await isMeetingVisible(ctx, args.meetingId)) ? summary : null;
@@ -44,7 +41,9 @@ export const getRecentSummaries = query({
 	handler: async (ctx, args) => {
 		const limit = args.limit ?? 10;
 
-		const summaries = await ctx.db.query("summaries").order("desc").collect();
+		const summaries = (
+			await ctx.db.query("summaries").order("desc").collect()
+		).filter(isFinalSummary);
 		const includeInternal = await canReadInternalCoverage(ctx);
 
 		// Enrich with meeting and municipality data
@@ -89,7 +88,9 @@ export const listSummariesByTopics = query({
 	handler: async (ctx, args) => {
 		const limit = args.limit ?? 20;
 
-		const allSummaries = await ctx.db.query("summaries").collect();
+		const allSummaries = (await ctx.db.query("summaries").collect()).filter(
+			isFinalSummary,
+		);
 
 		// Filter summaries that contain any of the requested topics
 		const includeInternal = await canReadInternalCoverage(ctx);
@@ -150,6 +151,21 @@ export const listPublicTopicFeed = query({
 	},
 });
 
+async function getFinalSummaryForMeeting(
+	ctx: QueryCtx,
+	meetingId: Id<"meetings">,
+) {
+	const summaries = await ctx.db
+		.query("summaries")
+		.withIndex("by_meeting", (q) => q.eq("meetingId", meetingId))
+		.collect();
+	return summaries.find(isFinalSummary) ?? null;
+}
+
+function isFinalSummary(summary: Doc<"summaries">): boolean {
+	return (summary.kind ?? "summary") === "summary";
+}
+
 async function canReadInternalCoverage(ctx: QueryCtx): Promise<boolean> {
 	const caller = await getCurrentUser(ctx);
 	return Boolean(caller?.isAdmin);
@@ -209,10 +225,7 @@ async function listPublicSummaryResults(
 		const municipality = await ctx.db.get(meeting.municipalityId);
 		if (!municipality || !isCoveragePublic(municipality)) continue;
 
-		const summary = await ctx.db
-			.query("summaries")
-			.withIndex("by_meeting", (q) => q.eq("meetingId", meeting._id))
-			.first();
+		const summary = await getFinalSummaryForMeeting(ctx, meeting._id);
 		if (!summary) continue;
 
 		if (

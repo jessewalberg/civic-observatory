@@ -230,6 +230,7 @@ function EmptyFeed() {
 
 interface FeedItemType {
 	_id: Id<"alerts">;
+	kind: "summary" | "agenda_preview";
 	createdAt: number;
 	sentAt?: number;
 	readAt?: number;
@@ -285,6 +286,7 @@ function FeedItem({
 	};
 
 	const timeAgo = getTimeAgo(item.sentAt ?? item.createdAt);
+	const isAgendaPreview = item.kind === "agenda_preview";
 
 	return (
 		<a
@@ -307,9 +309,16 @@ function FeedItem({
 				{/* Content */}
 				<div className="flex-1 min-w-0">
 					<div className="flex items-start justify-between gap-2 mb-1">
-						<h3 className="font-medium text-foreground truncate">
-							{item.meeting.title}
-						</h3>
+						<div className="flex min-w-0 flex-wrap items-center gap-2">
+							<h3 className="font-medium text-foreground truncate">
+								{item.meeting.title}
+							</h3>
+							{isAgendaPreview && (
+								<Badge variant="outline" className="text-xs">
+									Agenda preview
+								</Badge>
+							)}
+						</div>
 						<span className="text-xs text-muted-foreground whitespace-nowrap flex items-center gap-1">
 							<Clock className="h-3 w-3" />
 							{timeAgo}

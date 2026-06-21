@@ -1,9 +1,11 @@
 import { v } from "convex/values";
+import type { Doc } from "../../_generated/dataModel";
 import { internalMutation, mutation } from "../../_generated/server";
 import { getCurrentUser } from "../../lib/auth";
 import { isCoveragePublic } from "../municipalities/coveragePublication";
 import {
 	evaluateSubscriptionSummaryMatch,
+	type SubscriptionAlertKind,
 	type SubscriptionMatchSkipReason,
 } from "../subscriptions/matching";
 
@@ -40,6 +42,7 @@ export const generateAlerts = internalMutation({
 		const municipality = await ctx.db.get(meeting.municipalityId);
 
 		const now = Date.now();
+		const alertKind = alertKindForSummary(summary);
 		const results = {
 			created: 0,
 			skipped: 0,
@@ -76,13 +79,26 @@ export const generateAlerts = internalMutation({
 						)
 						.first(),
 				]);
+				const existingAgendaPreview =
+					alertKind === "agenda_preview"
+						? await ctx.db
+								.query("alerts")
+								.withIndex("by_subscription_meeting_kind", (q) =>
+									q
+										.eq("subscriptionId", subscription._id)
+										.eq("meetingId", args.meetingId)
+										.eq("kind", alertKind),
+								)
+								.first()
+						: null;
 
 				const match = evaluateSubscriptionSummaryMatch({
 					subscription,
 					user,
 					meeting,
 					summary,
-					hasExistingAlert: Boolean(existing),
+					alertKind,
+					hasExistingAlert: Boolean(existing || existingAgendaPreview),
 				});
 				if (!match.matches) {
 					recordSkip(match.reason);
@@ -98,6 +114,7 @@ export const generateAlerts = internalMutation({
 					matchedTopics: match.matchedTopics,
 					matchedKeywords: match.matchedKeywords,
 					status: "pending",
+					kind: alertKind,
 					createdAt: now,
 				});
 
@@ -114,6 +131,10 @@ export const generateAlerts = internalMutation({
 		return results;
 	},
 });
+
+function alertKindForSummary(summary: Doc<"summaries">): SubscriptionAlertKind {
+	return summary.kind === "agenda_preview" ? "agenda_preview" : "summary";
+}
 
 // ═══════════════════════════════════════════════════════════════
 // MARK SENT - Mark an alert as sent

@@ -30,21 +30,25 @@ export const getPendingMeetings = internalQuery({
 	},
 	handler: async (ctx, args) => {
 		const limit = args.limit ?? 10;
+		const now = Date.now();
 
 		const meetings = await ctx.db
 			.query("meetings")
 			.withIndex("by_status", (q) => q.eq("status", "pending"))
 			.order("asc")
-			.take(limit);
+			.collect();
 
 		// Include meetings with rawContent, uploaded documents, OR source URLs
 		// that summarizeMeeting can hydrate on demand.
-		return meetings.filter(
-			(m) =>
-				(m.rawContent && m.rawContent.length > 0) ||
-				m.documentStorageId ||
-				(m.sourceUrl && m.sourceUrl.trim().length > 0),
-		);
+		return meetings
+			.filter(
+				(m) =>
+					m.meetingDate <= now &&
+					((m.rawContent && m.rawContent.length > 0) ||
+						m.documentStorageId ||
+						(m.sourceUrl && m.sourceUrl.trim().length > 0)),
+			)
+			.slice(0, limit);
 	},
 });
 

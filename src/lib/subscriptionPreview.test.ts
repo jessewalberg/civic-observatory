@@ -16,6 +16,7 @@ describe("subscription alert preview copy", () => {
 			title: "Daily digest preview",
 			body: "You will get a daily digest when any meeting summary is ready for Austin.",
 			delivery: "Email delivery is on.",
+			agendaNotice: "Pre-meeting agenda preview alerts are off.",
 			proNotice: null,
 		});
 	});
@@ -34,6 +35,7 @@ describe("subscription alert preview copy", () => {
 			title: "Weekly digest preview",
 			body: "You will get a weekly digest when City Council or Planning Commission summaries mention Budget & Finance or Housing & Development in Cambridge.",
 			delivery: "Email delivery is off; alerts still appear in your dashboard.",
+			agendaNotice: "Pre-meeting agenda preview alerts are off.",
 			proNotice: null,
 		});
 	});
@@ -51,5 +53,31 @@ describe("subscription alert preview copy", () => {
 		).toBe(
 			"Immediate email alerts require Pro. Daily and weekly digests are available on Free.",
 		);
+	});
+
+	it("shows whether pre-meeting agenda preview alerts are enabled", () => {
+		expect(
+			buildSubscriptionPreview({
+				municipalityName: "Duluth",
+				selectedTopics: ["Public Safety"],
+				selectedMeetingTypes: [],
+				alertFrequency: "daily",
+				emailEnabled: true,
+				agendaAlertsEnabled: true,
+				userTier: "free",
+			}).agendaNotice,
+		).toBe("Pre-meeting agenda preview alerts are on.");
+
+		expect(
+			buildSubscriptionPreview({
+				municipalityName: "Duluth",
+				selectedTopics: ["Public Safety"],
+				selectedMeetingTypes: [],
+				alertFrequency: "daily",
+				emailEnabled: true,
+				agendaAlertsEnabled: false,
+				userTier: "free",
+			}).agendaNotice,
+		).toBe("Pre-meeting agenda preview alerts are off.");
 	});
 });

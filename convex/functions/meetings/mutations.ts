@@ -126,13 +126,16 @@ export const create = mutation({
 			});
 		}
 
-		// Schedule AI summarization for past meetings only.
-		// Future meetings are stored as agenda previews until the meeting date.
-		if (args.meetingDate <= Date.now()) {
+		const hasContentSource = Boolean(
+			args.rawContent?.trim() ||
+				args.documentStorageId ||
+				args.sourceUrl?.trim(),
+		);
+		if (args.meetingDate <= now || hasContentSource) {
 			await ctx.scheduler.runAfter(
 				0,
 				internal.functions.ai.summarize.summarizeMeeting,
-				{ meetingId },
+				summarizeArgsForMeeting(meetingId, args.meetingDate),
 			);
 		}
 
@@ -295,13 +298,13 @@ export const remove = mutation({
 			throw new Error("Meeting not found");
 		}
 
-		// Delete associated summary
-		const summary = await ctx.db
+		// Delete associated summaries
+		const summaries = await ctx.db
 			.query("summaries")
 			.withIndex("by_meeting", (q) => q.eq("meetingId", args.meetingId))
-			.first();
+			.collect();
 
-		if (summary) {
+		for (const summary of summaries) {
 			await ctx.db.delete(summary._id);
 		}
 
@@ -363,7 +366,7 @@ export const retryProcessing = mutation({
 		await ctx.scheduler.runAfter(
 			0,
 			internal.functions.ai.summarize.summarizeMeeting,
-			{ meetingId: args.meetingId },
+			summarizeArgsForMeeting(args.meetingId, meeting.meetingDate),
 		);
 
 		return { success: true };
@@ -385,10 +388,10 @@ export const adminRequeueMeeting = mutation({
 			throw new Error("Meeting not found");
 		}
 
-		const existingSummary = await ctx.db
-			.query("summaries")
-			.withIndex("by_meeting", (q) => q.eq("meetingId", args.meetingId))
-			.first();
+		const existingSummary = await getFinalSummaryForMeeting(
+			ctx,
+			args.meetingId,
+		);
 		if (existingSummary) {
 			throw new Error("Meeting already has a summary");
 		}
@@ -410,7 +413,7 @@ export const adminRequeueMeeting = mutation({
 		await ctx.scheduler.runAfter(
 			0,
 			internal.functions.ai.summarize.summarizeMeeting,
-			{ meetingId: args.meetingId },
+			summarizeArgsForMeeting(args.meetingId, meeting.meetingDate),
 		);
 
 		return { success: true };
@@ -465,10 +468,7 @@ export const adminRequeueMunicipalityCandidates = mutation({
 				continue;
 			}
 
-			const existingSummary = await ctx.db
-				.query("summaries")
-				.withIndex("by_meeting", (q) => q.eq("meetingId", meeting._id))
-				.first();
+			const existingSummary = await getFinalSummaryForMeeting(ctx, meeting._id);
 			if (existingSummary) {
 				continue;
 			}
@@ -496,7 +496,7 @@ export const adminRequeueMunicipalityCandidates = mutation({
 					await ctx.scheduler.runAfter(
 						0,
 						internal.functions.ai.summarize.summarizeMeeting,
-						{ meetingId: meeting._id },
+						summarizeArgsForMeeting(meeting._id, meeting.meetingDate),
 					);
 
 					requeuedCount++;
@@ -579,10 +579,10 @@ export const adminUnstickMunicipalityProcessing = mutation({
 
 		for (const meeting of selected) {
 			try {
-				const existingSummary = await ctx.db
-					.query("summaries")
-					.withIndex("by_meeting", (q) => q.eq("meetingId", meeting._id))
-					.first();
+				const existingSummary = await getFinalSummaryForMeeting(
+					ctx,
+					meeting._id,
+				);
 				if (existingSummary) {
 					continue;
 				}
@@ -596,7 +596,7 @@ export const adminUnstickMunicipalityProcessing = mutation({
 				await ctx.scheduler.runAfter(
 					0,
 					internal.functions.ai.summarize.summarizeMeeting,
-					{ meetingId: meeting._id },
+					summarizeArgsForMeeting(meeting._id, meeting.meetingDate),
 				);
 				requeued++;
 			} catch (error) {
@@ -672,10 +672,7 @@ export const adminRepairMunicipalityData = mutation({
 
 		for (const meeting of meetings) {
 			try {
-				const summary = await ctx.db
-					.query("summaries")
-					.withIndex("by_meeting", (q) => q.eq("meetingId", meeting._id))
-					.first();
+				const summary = await getFinalSummaryForMeeting(ctx, meeting._id);
 
 				const hasSummary = Boolean(summary);
 				const hasAnySource =
@@ -712,7 +709,7 @@ export const adminRepairMunicipalityData = mutation({
 					await ctx.scheduler.runAfter(
 						0,
 						internal.functions.ai.summarize.summarizeMeeting,
-						{ meetingId: meeting._id },
+						summarizeArgsForMeeting(meeting._id, meeting.meetingDate),
 					);
 					repairedInvalidSummarized++;
 					continue;
@@ -731,7 +728,7 @@ export const adminRepairMunicipalityData = mutation({
 					await ctx.scheduler.runAfter(
 						0,
 						internal.functions.ai.summarize.summarizeMeeting,
-						{ meetingId: meeting._id },
+						summarizeArgsForMeeting(meeting._id, meeting.meetingDate),
 					);
 					resetStaleProcessing++;
 					continue;
@@ -750,7 +747,7 @@ export const adminRepairMunicipalityData = mutation({
 					await ctx.scheduler.runAfter(
 						0,
 						internal.functions.ai.summarize.summarizeMeeting,
-						{ meetingId: meeting._id },
+						summarizeArgsForMeeting(meeting._id, meeting.meetingDate),
 					);
 					requeuedFailedOrSkipped++;
 					continue;
@@ -761,7 +758,7 @@ export const adminRepairMunicipalityData = mutation({
 					await ctx.scheduler.runAfter(
 						0,
 						internal.functions.ai.summarize.summarizeMeeting,
-						{ meetingId: meeting._id },
+						summarizeArgsForMeeting(meeting._id, meeting.meetingDate),
 					);
 					ensuredPendingQueued++;
 				}
@@ -868,6 +865,27 @@ function isRequeueStatus(
 	status: "pending" | "processing" | "summarized" | "failed" | "skipped",
 ) {
 	return status === "failed" || status === "skipped";
+}
+
+function summarizeArgsForMeeting(
+	meetingId: Id<"meetings">,
+	meetingDate: number,
+) {
+	return {
+		meetingId,
+		kind: meetingDate > Date.now() ? "agenda_preview" : "summary",
+	} as const;
+}
+
+async function getFinalSummaryForMeeting(
+	ctx: MutationCtx,
+	meetingId: Id<"meetings">,
+) {
+	const summaries = await ctx.db
+		.query("summaries")
+		.withIndex("by_meeting", (q) => q.eq("meetingId", meetingId))
+		.collect();
+	return summaries.find((summary) => (summary.kind ?? "summary") === "summary");
 }
 
 function normalizeUrl(url: string): string {

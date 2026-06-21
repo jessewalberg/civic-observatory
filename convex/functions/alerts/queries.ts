@@ -232,6 +232,7 @@ export const getFeed = query({
 
 				return {
 					_id: alert._id,
+					kind: alert.kind ?? "summary",
 					createdAt: alert.createdAt,
 					sentAt: alert.sentAt,
 					readAt: alert.readAt,
@@ -369,6 +370,7 @@ export const getDeliveryHealth = query({
 					municipalityName: municipality?.name ?? "Unknown municipality",
 					municipalityState: municipality?.state ?? "",
 					alertFrequency: subscription?.alertFrequency ?? null,
+					alertKind: alert.kind ?? "summary",
 				};
 			}),
 		);

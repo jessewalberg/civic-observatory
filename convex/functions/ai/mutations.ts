@@ -1,6 +1,11 @@
 import { v } from "convex/values";
 import { internalMutation, mutation } from "../../_generated/server";
 
+const summaryKindValidator = v.union(
+	v.literal("summary"),
+	v.literal("agenda_preview"),
+);
+
 // ═══════════════════════════════════════════════════════════════
 // UPDATE MEETING STATUS - Update processing status
 // ═══════════════════════════════════════════════════════════════
@@ -51,6 +56,7 @@ export const updateMeetingStatus = internalMutation({
 export const createSummary = internalMutation({
 	args: {
 		meetingId: v.id("meetings"),
+		kind: v.optional(summaryKindValidator),
 		summary: v.object({
 			executiveSummary: v.string(),
 			keyDecisions: v.array(
@@ -119,17 +125,21 @@ export const createSummary = internalMutation({
 			throw new Error("Meeting not found");
 		}
 
-		// Check for existing summary
-		const existing = await ctx.db
+		const summaryKind = args.kind ?? "summary";
+		const existingSummaries = await ctx.db
 			.query("summaries")
 			.withIndex("by_meeting", (q) => q.eq("meetingId", args.meetingId))
-			.first();
+			.collect();
+		const existingSameKind = existingSummaries.filter(
+			(summary) => (summary.kind ?? "summary") === summaryKind,
+		);
 
-		// Determine version
-		const version = existing ? existing.version + 1 : 1;
+		const version =
+			existingSameKind.length > 0
+				? Math.max(...existingSameKind.map((summary) => summary.version)) + 1
+				: 1;
 
-		// Delete old summary if exists (we only keep latest)
-		if (existing) {
+		for (const existing of existingSameKind) {
 			await ctx.db.delete(existing._id);
 		}
 
@@ -152,6 +162,7 @@ export const createSummary = internalMutation({
 			sourceUrl: meeting.sourceUrl,
 			sourceType: meeting.sourceType,
 			sourceContentHash: meeting.contentHash,
+			kind: summaryKind,
 			status: "summarized",
 			createdAt: Date.now(),
 		});

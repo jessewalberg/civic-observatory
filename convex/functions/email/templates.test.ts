@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { immediateAlertTemplate, type MeetingData } from "./templates";
+import {
+	dailyDigestTemplate,
+	immediateAlertTemplate,
+	type MeetingData,
+	weeklyDigestTemplate,
+} from "./templates";
 
 const baseMeeting: MeetingData = {
 	title: "Town Council Bond Hearing",
@@ -52,5 +57,41 @@ describe("email templates", () => {
 		expect(html).not.toContain(
 			'href="https://source.example/agenda.pdf?x=1&y=2"',
 		);
+	});
+
+	it("labels immediate agenda preview alerts as upcoming agenda content", () => {
+		const { subject, html } = immediateAlertTemplate(
+			{
+				...baseMeeting,
+				alertKind: "agenda_preview",
+				meetingDate: Date.now() + 3 * 24 * 60 * 60 * 1000,
+				executiveSummary: "The upcoming agenda includes a park bond hearing.",
+			},
+			emailParams,
+		);
+
+		expect(subject).toContain("Agenda Preview");
+		expect(html).toContain("upcoming agenda preview");
+		expect(html).toContain("View Meeting Agenda");
+		expect(html).not.toContain("New Summary");
+	});
+
+	it("labels digest batches of agenda previews without calling them summaries", () => {
+		const agendaMeeting: MeetingData = {
+			...baseMeeting,
+			alertKind: "agenda_preview",
+			meetingDate: Date.now() + 3 * 24 * 60 * 60 * 1000,
+			executiveSummary: "The upcoming agenda includes a park bond hearing.",
+		};
+
+		const daily = dailyDigestTemplate([agendaMeeting], emailParams);
+		const weekly = weeklyDigestTemplate([agendaMeeting], emailParams);
+
+		expect(daily.subject).toContain("agenda preview");
+		expect(daily.subject).not.toContain("summary");
+		expect(daily.html).toContain("published agenda content");
+		expect(weekly.subject).toContain("agenda preview");
+		expect(weekly.subject).not.toContain("summaries");
+		expect(weekly.html).toContain("published agenda content");
 	});
 });

@@ -267,6 +267,9 @@ export default defineSchema({
 			),
 		),
 		sourceContentHash: v.optional(v.string()),
+		kind: v.optional(
+			v.union(v.literal("summary"), v.literal("agenda_preview")),
+		),
 		status: v.optional(
 			v.union(
 				v.literal("summarized"),
@@ -297,6 +300,7 @@ export default defineSchema({
 			v.literal("weekly"),
 		),
 		emailEnabled: v.boolean(),
+		agendaAlertsEnabled: v.optional(v.boolean()),
 		isActive: v.boolean(),
 
 		createdAt: v.number(),
@@ -327,6 +331,9 @@ export default defineSchema({
 			v.literal("failed"),
 			v.literal("skipped"),
 		),
+		kind: v.optional(
+			v.union(v.literal("summary"), v.literal("agenda_preview")),
+		),
 
 		scheduledFor: v.optional(v.number()),
 		sentAt: v.optional(v.number()),
@@ -349,7 +356,12 @@ export default defineSchema({
 		.index("by_created_at", ["createdAt"])
 		.index("by_status_created_at", ["status", "createdAt"])
 		.index("by_scheduled", ["status", "scheduledFor"])
-		.index("by_subscription_summary", ["subscriptionId", "summaryId"]),
+		.index("by_subscription_summary", ["subscriptionId", "summaryId"])
+		.index("by_subscription_meeting_kind", [
+			"subscriptionId",
+			"meetingId",
+			"kind",
+		]),
 
 	// ═══════════════════════════════════════════════════════════════
 	// SCRAPE JOBS - Scraper run history

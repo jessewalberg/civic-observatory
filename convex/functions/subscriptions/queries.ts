@@ -5,7 +5,10 @@ import {
 	getCoverageStatus,
 	isCoveragePublic,
 } from "../municipalities/coveragePublication";
-import { evaluateSubscriptionSummaryMatch } from "./matching";
+import {
+	evaluateSubscriptionSummaryMatch,
+	type SubscriptionAlertKind,
+} from "./matching";
 
 // ═══════════════════════════════════════════════════════════════
 // LIST BY USER - Get all subscriptions for a user
@@ -154,6 +157,8 @@ export const getMatchingForSummary = internalQuery({
 				q.eq("municipalityId", meeting.municipalityId),
 			)
 			.collect();
+		const alertKind: SubscriptionAlertKind =
+			summary.kind === "agenda_preview" ? "agenda_preview" : "summary";
 
 		const results = [];
 		for (const subscription of subscriptions) {
@@ -173,6 +178,7 @@ export const getMatchingForSummary = internalQuery({
 				user,
 				meeting,
 				summary,
+				alertKind,
 				hasExistingAlert: Boolean(existingAlert),
 			});
 			if (!match.matches) {
