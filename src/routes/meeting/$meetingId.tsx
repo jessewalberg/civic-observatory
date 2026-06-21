@@ -47,7 +47,7 @@ import {
 	generateMeetingJsonLd,
 	NOINDEX_ROBOTS,
 } from "@/lib/seo";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 
@@ -195,6 +195,8 @@ const sentimentConfig: Record<string, { label: string; className: string }> = {
 interface MeetingData {
 	_id: Id<"meetings">;
 	_creationTime: number;
+	createdAt: number;
+	updatedAt: number;
 	municipalityId: Id<"municipalities">;
 	title: string;
 	slug?: string;
@@ -234,6 +236,10 @@ interface MeetingData {
 		upcomingItems: Array<{ title: string; expectedDate?: string }>;
 		topics: string[];
 		sentiment?: "routine" | "contentious" | "celebratory" | "urgent";
+		modelUsed?: string;
+		promptVersion?: string;
+		processingTimeMs?: number;
+		createdAt?: number;
 		sourceUrl?: string;
 		sourceType?: "scraped" | "uploaded" | "manual_entry";
 		sourceContentHash?: string;
@@ -326,6 +332,7 @@ function MeetingDetailPage() {
 	const typeLabel =
 		meetingTypeLabels[meeting.meetingType] ?? meeting.meetingType;
 	const canRetry = isAuthenticated;
+	const sourceUrl = meeting.summary?.sourceUrl ?? meeting.sourceUrl;
 
 	const handleRetry = async () => {
 		if (!isAuthenticated || isRetrying) return;
@@ -543,6 +550,8 @@ function MeetingDetailPage() {
 
 					{meeting.summary ? (
 						<div className="space-y-10">
+							<SummaryMetadataPanel meeting={meeting} />
+
 							{/* Executive Summary */}
 							<section>
 								<p className="text-lg md:text-xl text-foreground leading-relaxed font-light">
@@ -557,6 +566,7 @@ function MeetingDetailPage() {
 										<span className="w-1 h-6 bg-primary rounded-full" />
 										Key Decisions
 									</h2>
+									<SectionSourceReference sourceUrl={sourceUrl} />
 									<div className="space-y-4">
 										{meeting.summary.keyDecisions.map((decision) => (
 											<DecisionCard
@@ -600,6 +610,7 @@ function MeetingDetailPage() {
 										<span className="w-1 h-6 bg-primary rounded-full" />
 										Upcoming Items
 									</h2>
+									<SectionSourceReference sourceUrl={sourceUrl} />
 									<Card className="divide-y divide-border">
 										{meeting.summary.upcomingItems.map((item) => (
 											<div
@@ -813,6 +824,140 @@ function MeetingHeader({ meeting, typeLabel }: MeetingHeaderProps) {
 				</div>
 			</div>
 		</header>
+	);
+}
+
+type SummaryMetadataMeeting = {
+	status: "pending" | "processing" | "summarized" | "failed" | "skipped";
+	sourceUrl?: string | null;
+	sourceType?: "scraped" | "uploaded" | "manual_entry" | null;
+	contentHash?: string | null;
+	processingError?: string | null;
+	updatedAt?: number | null;
+	summary: {
+		modelUsed?: string | null;
+		promptVersion?: string | null;
+		processingTimeMs?: number | null;
+		createdAt?: number | null;
+		sourceUrl?: string | null;
+		sourceType?: "scraped" | "uploaded" | "manual_entry" | null;
+		sourceContentHash?: string | null;
+		status?: "summarized" | "failed" | "skipped" | null;
+		error?: string | null;
+	} | null;
+};
+
+export function SummaryMetadataPanel({
+	meeting,
+}: {
+	meeting: SummaryMetadataMeeting;
+}) {
+	if (!meeting.summary) return null;
+
+	const trust = getMeetingSourceTrust(meeting);
+	const reviewStatus = aiReviewStatusLabel(meeting.summary.status);
+	const rows = [
+		{ label: "AI review status", value: reviewStatus },
+		{ label: "Model", value: meeting.summary.modelUsed },
+		{ label: "Prompt", value: meeting.summary.promptVersion },
+		{
+			label: "Processing time",
+			value:
+				typeof meeting.summary.processingTimeMs === "number"
+					? formatProcessingTime(meeting.summary.processingTimeMs)
+					: null,
+		},
+		{
+			label: "Summary created",
+			value:
+				typeof meeting.summary.createdAt === "number"
+					? formatDate(meeting.summary.createdAt)
+					: null,
+		},
+		{ label: "Source type", value: trust.sourceTypeLabel },
+		{
+			label: "Source updated",
+			value:
+				typeof meeting.updatedAt === "number"
+					? formatDate(meeting.updatedAt)
+					: null,
+		},
+	].filter((row): row is { label: string; value: string } =>
+		Boolean(row.value),
+	);
+
+	return (
+		<Card className="border-border/50 bg-card/70">
+			<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+				<div>
+					<h2 className="font-display text-lg font-semibold text-foreground">
+						AI summary details
+					</h2>
+					<p className="text-sm text-muted-foreground">
+						Civic Observatory AI analysis, not official minutes.
+					</p>
+				</div>
+				<Badge variant="outline" className="w-fit">
+					{reviewStatus}
+				</Badge>
+			</div>
+
+			<dl className="grid gap-3 sm:grid-cols-2">
+				{rows.map((row) => (
+					<div
+						key={row.label}
+						className="rounded-lg border border-border/50 bg-background/40 p-3"
+					>
+						<dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+							{row.label}
+						</dt>
+						<dd className="mt-1 text-sm text-foreground">{row.value}</dd>
+					</div>
+				))}
+			</dl>
+		</Card>
+	);
+}
+
+function aiReviewStatusLabel(
+	status: "summarized" | "failed" | "skipped" | null | undefined,
+): string {
+	if (status === "failed") return "AI-generated, failed";
+	if (status === "skipped") return "AI generation skipped";
+	return "AI-generated, unreviewed";
+}
+
+function formatProcessingTime(milliseconds: number): string {
+	if (milliseconds < 1000) return `${milliseconds}ms`;
+
+	const seconds = milliseconds / 1000;
+	if (seconds < 60) {
+		return `${Number(seconds.toFixed(1))}s`;
+	}
+
+	const minutes = Math.floor(seconds / 60);
+	const remainingSeconds = Math.round(seconds % 60);
+	return remainingSeconds > 0
+		? `${minutes}m ${remainingSeconds}s`
+		: `${minutes}m`;
+}
+
+function SectionSourceReference({ sourceUrl }: { sourceUrl?: string | null }) {
+	if (!sourceUrl) return null;
+
+	return (
+		<p className="mb-4 text-sm text-muted-foreground">
+			Source context:{" "}
+			<a
+				href={sourceUrl}
+				target="_blank"
+				rel="noopener noreferrer"
+				className="inline-flex items-center gap-1 text-primary hover:underline"
+			>
+				original public record
+				<ExternalLink className="h-3 w-3" />
+			</a>
+		</p>
 	);
 }
 
