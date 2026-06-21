@@ -1,6 +1,8 @@
 import { v } from "convex/values";
 import type { Id } from "../../_generated/dataModel";
 import { query } from "../../_generated/server";
+import { getCurrentUser } from "../../lib/auth";
+import { buildMunicipalityCoverageHealth } from "./coverageHealth";
 
 // ═══════════════════════════════════════════════════════════════
 // LIST - All municipalities with optional state filter
@@ -264,5 +266,83 @@ export const getStats = query({
 			lastScrapedAt: municipality.lastScrapedAt ?? null,
 			lastScrapeStatus: municipality.lastScrapeStatus ?? null,
 		};
+	},
+});
+
+// ═══════════════════════════════════════════════════════════════
+// LIST COVERAGE HEALTH - Operator coverage model for municipalities
+// ═══════════════════════════════════════════════════════════════
+export const listCoverageHealth = query({
+	args: {},
+	handler: async (ctx) => {
+		const caller = await getCurrentUser(ctx);
+		if (!caller?.isAdmin) return null;
+
+		const now = Date.now();
+		const municipalities = await ctx.db.query("municipalities").collect();
+
+		const rows = await Promise.all(
+			municipalities.map(async (municipality) => {
+				const [meetings, scrapeJobs] = await Promise.all([
+					ctx.db
+						.query("meetings")
+						.withIndex("by_municipality", (q) =>
+							q.eq("municipalityId", municipality._id),
+						)
+						.collect(),
+					ctx.db
+						.query("scrapeJobs")
+						.withIndex("by_municipality", (q) =>
+							q.eq("municipalityId", municipality._id),
+						)
+						.order("desc")
+						.take(10),
+				]);
+
+				const summaries = await Promise.all(
+					meetings.map((meeting) =>
+						ctx.db
+							.query("summaries")
+							.withIndex("by_meeting", (q) => q.eq("meetingId", meeting._id))
+							.first(),
+					),
+				);
+
+				return {
+					municipality: {
+						id: municipality._id,
+						name: municipality.name,
+						state: municipality.state,
+						platform: municipality.platform,
+						isActive: municipality.isActive,
+						isVerified: municipality.isVerified,
+					},
+					health: buildMunicipalityCoverageHealth({
+						now,
+						municipality,
+						meetings: meetings.map((meeting) => ({
+							id: meeting._id,
+							status: meeting.status,
+							sourceUrl: meeting.sourceUrl ?? null,
+							rawContent: meeting.rawContent ?? null,
+							documentStorageId: meeting.documentStorageId ?? null,
+						})),
+						summaries: summaries.flatMap((summary) =>
+							summary ? [{ meetingId: summary.meetingId }] : [],
+						),
+						scrapeJobs: scrapeJobs.map((job) => ({
+							status: job.status,
+							createdAt: job.createdAt,
+							completedAt: job.completedAt ?? null,
+							errors: job.errors ?? null,
+						})),
+					}),
+				};
+			}),
+		);
+
+		return rows.sort((a, b) =>
+			a.municipality.name.localeCompare(b.municipality.name),
+		);
 	},
 });
