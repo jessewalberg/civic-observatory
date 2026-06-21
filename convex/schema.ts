@@ -280,9 +280,7 @@ export default defineSchema({
 		error: v.optional(v.string()),
 
 		createdAt: v.number(),
-	})
-		.index("by_meeting", ["meetingId"])
-		.index("by_meeting_kind", ["meetingId", "kind"]),
+	}).index("by_meeting", ["meetingId"]),
 
 	// ═══════════════════════════════════════════════════════════════
 	// SUBSCRIPTIONS - User alert preferences
