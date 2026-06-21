@@ -895,6 +895,65 @@ describe("admin alert delivery health", () => {
 		expect(health?.scanWindowStartedAt).toBeLessThanOrEqual(now);
 	});
 
+	it("keeps old outstanding delivery anomalies visible outside the recent window", async () => {
+		const t = setup();
+		const now = Date.now();
+		const oldTimestamp = now - 60 * 24 * 60 * 60 * 1000;
+		await seedUser(t, {
+			clerkUserId: "user_delivery_outstanding_admin",
+			email: "admin@example.test",
+			isAdmin: true,
+		});
+		await seedDeliveryAlert(t, {
+			status: "sent",
+			sentAt: oldTimestamp,
+			createdAt: oldTimestamp,
+		});
+		const oldQueuedId = await seedDeliveryAlert(t, {
+			status: "queued",
+			deliveryKey: "alert/old-stale",
+			deliveryAttemptCount: 2,
+			lastDeliveryAttemptAt: oldTimestamp,
+			createdAt: oldTimestamp,
+			meetingTitle: "Old Stale Queue Hearing",
+		});
+		const asAdmin = t.withIdentity({
+			subject: "user_delivery_outstanding_admin",
+			issuer: ISSUER,
+			email: "admin@example.test",
+		});
+
+		const health = await asAdmin.query(
+			api.functions.alerts.queries.getDeliveryHealth,
+			{ limit: 10 },
+		);
+
+		expect(health).toMatchObject({
+			outstandingScanLimit: 1000,
+			outstandingScannedCounts: {
+				pending: 0,
+				queued: 1,
+				failed: 0,
+			},
+			outstandingCappedStatuses: [],
+			counts: {
+				total: 1,
+				queued: 1,
+				staleQueued: 1,
+				sent: 0,
+			},
+		});
+		expect(health?.alerts).toEqual([
+			expect.objectContaining({
+				_id: oldQueuedId,
+				status: "queued",
+				meetingTitle: "Old Stale Queue Hearing",
+				deliveryKey: "alert/old-stale",
+				isStaleQueued: true,
+			}),
+		]);
+	});
+
 	it("reports when the delivery health scan reaches its cap", async () => {
 		const t = setup();
 		await seedUser(t, {
@@ -917,13 +976,15 @@ describe("admin alert delivery health", () => {
 
 		expect(health).toMatchObject({
 			scanLimit: 1,
-			scannedAlertCount: 1,
+			recentScannedAlertCount: 1,
+			scannedAlertCount: 2,
 			isScanCapped: true,
+			isRecentScanCapped: true,
 			counts: {
-				total: 1,
+				total: 2,
 			},
 		});
-		expect(health?.alerts).toHaveLength(1);
+		expect(health?.alerts).toHaveLength(2);
 	});
 
 	it("filters failed, retrying, and stale queued delivery rows", async () => {

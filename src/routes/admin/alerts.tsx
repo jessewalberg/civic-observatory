@@ -171,7 +171,8 @@ function AlertDeliveryHealthContent() {
 						</p>
 						<p className="text-xs text-muted-foreground mt-2">
 							Counts inspect up to {health.scanLimit} alert rows from the last{" "}
-							{scanWindowDays} days.
+							{scanWindowDays} days, plus up to {health.outstandingScanLimit}{" "}
+							oldest pending, queued, and failed rows.
 						</p>
 					</div>
 
@@ -237,9 +238,9 @@ function AlertDeliveryHealthContent() {
 								</h2>
 								<p className="text-xs text-muted-foreground mt-1">
 									{filteredCount} shown of {health.scannedAlertCount} inspected
-									from the last {scanWindowDays} days.
+									rows from recent and outstanding scans.
 									{health.isScanCapped
-										? ` Scan capped at ${health.scanLimit} rows.`
+										? " One or more scan caps were reached."
 										: ""}{" "}
 									Generated {formatRelativeTime(health.generatedAt)}.
 								</p>

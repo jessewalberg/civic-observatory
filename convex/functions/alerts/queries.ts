@@ -1,12 +1,15 @@
 import { v } from "convex/values";
 import type { Doc } from "../../_generated/dataModel";
-import { internalQuery, query } from "../../_generated/server";
+import { internalQuery, type QueryCtx, query } from "../../_generated/server";
 import { getCurrentUser } from "../../lib/auth";
 
 const STALE_QUEUED_THRESHOLD_MS = 30 * 60 * 1000;
 const DELIVERY_HEALTH_SCAN_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 const DEFAULT_DELIVERY_HEALTH_SCAN_LIMIT = 5000;
 const MAX_DELIVERY_HEALTH_SCAN_LIMIT = 5000;
+const DEFAULT_OUTSTANDING_DELIVERY_SCAN_LIMIT = 1000;
+const MAX_OUTSTANDING_DELIVERY_SCAN_LIMIT = 5000;
+const OUTSTANDING_DELIVERY_STATUSES = ["pending", "queued", "failed"] as const;
 
 // ═══════════════════════════════════════════════════════════════
 // GET BY ID - Get a single alert with full details
@@ -280,6 +283,7 @@ export const getDeliveryHealth = query({
 		),
 		limit: v.optional(v.number()),
 		scanLimit: v.optional(v.number()),
+		outstandingScanLimit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		const caller = await getCurrentUser(ctx);
@@ -294,6 +298,11 @@ export const getDeliveryHealth = query({
 			1,
 			MAX_DELIVERY_HEALTH_SCAN_LIMIT,
 		);
+		const outstandingScanLimit = clampInteger(
+			args.outstandingScanLimit ?? DEFAULT_OUTSTANDING_DELIVERY_SCAN_LIMIT,
+			1,
+			MAX_OUTSTANDING_DELIVERY_SCAN_LIMIT,
+		);
 		const scannedAlerts = await ctx.db
 			.query("alerts")
 			.withIndex("by_created_at", (q) =>
@@ -301,7 +310,17 @@ export const getDeliveryHealth = query({
 			)
 			.order("desc")
 			.take(scanLimit + 1);
-		const alerts = scannedAlerts.slice(0, scanLimit);
+		const recentAlerts = scannedAlerts.slice(0, scanLimit);
+		const outstandingScan = await scanOutstandingDeliveryAlerts(
+			ctx,
+			outstandingScanLimit,
+		);
+		const alerts = mergeUniqueAlerts([
+			recentAlerts,
+			...OUTSTANDING_DELIVERY_STATUSES.map(
+				(status) => outstandingScan.alertsByStatus[status],
+			),
+		]);
 		const counts = countDeliveryHealthAlerts(alerts, now);
 
 		const filter = args.filter ?? "all";
@@ -360,7 +379,14 @@ export const getDeliveryHealth = query({
 			scanWindowStartedAt,
 			scanLimit,
 			scannedAlertCount: alerts.length,
-			isScanCapped: scannedAlerts.length > scanLimit,
+			recentScannedAlertCount: recentAlerts.length,
+			isScanCapped:
+				scannedAlerts.length > scanLimit ||
+				outstandingScan.cappedStatuses.length > 0,
+			isRecentScanCapped: scannedAlerts.length > scanLimit,
+			outstandingScanLimit,
+			outstandingScannedCounts: outstandingScan.scannedCounts,
+			outstandingCappedStatuses: outstandingScan.cappedStatuses,
 			counts,
 			alerts: alertRows,
 		};
@@ -582,6 +608,61 @@ export const checkDuplicate = internalQuery({
 });
 
 type AlertDoc = Doc<"alerts">;
+type OutstandingDeliveryStatus = (typeof OUTSTANDING_DELIVERY_STATUSES)[number];
+
+async function scanOutstandingDeliveryAlerts(
+	ctx: QueryCtx,
+	limit: number,
+): Promise<{
+	alertsByStatus: Record<OutstandingDeliveryStatus, AlertDoc[]>;
+	scannedCounts: Record<OutstandingDeliveryStatus, number>;
+	cappedStatuses: OutstandingDeliveryStatus[];
+}> {
+	const alertsByStatus = {
+		pending: [] as AlertDoc[],
+		queued: [] as AlertDoc[],
+		failed: [] as AlertDoc[],
+	};
+	const scannedCounts = {
+		pending: 0,
+		queued: 0,
+		failed: 0,
+	};
+	const cappedStatuses: OutstandingDeliveryStatus[] = [];
+
+	for (const status of OUTSTANDING_DELIVERY_STATUSES) {
+		const scannedAlerts = await ctx.db
+			.query("alerts")
+			.withIndex("by_status_created_at", (q) => q.eq("status", status))
+			.order("asc")
+			.take(limit + 1);
+
+		const alerts = scannedAlerts.slice(0, limit);
+		alertsByStatus[status] = alerts;
+		scannedCounts[status] = alerts.length;
+		if (scannedAlerts.length > limit) {
+			cappedStatuses.push(status);
+		}
+	}
+
+	return {
+		alertsByStatus,
+		scannedCounts,
+		cappedStatuses,
+	};
+}
+
+function mergeUniqueAlerts(alertGroups: AlertDoc[][]): AlertDoc[] {
+	const alertsById = new Map<string, AlertDoc>();
+
+	for (const alertGroup of alertGroups) {
+		for (const alert of alertGroup) {
+			alertsById.set(alert._id, alert);
+		}
+	}
+
+	return Array.from(alertsById.values());
+}
 
 function countDeliveryHealthAlerts(alerts: AlertDoc[], now: number) {
 	const counts = {
