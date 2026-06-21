@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
 import {
 	BarChart3,
+	Bell,
 	Building2,
 	Clock,
 	Crown,
@@ -164,7 +165,7 @@ function AdminContent() {
 					</div>
 
 					{/* Quick Links */}
-					<div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+					<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
 						<QuickLink
 							to="/admin/municipalities"
 							icon={Building2}
@@ -182,6 +183,12 @@ function AdminContent() {
 							icon={Server}
 							label="Scrapers"
 							description="Scraper status"
+						/>
+						<QuickLink
+							to="/admin/alerts"
+							icon={Bell}
+							label="Alerts"
+							description="Delivery health"
 						/>
 						<QuickLink
 							to="/admin/investigations"
