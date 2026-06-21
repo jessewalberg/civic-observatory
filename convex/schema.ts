@@ -340,6 +340,105 @@ export default defineSchema({
 		.index("by_created", ["createdAt"]),
 
 	// ═══════════════════════════════════════════════════════════════
+	// SCRAPER VALIDATION RUNS - Non-publishing operator diagnostics
+	// ═══════════════════════════════════════════════════════════════
+	scraperValidationRuns: defineTable({
+		municipalityId: v.optional(v.id("municipalities")),
+		sourceUrl: v.string(),
+		configuredPlatform: v.optional(
+			v.union(
+				v.literal("granicus"),
+				v.literal("civicplus"),
+				v.literal("generic"),
+				v.literal("manual"),
+			),
+		),
+		detectedPlatform: v.union(
+			v.literal("granicus"),
+			v.literal("civicplus"),
+			v.literal("generic"),
+			v.literal("manual"),
+		),
+		selectedPlatform: v.optional(
+			v.union(
+				v.literal("granicus"),
+				v.literal("civicplus"),
+				v.literal("generic"),
+				v.literal("manual"),
+			),
+		),
+		status: v.union(
+			v.literal("passed"),
+			v.literal("partial"),
+			v.literal("failed"),
+		),
+		checks: v.array(
+			v.object({
+				name: v.union(
+					v.literal("platform_detection"),
+					v.literal("source_reachable"),
+					v.literal("meeting_extraction"),
+					v.literal("document_links"),
+					v.literal("duplicate_behavior"),
+					v.literal("summary_readiness"),
+				),
+				status: v.union(
+					v.literal("pass"),
+					v.literal("warning"),
+					v.literal("fail"),
+					v.literal("not_applicable"),
+				),
+				message: v.string(),
+				details: v.optional(
+					v.array(v.object({ label: v.string(), value: v.string() })),
+				),
+			}),
+		),
+		stats: v.object({
+			meetingsFound: v.number(),
+			documentReady: v.number(),
+			summaryReady: v.number(),
+			duplicates: v.number(),
+			errors: v.number(),
+		}),
+		meetingSample: v.array(
+			v.object({
+				title: v.string(),
+				meetingDate: v.number(),
+				sourceUrl: v.string(),
+				documentUrl: v.optional(v.string()),
+				hasRawContent: v.boolean(),
+				documentReady: v.boolean(),
+				summaryReady: v.boolean(),
+				duplicate: v.boolean(),
+			}),
+		),
+		errors: v.array(
+			v.object({
+				message: v.string(),
+				url: v.optional(v.string()),
+				code: v.optional(
+					v.union(
+						v.literal("network"),
+						v.literal("parse"),
+						v.literal("timeout"),
+						v.literal("auth"),
+						v.literal("rate_limit"),
+						v.literal("unknown"),
+					),
+				),
+				timestamp: v.number(),
+			}),
+		),
+		triggeredByUserId: v.optional(v.id("users")),
+		createdAt: v.number(),
+		completedAt: v.number(),
+		durationMs: v.number(),
+	})
+		.index("by_municipality_created", ["municipalityId", "createdAt"])
+		.index("by_created", ["createdAt"]),
+
+	// ═══════════════════════════════════════════════════════════════
 	// USAGE RECORDS - Rate limiting
 	// ═══════════════════════════════════════════════════════════════
 	usageRecords: defineTable({

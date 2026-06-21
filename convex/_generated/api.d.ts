@@ -77,6 +77,7 @@ import type * as functions_email_templates from "../functions/email/templates.js
 import type * as functions_meetings_index from "../functions/meetings/index.js";
 import type * as functions_meetings_mutations from "../functions/meetings/mutations.js";
 import type * as functions_meetings_queries from "../functions/meetings/queries.js";
+import type * as functions_municipalities_coverageHealth from "../functions/municipalities/coverageHealth.js";
 import type * as functions_municipalities_discovery from "../functions/municipalities/discovery.js";
 import type * as functions_municipalities_mutations from "../functions/municipalities/mutations.js";
 import type * as functions_municipalities_probe from "../functions/municipalities/probe.js";
@@ -94,6 +95,7 @@ import type * as functions_storage_mutations from "../functions/storage/mutation
 import type * as functions_stripe_actions from "../functions/stripe/actions.js";
 import type * as functions_stripe_mutations from "../functions/stripe/mutations.js";
 import type * as functions_subscriptions_index from "../functions/subscriptions/index.js";
+import type * as functions_subscriptions_matching from "../functions/subscriptions/matching.js";
 import type * as functions_subscriptions_mutations from "../functions/subscriptions/mutations.js";
 import type * as functions_subscriptions_queries from "../functions/subscriptions/queries.js";
 import type * as functions_summaries_queries from "../functions/summaries/queries.js";
@@ -107,6 +109,7 @@ import type * as lib_constants_limits from "../lib/constants/limits.js";
 import type * as lib_permissions_helpers from "../lib/permissions/helpers.js";
 import type * as lib_permissions_index from "../lib/permissions/index.js";
 import type * as lib_permissions_roles from "../lib/permissions/roles.js";
+import type * as lib_seoSlugs from "../lib/seoSlugs.js";
 import type * as scrapers_civicplus from "../scrapers/civicplus.js";
 import type * as scrapers_generic from "../scrapers/generic.js";
 import type * as scrapers_granicus from "../scrapers/granicus.js";
@@ -116,6 +119,7 @@ import type * as scrapers_legistarApi from "../scrapers/legistarApi.js";
 import type * as scrapers_registry from "../scrapers/registry.js";
 import type * as scrapers_types from "../scrapers/types.js";
 import type * as scrapers_utils from "../scrapers/utils.js";
+import type * as scrapers_validation from "../scrapers/validation.js";
 import type * as seed from "../seed.js";
 import type * as seedMunicipalities from "../seedMunicipalities.js";
 
@@ -195,6 +199,7 @@ declare const fullApi: ApiFromModules<{
   "functions/meetings/index": typeof functions_meetings_index;
   "functions/meetings/mutations": typeof functions_meetings_mutations;
   "functions/meetings/queries": typeof functions_meetings_queries;
+  "functions/municipalities/coverageHealth": typeof functions_municipalities_coverageHealth;
   "functions/municipalities/discovery": typeof functions_municipalities_discovery;
   "functions/municipalities/mutations": typeof functions_municipalities_mutations;
   "functions/municipalities/probe": typeof functions_municipalities_probe;
@@ -212,6 +217,7 @@ declare const fullApi: ApiFromModules<{
   "functions/stripe/actions": typeof functions_stripe_actions;
   "functions/stripe/mutations": typeof functions_stripe_mutations;
   "functions/subscriptions/index": typeof functions_subscriptions_index;
+  "functions/subscriptions/matching": typeof functions_subscriptions_matching;
   "functions/subscriptions/mutations": typeof functions_subscriptions_mutations;
   "functions/subscriptions/queries": typeof functions_subscriptions_queries;
   "functions/summaries/queries": typeof functions_summaries_queries;
@@ -225,6 +231,7 @@ declare const fullApi: ApiFromModules<{
   "lib/permissions/helpers": typeof lib_permissions_helpers;
   "lib/permissions/index": typeof lib_permissions_index;
   "lib/permissions/roles": typeof lib_permissions_roles;
+  "lib/seoSlugs": typeof lib_seoSlugs;
   "scrapers/civicplus": typeof scrapers_civicplus;
   "scrapers/generic": typeof scrapers_generic;
   "scrapers/granicus": typeof scrapers_granicus;
@@ -234,6 +241,7 @@ declare const fullApi: ApiFromModules<{
   "scrapers/registry": typeof scrapers_registry;
   "scrapers/types": typeof scrapers_types;
   "scrapers/utils": typeof scrapers_utils;
+  "scrapers/validation": typeof scrapers_validation;
   seed: typeof seed;
   seedMunicipalities: typeof seedMunicipalities;
 }>;
