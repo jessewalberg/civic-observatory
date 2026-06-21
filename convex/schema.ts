@@ -291,6 +291,7 @@ export default defineSchema({
 		.index("by_user_read", ["userId", "readAt"])
 		.index("by_status", ["status"])
 		.index("by_created_at", ["createdAt"])
+		.index("by_status_created_at", ["status", "createdAt"])
 		.index("by_scheduled", ["status", "scheduledFor"])
 		.index("by_subscription_summary", ["subscriptionId", "summaryId"]),
 
