@@ -18,4 +18,13 @@ describe("landing page content", () => {
 			"Budget Approval for Fiscal Year 2024-25",
 		);
 	});
+
+	it("does not ship unsupported landing proof metrics", () => {
+		expect(landingSource).not.toContain("Join thousands");
+		expect(landingSource).not.toContain("5 min summaries");
+		expect(landingSource).not.toContain("200-page agendas");
+		expect(landingSource).not.toContain("4-hour recordings");
+		expect(landingSource).not.toContain("50 free summaries per month");
+		expect(landingSource).toContain("50 free summary views per day");
+	});
 });
