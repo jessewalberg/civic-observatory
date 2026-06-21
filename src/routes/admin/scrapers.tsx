@@ -651,8 +651,11 @@ function ScrapersContent() {
 											<div className="border border-border rounded-md divide-y divide-border">
 												{validationResult.meetingSample
 													.slice(0, 3)
-													.map((meeting) => (
-														<div key={meeting.sourceUrl} className="p-3">
+													.map((meeting, index) => (
+														<div
+															key={`${meeting.sourceUrl}-${index}`}
+															className="p-3"
+														>
 															<p className="text-sm font-medium text-foreground line-clamp-1">
 																{meeting.title}
 															</p>

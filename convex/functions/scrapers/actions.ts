@@ -536,6 +536,8 @@ export const validateScraper = action({
 			sourceUrl,
 			configuredPlatform,
 		);
+		// Operator overrides intentionally win so configured-vs-detected mismatches
+		// are visible in the validation report.
 		const scraper =
 			sourceUrl && configuredPlatform !== "manual"
 				? getScraper(configuredPlatform ?? detectedPlatform) ||
