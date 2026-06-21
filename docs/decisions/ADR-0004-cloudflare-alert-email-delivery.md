@@ -47,3 +47,29 @@ state-machine and email-content behavior from THE-300.
   metadata only.
 - Email provider tests can run without live credentials by mocking the
   Cloudflare HTTP boundary.
+
+## Update 2026-06-21: Application-Level Dedup and Retry
+
+THE-365 adds application-level delivery state around Cloudflare Email Sending:
+
+- Alert rows carry `deliveryKey`, attempt count, last/next attempt timestamps,
+  failure kind, and provider message ID metadata.
+- Immediate and digest sends reserve pending alert rows before calling
+  Cloudflare. A duplicate action that reaches the same alert while it is already
+  queued exits without another provider call.
+- Missing Cloudflare configuration, network exceptions, 429 responses, and 5xx
+  responses are retryable. Validation/provider-envelope failures and permanent
+  bounces are permanent.
+- Retryable failures return alerts to `pending` with a 15-minute retry delay.
+  Delivery stops after three attempts and records a permanent exhausted-retry
+  failure.
+- Queued reservations older than 30 minutes are recovered before delivery
+  processors query pending work. Under the retry budget they return to
+  `pending`; at or above the retry budget they fail permanently.
+
+Because the Cloudflare REST API still has no idempotency key, stale reservation
+recovery preserves at-least-once delivery rather than exactly-once delivery. In
+the rare case where Cloudflare accepted a message but the action died before the
+`sent` state transition, recovery can resend after the 30-minute timeout. The
+stored delivery key and provider message ID are diagnostics/correlation
+metadata, not provider-enforced deduplication.

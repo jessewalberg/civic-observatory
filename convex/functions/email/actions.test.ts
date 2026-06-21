@@ -52,6 +52,22 @@ function failedEmailResponse(message = "Sender domain not verified") {
 	);
 }
 
+function serverErrorEmailResponse(
+	message = "email.sending.error.internal_server",
+) {
+	return new Response(
+		JSON.stringify({
+			success: false,
+			errors: [{ code: 10002, message }],
+			result: null,
+		}),
+		{
+			status: 500,
+			headers: { "Content-Type": "application/json" },
+		},
+	);
+}
+
 function failedEnvelopeEmailResponse(message = "Sender domain not verified") {
 	return new Response(
 		JSON.stringify({
@@ -356,6 +372,7 @@ describe("Cloudflare email delivery", () => {
 		expect(alert).toMatchObject({
 			status: "sent",
 			sentAt: expect.any(Number),
+			providerMessageId: "<email_immediate_123@example.com>",
 		});
 		const usage = await t.run(async (ctx) =>
 			ctx.db.query("usageRecords").collect(),
@@ -434,6 +451,7 @@ describe("Cloudflare email delivery", () => {
 			status: "failed",
 			deliveryError:
 				"Cloudflare Email API error: 400 Sender domain not verified",
+			deliveryFailureKind: "permanent",
 		});
 	});
 
@@ -458,6 +476,7 @@ describe("Cloudflare email delivery", () => {
 		expect(alert).toMatchObject({
 			status: "failed",
 			deliveryError: "Cloudflare Email API error: Sender domain not verified",
+			deliveryFailureKind: "permanent",
 		});
 	});
 
@@ -476,6 +495,7 @@ describe("Cloudflare email delivery", () => {
 		).resolves.toEqual({
 			success: false,
 			error: "Cloudflare email service not configured",
+			retryable: true,
 		});
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
@@ -495,11 +515,33 @@ describe("Cloudflare email delivery", () => {
 		).resolves.toEqual({
 			success: false,
 			error: "Cloudflare email service not configured",
+			retryable: true,
 		});
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
-	it("marks an immediate candidate failed when Cloudflare credentials are missing", async () => {
+	it("classifies transient Cloudflare outages as retryable", async () => {
+		const t = setup();
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => serverErrorEmailResponse()),
+		);
+
+		await expect(
+			t.action(internal.functions.email.actions.sendEmail, {
+				to: "reader@example.test",
+				subject: "New summary",
+				html: "<p>Summary ready</p>",
+			}),
+		).resolves.toEqual({
+			success: false,
+			error:
+				"Cloudflare Email API error: 500 email.sending.error.internal_server",
+			retryable: true,
+		});
+	});
+
+	it("requeues an immediate candidate when Cloudflare credentials are missing", async () => {
 		vi.stubEnv("CLOUDFLARE_API_TOKEN", "");
 		const t = setup();
 		const { alertId } = await seedPendingAlert(t);
@@ -513,13 +555,139 @@ describe("Cloudflare email delivery", () => {
 		).resolves.toEqual({
 			success: false,
 			error: "Cloudflare email service not configured",
+			retryable: true,
+		});
+
+		expect(fetchMock).not.toHaveBeenCalled();
+		const alert = await t.run(async (ctx) => ctx.db.get(alertId));
+		expect(alert).toMatchObject({
+			status: "pending",
+			deliveryError: "Cloudflare email service not configured",
+			deliveryFailureKind: "retryable",
+			deliveryKey: `alert/${alertId}`,
+			deliveryAttemptCount: 1,
+			lastDeliveryAttemptAt: expect.any(Number),
+			nextDeliveryAttemptAt: expect.any(Number),
+			scheduledFor: expect.any(Number),
+		});
+		expect(alert?.scheduledFor).toBeGreaterThan(Date.now());
+	});
+
+	it("does not reserve the same delivery key twice", async () => {
+		const t = setup();
+		const { alertId } = await seedPendingAlert(t);
+		const deliveryKey = `alert/${alertId}`;
+
+		await expect(
+			t.mutation(internal.functions.alerts.mutations.markQueued, {
+				alertId,
+				deliveryKey,
+			}),
+		).resolves.toMatchObject({ reserved: true, attemptCount: 1 });
+
+		await expect(
+			t.mutation(internal.functions.alerts.mutations.markQueued, {
+				alertId,
+				deliveryKey,
+			}),
+		).resolves.toMatchObject({ reserved: false, attemptCount: 1 });
+
+		const alert = await t.run(async (ctx) => ctx.db.get(alertId));
+		expect(alert).toMatchObject({
+			status: "queued",
+			deliveryKey,
+			deliveryAttemptCount: 1,
+		});
+	});
+
+	it("does not reserve a digest batch when one alert disappeared", async () => {
+		const t = setup();
+		const first = await seedPendingAlert(t, "daily");
+		const second = await seedPendingAlert(t, "daily");
+		await t.run(async (ctx) => {
+			await ctx.db.delete(first.alertId);
+		});
+
+		await expect(
+			t.mutation(internal.functions.alerts.mutations.markBatchQueued, {
+				alertIds: [first.alertId, second.alertId],
+				deliveryKey: "digest/daily/test/disappeared",
+			}),
+		).resolves.toMatchObject({
+			reserved: false,
+			alreadySent: false,
+			missing: true,
+		});
+
+		const alert = await t.run(async (ctx) => ctx.db.get(second.alertId));
+		expect(alert).toMatchObject({
+			status: "pending",
+		});
+		expect(alert?.deliveryAttemptCount).toBeUndefined();
+	});
+
+	it("fails retryable immediate candidates once the retry budget is exhausted", async () => {
+		vi.stubEnv("CLOUDFLARE_API_TOKEN", "");
+		const t = setup();
+		const { alertId } = await seedPendingAlert(t);
+		await t.run(async (ctx) => {
+			await ctx.db.patch(alertId, { deliveryAttemptCount: 2 });
+		});
+		const fetchMock = vi.fn();
+		vi.stubGlobal("fetch", fetchMock);
+
+		await expect(
+			t.action(internal.functions.email.actions.sendImmediateAlert, {
+				alertId,
+			}),
+		).resolves.toEqual({
+			success: false,
+			error: "Cloudflare email service not configured",
+			retryable: true,
 		});
 
 		expect(fetchMock).not.toHaveBeenCalled();
 		const alert = await t.run(async (ctx) => ctx.db.get(alertId));
 		expect(alert).toMatchObject({
 			status: "failed",
-			deliveryError: "Cloudflare email service not configured",
+			deliveryError:
+				"Retry attempts exhausted after 3 attempts: Cloudflare email service not configured",
+			deliveryFailureKind: "permanent",
+			deliveryAttemptCount: 3,
+		});
+	});
+
+	it("recovers stale queued immediate reservations before processing", async () => {
+		const t = setup();
+		const { alertId } = await seedPendingAlert(t);
+		await t.run(async (ctx) => {
+			await ctx.db.patch(alertId, {
+				status: "queued",
+				deliveryKey: `alert/${alertId}`,
+				deliveryAttemptCount: 1,
+				lastDeliveryAttemptAt: Date.now() - 31 * 60 * 1000,
+			});
+		});
+		const fetchMock = vi.fn(async () =>
+			okEmailResponse("<email_recovered_123@example.com>"),
+		);
+		vi.stubGlobal("fetch", fetchMock);
+
+		await expect(
+			t.action(internal.functions.email.actions.processImmediateAlerts, {}),
+		).resolves.toEqual({
+			processed: 1,
+			sent: 1,
+			failed: 0,
+			retrying: 0,
+		});
+
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		const alert = await t.run(async (ctx) => ctx.db.get(alertId));
+		expect(alert).toMatchObject({
+			status: "sent",
+			deliveryAttemptCount: 2,
+			providerMessageId: "<email_recovered_123@example.com>",
 		});
 	});
 
@@ -533,12 +701,13 @@ describe("Cloudflare email delivery", () => {
 
 		await expect(
 			t.action(internal.functions.email.actions.sendDailyDigest, {}),
-		).resolves.toEqual({ sent: 1, failed: 0, errors: [] });
+		).resolves.toEqual({ sent: 1, failed: 0, retrying: 0, errors: [] });
 
 		const alert = await t.run(async (ctx) => ctx.db.get(alertId));
 		expect(alert).toMatchObject({
 			status: "sent",
 			sentAt: expect.any(Number),
+			providerMessageId: "<email_digest_123@example.com>",
 		});
 
 		expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -566,6 +735,7 @@ describe("Cloudflare email delivery", () => {
 		).resolves.toEqual({
 			sent: 0,
 			failed: 1,
+			retrying: 0,
 			errors: [
 				"User reader@example.test: Cloudflare Email API error: 400 Sender domain not verified",
 			],
@@ -576,10 +746,11 @@ describe("Cloudflare email delivery", () => {
 			status: "failed",
 			deliveryError:
 				"Cloudflare Email API error: 400 Sender domain not verified",
+			deliveryFailureKind: "permanent",
 		});
 	});
 
-	it("marks daily digest candidates failed when Cloudflare credentials are missing", async () => {
+	it("requeues daily digest candidates when Cloudflare credentials are missing", async () => {
 		vi.stubEnv("CLOUDFLARE_API_TOKEN", "");
 		const t = setup();
 		const { alertId } = await seedPendingAlert(t, "daily");
@@ -590,7 +761,8 @@ describe("Cloudflare email delivery", () => {
 			t.action(internal.functions.email.actions.sendDailyDigest, {}),
 		).resolves.toEqual({
 			sent: 0,
-			failed: 1,
+			failed: 0,
+			retrying: 1,
 			errors: [
 				"User reader@example.test: Cloudflare email service not configured",
 			],
@@ -599,9 +771,46 @@ describe("Cloudflare email delivery", () => {
 		expect(fetchMock).not.toHaveBeenCalled();
 		const alert = await t.run(async (ctx) => ctx.db.get(alertId));
 		expect(alert).toMatchObject({
-			status: "failed",
+			status: "pending",
 			deliveryError: "Cloudflare email service not configured",
+			deliveryFailureKind: "retryable",
+			deliveryAttemptCount: 1,
+			lastDeliveryAttemptAt: expect.any(Number),
+			nextDeliveryAttemptAt: expect.any(Number),
+			scheduledFor: expect.any(Number),
 		});
+		expect(alert?.deliveryKey).toContain("digest/daily/");
+		expect(alert?.scheduledFor).toBeGreaterThan(Date.now());
+	});
+
+	it("requeues daily digest candidates when Cloudflare has a retryable outage", async () => {
+		const t = setup();
+		const { alertId } = await seedPendingAlert(t, "daily");
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => serverErrorEmailResponse()),
+		);
+
+		await expect(
+			t.action(internal.functions.email.actions.sendDailyDigest, {}),
+		).resolves.toEqual({
+			sent: 0,
+			failed: 0,
+			retrying: 1,
+			errors: [
+				"User reader@example.test: Cloudflare Email API error: 500 email.sending.error.internal_server",
+			],
+		});
+
+		const alert = await t.run(async (ctx) => ctx.db.get(alertId));
+		expect(alert).toMatchObject({
+			status: "pending",
+			deliveryError:
+				"Cloudflare Email API error: 500 email.sending.error.internal_server",
+			deliveryFailureKind: "retryable",
+			deliveryAttemptCount: 1,
+		});
+		expect(alert?.scheduledFor).toBeGreaterThan(Date.now());
 	});
 
 	it("sends a weekly digest and marks grouped candidates sent", async () => {
@@ -614,7 +823,7 @@ describe("Cloudflare email delivery", () => {
 
 		await expect(
 			t.action(internal.functions.email.actions.sendWeeklyDigest, {}),
-		).resolves.toEqual({ sent: 1, failed: 0, errors: [] });
+		).resolves.toEqual({ sent: 1, failed: 0, retrying: 0, errors: [] });
 
 		const alert = await t.run(async (ctx) => ctx.db.get(alertId));
 		expect(alert).toMatchObject({
