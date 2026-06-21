@@ -47,6 +47,7 @@ import {
 	getCoverageAlerts,
 	getCoverageDashboardRows,
 	getCoverageDashboardStats,
+	getCoveragePlatformStats,
 } from "@/lib/coverageDashboard";
 import { requireAuth } from "@/lib/serverAuth";
 import { cn } from "@/lib/utils";
@@ -123,6 +124,9 @@ function CoverageContent() {
 		() => new Set(),
 	);
 	const [filters, setFilters] = useState<CoverageDashboardFilters>({
+		state: "all",
+		activity: "all",
+		verification: "all",
 		healthState: "all",
 		platform: "all",
 		freshness: "all",
@@ -144,10 +148,18 @@ function CoverageContent() {
 		[checklistRows],
 	);
 	const stats = useMemo(() => getCoverageDashboardStats(rows), [rows]);
+	const platformStats = useMemo(() => getCoveragePlatformStats(rows), [rows]);
 	const coverageAlerts = useMemo(() => getCoverageAlerts(rows), [rows]);
 	const visibleRows = useMemo(
 		() => getCoverageDashboardRows(rows, filters, sort),
 		[rows, filters, sort],
+	);
+	const stateOptions = useMemo(
+		() =>
+			Array.from(new Set(rows.map((row) => row.municipality.state))).sort(
+				(a, b) => a.localeCompare(b),
+			),
+		[rows],
 	);
 
 	const updateFilter = <K extends keyof CoverageDashboardFilters>(
@@ -294,8 +306,26 @@ function CoverageContent() {
 						</p>
 					</div>
 
-					<div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 mb-6">
+					<div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-10 gap-4 mb-6">
 						<StatCard label="Total" value={stats.total} icon={BarChart3} />
+						<StatCard
+							label="Active"
+							value={stats.active}
+							icon={CheckCircle2}
+							variant="success"
+						/>
+						<StatCard
+							label="Inactive"
+							value={stats.inactive}
+							icon={PauseCircle}
+							variant={stats.inactive > 0 ? "warning" : "success"}
+						/>
+						<StatCard
+							label="Verified"
+							value={stats.verified}
+							icon={Shield}
+							variant="info"
+						/>
 						<StatCard
 							label="Live"
 							value={stats.live}
@@ -309,8 +339,8 @@ function CoverageContent() {
 							variant="warning"
 						/>
 						<StatCard
-							label="Failing"
-							value={stats.failing}
+							label="Broken"
+							value={stats.broken}
 							icon={AlertCircle}
 							variant="destructive"
 						/>
@@ -339,6 +369,54 @@ function CoverageContent() {
 							variant={stats.coverageAttention > 0 ? "warning" : "success"}
 						/>
 					</div>
+
+					<Card className="mb-6">
+						<div className="p-4 border-b border-border flex items-center justify-between gap-4">
+							<div>
+								<h2 className="font-display text-lg font-semibold text-foreground">
+									Platform Health
+								</h2>
+								<p className="text-xs text-muted-foreground">
+									Scraper health by Granicus, CivicPlus, generic, and manual
+									coverage
+								</p>
+							</div>
+						</div>
+						<div className="overflow-x-auto">
+							<Table>
+								<TableHeader>
+									<TableRow>
+										<TableHead>Platform</TableHead>
+										<TableHead>Total</TableHead>
+										<TableHead>Live</TableHead>
+										<TableHead>Stale</TableHead>
+										<TableHead>Broken</TableHead>
+										<TableHead>Pending</TableHead>
+										<TableHead>Never Probed</TableHead>
+										<TableHead>Unsupported</TableHead>
+									</TableRow>
+								</TableHeader>
+								<TableBody>
+									{platformStats.map((row) => (
+										<TableRow key={row.platform}>
+											<TableCell>
+												<Badge variant="outline" className="text-xs capitalize">
+													{platformLabel(row.platform)}
+												</Badge>
+											</TableCell>
+											<TableCell>{row.total}</TableCell>
+											<TableCell>{row.live}</TableCell>
+											<TableCell>{row.stale}</TableCell>
+											<TableCell>{row.failing}</TableCell>
+											<TableCell>{row.pending}</TableCell>
+											<TableCell>{row.neverProbed}</TableCell>
+											<TableCell>{row.unsupported}</TableCell>
+										</TableRow>
+									))}
+								</TableBody>
+							</Table>
+						</div>
+					</Card>
 
 					<Card className="mb-6">
 						<div className="p-4 border-b border-border flex items-center justify-between gap-4">
@@ -556,6 +634,9 @@ function CoverageContent() {
 									size="sm"
 									onClick={() =>
 										setFilters({
+											state: "all",
+											activity: "all",
+											verification: "all",
 											healthState: "all",
 											platform: "all",
 											freshness: "all",
@@ -568,7 +649,7 @@ function CoverageContent() {
 								</Button>
 							</div>
 						</div>
-						<div className="p-4 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+						<div className="p-4 grid gap-3 md:grid-cols-2 xl:grid-cols-9">
 							<div className="relative md:col-span-2 xl:col-span-1">
 								<Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
 								<Input
@@ -580,6 +661,58 @@ function CoverageContent() {
 									className="pl-9"
 								/>
 							</div>
+							<Select
+								value={filters.state ?? "all"}
+								onValueChange={(value) => updateFilter("state", value)}
+							>
+								<SelectTrigger>
+									<SelectValue placeholder="State" />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="all">All States</SelectItem>
+									{stateOptions.map((state) => (
+										<SelectItem key={state} value={state}>
+											{state}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+							<Select
+								value={filters.activity ?? "all"}
+								onValueChange={(value) =>
+									updateFilter(
+										"activity",
+										value as CoverageDashboardFilters["activity"],
+									)
+								}
+							>
+								<SelectTrigger>
+									<SelectValue placeholder="Active" />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="all">All Activity</SelectItem>
+									<SelectItem value="active">Active</SelectItem>
+									<SelectItem value="inactive">Inactive</SelectItem>
+								</SelectContent>
+							</Select>
+							<Select
+								value={filters.verification ?? "all"}
+								onValueChange={(value) =>
+									updateFilter(
+										"verification",
+										value as CoverageDashboardFilters["verification"],
+									)
+								}
+							>
+								<SelectTrigger>
+									<SelectValue placeholder="Verified" />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="all">All Verification</SelectItem>
+									<SelectItem value="verified">Verified</SelectItem>
+									<SelectItem value="unverified">Unverified</SelectItem>
+								</SelectContent>
+							</Select>
 							<Select
 								value={filters.healthState ?? "all"}
 								onValueChange={(value) =>
@@ -800,11 +933,12 @@ function CoverageContent() {
 													<div className="flex flex-col">
 														<span className="text-sm text-foreground">
 															{formatRelativeTime(
-																row.health.freshness.lastScrapedAt,
+																row.health.latestScrape?.at ??
+																	row.health.freshness.lastScrapedAt,
 															)}
 														</span>
 														<span className="text-xs text-muted-foreground">
-															{formatFreshness(row)}
+															{formatLatestScrape(row)}
 														</span>
 													</div>
 												</TableCell>
@@ -1107,6 +1241,38 @@ function MetricLine({ label, value }: { label: string; value: number }) {
 			</span>
 		</div>
 	);
+}
+
+function platformLabel(
+	platform: CoverageDashboardRow["municipality"]["platform"],
+) {
+	const labels: Record<
+		CoverageDashboardRow["municipality"]["platform"],
+		string
+	> = {
+		granicus: "Granicus",
+		civicplus: "CivicPlus",
+		generic: "Generic",
+		manual: "Manual",
+	};
+	return labels[platform];
+}
+
+function formatLatestScrape(row: CoverageDashboardRow) {
+	const latest = row.health.latestScrape;
+	if (!latest) return formatFreshness(row);
+
+	const parts = [
+		latest.status,
+		`${latest.meetingsFound} found`,
+		`${latest.meetingsCreated} created`,
+		`${latest.meetingsSkipped} skipped`,
+	];
+	if (latest.meetingsFailed > 0) {
+		parts.push(`${latest.meetingsFailed} failed`);
+	}
+
+	return parts.join(" · ");
 }
 
 function formatFreshness(row: CoverageDashboardRow) {

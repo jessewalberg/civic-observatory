@@ -47,6 +47,10 @@ export type CoverageHealthInput = {
 		status: ScrapeJobStatus;
 		createdAt: number;
 		completedAt?: number | null;
+		meetingsFound?: number | null;
+		meetingsCreated?: number | null;
+		meetingsSkipped?: number | null;
+		meetingsFailed?: number | null;
 		errors?: Array<{
 			message: string;
 			timestamp?: number;
@@ -72,6 +76,14 @@ export type MunicipalityCoverageHealth = {
 		partial: number;
 		failed: number;
 	};
+	latestScrape: {
+		status: ScrapeJobStatus;
+		at: number;
+		meetingsFound: number;
+		meetingsCreated: number;
+		meetingsSkipped: number;
+		meetingsFailed: number;
+	} | null;
 	documentAvailabilityPct: number;
 	summaryStatus: {
 		totalMeetings: number;
@@ -147,6 +159,7 @@ export function buildMunicipalityCoverageHealth(
 		},
 		scrapeSuccessRate: scrapeSuccessRate(terminalJobs),
 		scrapeJobSample: scrapeJobSample(terminalJobs),
+		latestScrape: latestScrape(input.scrapeJobs),
 		documentAvailabilityPct: documentAvailabilityPct(input.meetings),
 		summaryStatus: summaryStatus(input),
 		lastFailure,
@@ -175,6 +188,22 @@ function scrapeJobSample(
 		completed: jobs.filter((job) => job.status === "completed").length,
 		partial: jobs.filter((job) => job.status === "partial").length,
 		failed: jobs.filter((job) => job.status === "failed").length,
+	};
+}
+
+function latestScrape(
+	jobs: CoverageHealthInput["scrapeJobs"],
+): MunicipalityCoverageHealth["latestScrape"] {
+	const latest = jobs[0];
+	if (!latest) return null;
+
+	return {
+		status: latest.status,
+		at: latest.completedAt ?? latest.createdAt,
+		meetingsFound: latest.meetingsFound ?? 0,
+		meetingsCreated: latest.meetingsCreated ?? 0,
+		meetingsSkipped: latest.meetingsSkipped ?? 0,
+		meetingsFailed: latest.meetingsFailed ?? 0,
 	};
 }
 
