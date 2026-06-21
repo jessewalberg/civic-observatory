@@ -228,7 +228,8 @@ function formatIsoDate(timestamp: number) {
 }
 
 function csvCell(value: string) {
-	return `"${value.replaceAll('"', '""')}"`;
+	const guarded = /^[=+\-@\t\r\n]/.test(value) ? `'${value}` : value;
+	return `"${guarded.replaceAll('"', '""')}"`;
 }
 
 function slugify(value: string) {
