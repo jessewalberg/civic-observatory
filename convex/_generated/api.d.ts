@@ -80,6 +80,7 @@ import type * as functions_meetings_queries from "../functions/meetings/queries.
 import type * as functions_municipalities_coverageHealth from "../functions/municipalities/coverageHealth.js";
 import type * as functions_municipalities_discovery from "../functions/municipalities/discovery.js";
 import type * as functions_municipalities_mutations from "../functions/municipalities/mutations.js";
+import type * as functions_municipalities_onboardingChecklist from "../functions/municipalities/onboardingChecklist.js";
 import type * as functions_municipalities_probe from "../functions/municipalities/probe.js";
 import type * as functions_municipalities_queries from "../functions/municipalities/queries.js";
 import type * as functions_rateLimit_mutations from "../functions/rateLimit/mutations.js";
@@ -202,6 +203,7 @@ declare const fullApi: ApiFromModules<{
   "functions/municipalities/coverageHealth": typeof functions_municipalities_coverageHealth;
   "functions/municipalities/discovery": typeof functions_municipalities_discovery;
   "functions/municipalities/mutations": typeof functions_municipalities_mutations;
+  "functions/municipalities/onboardingChecklist": typeof functions_municipalities_onboardingChecklist;
   "functions/municipalities/probe": typeof functions_municipalities_probe;
   "functions/municipalities/queries": typeof functions_municipalities_queries;
   "functions/rateLimit/mutations": typeof functions_rateLimit_mutations;

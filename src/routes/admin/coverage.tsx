@@ -7,6 +7,7 @@ import {
 	ArrowUpDown,
 	BarChart3,
 	CheckCircle2,
+	ClipboardCheck,
 	Clock,
 	FileText,
 	Loader2,
@@ -47,6 +48,33 @@ import { requireAuth } from "@/lib/serverAuth";
 import { cn } from "@/lib/utils";
 import { api } from "../../../convex/_generated/api";
 
+type OnboardingChecklistRow = {
+	municipality: {
+		id: string;
+		name: string;
+		state: string;
+		meetingsPageUrl?: string | null;
+		platform: "granicus" | "civicplus" | "generic" | "manual";
+		isActive: boolean;
+		isVerified: boolean;
+	};
+	overallStatus: "completed" | "blocked" | "failed" | "next-action";
+	nextAction: string | null;
+	steps: Array<{
+		key:
+			| "source_url"
+			| "platform_detection"
+			| "test_scrape"
+			| "first_summary"
+			| "publish_state";
+		label: string;
+		status: "completed" | "blocked" | "failed" | "next-action";
+		detail: string;
+		nextAction: string | null;
+		updatedAt: number | null;
+	}>;
+};
+
 export const Route = createFileRoute("/admin/coverage")({
 	beforeLoad: async () => {
 		await requireAuth();
@@ -73,6 +101,10 @@ function CoverageContent() {
 		api.functions.municipalities.queries.listCoverageHealth,
 		{},
 	) as CoverageDashboardRow[] | null | undefined;
+	const onboardingChecklists = useQuery(
+		api.functions.municipalities.queries.listOnboardingChecklists,
+		{},
+	) as OnboardingChecklistRow[] | null | undefined;
 	const [filters, setFilters] = useState<CoverageDashboardFilters>({
 		healthState: "all",
 		platform: "all",
@@ -86,6 +118,14 @@ function CoverageContent() {
 	});
 
 	const rows = coverageRows ?? [];
+	const checklistRows = onboardingChecklists ?? [];
+	const nextChecklistRows = useMemo(
+		() =>
+			checklistRows
+				.filter((row) => row.overallStatus !== "completed")
+				.slice(0, 5),
+		[checklistRows],
+	);
 	const stats = useMemo(() => getCoverageDashboardStats(rows), [rows]);
 	const coverageAlerts = useMemo(() => getCoverageAlerts(rows), [rows]);
 	const visibleRows = useMemo(
@@ -108,7 +148,7 @@ function CoverageContent() {
 		}));
 	};
 
-	if (coverageRows === undefined) {
+	if (coverageRows === undefined || onboardingChecklists === undefined) {
 		return (
 			<div className="min-h-screen bg-background flex items-center justify-center">
 				<div className="flex items-center gap-3 text-muted-foreground">
@@ -119,7 +159,7 @@ function CoverageContent() {
 		);
 	}
 
-	if (coverageRows === null) {
+	if (coverageRows === null || onboardingChecklists === null) {
 		return (
 			<div className="min-h-screen bg-background flex items-center justify-center">
 				<motion.div
@@ -296,6 +336,104 @@ function CoverageContent() {
 									</div>
 								))
 							)}
+						</div>
+					</Card>
+
+					<Card className="mb-6">
+						<div className="p-4 border-b border-border flex items-center justify-between gap-4">
+							<div>
+								<div className="flex items-center gap-2">
+									<ClipboardCheck className="h-4 w-4 text-primary" />
+									<h2 className="font-display text-lg font-semibold text-foreground">
+										Onboarding Checklist
+									</h2>
+								</div>
+								<p className="text-xs text-muted-foreground mt-1">
+									Next five municipalities by setup state
+								</p>
+							</div>
+							<Badge
+								variant={nextChecklistRows.length > 0 ? "warning" : "success"}
+								className="text-xs"
+							>
+								{nextChecklistRows.length} active
+							</Badge>
+						</div>
+						<div className="overflow-x-auto">
+							<Table>
+								<TableHeader>
+									<TableRow>
+										<TableHead>Municipality</TableHead>
+										<TableHead>Status</TableHead>
+										<TableHead>Source</TableHead>
+										<TableHead>Platform</TableHead>
+										<TableHead>Test Scrape</TableHead>
+										<TableHead>Summary</TableHead>
+										<TableHead>Publish</TableHead>
+										<TableHead>Next Action</TableHead>
+									</TableRow>
+								</TableHeader>
+								<TableBody>
+									{nextChecklistRows.length === 0 ? (
+										<TableRow>
+											<TableCell
+												colSpan={8}
+												className="text-center py-8 text-muted-foreground"
+											>
+												No active onboarding checklist items.
+											</TableCell>
+										</TableRow>
+									) : (
+										nextChecklistRows.map((row) => (
+											<TableRow key={row.municipality.id}>
+												<TableCell className="min-w-[200px]">
+													<div className="flex flex-col">
+														<span className="font-medium text-foreground">
+															{row.municipality.name}
+														</span>
+														<span className="text-xs text-muted-foreground">
+															{row.municipality.state}
+														</span>
+													</div>
+												</TableCell>
+												<TableCell>
+													<OnboardingStatusBadge status={row.overallStatus} />
+												</TableCell>
+												{[
+													"source_url",
+													"platform_detection",
+													"test_scrape",
+													"first_summary",
+													"publish_state",
+												].map((stepKey) => {
+													const step = row.steps.find(
+														(candidate) => candidate.key === stepKey,
+													);
+													return (
+														<TableCell key={stepKey}>
+															{step ? (
+																<OnboardingStatusBadge
+																	status={step.status}
+																	short
+																/>
+															) : (
+																<span className="text-xs text-muted-foreground">
+																	N/A
+																</span>
+															)}
+														</TableCell>
+													);
+												})}
+												<TableCell className="min-w-[220px] max-w-[320px]">
+													<span className="text-sm text-foreground">
+														{row.nextAction ?? "Ready"}
+													</span>
+												</TableCell>
+											</TableRow>
+										))
+									)}
+								</TableBody>
+							</Table>
 						</div>
 					</Card>
 
@@ -713,6 +851,41 @@ function HealthBadge({ state }: { state: CoverageHealthState }) {
 	return (
 		<Badge variant={config[state].variant} className="text-xs">
 			{config[state].label}
+		</Badge>
+	);
+}
+
+function OnboardingStatusBadge({
+	status,
+	short = false,
+}: {
+	status: OnboardingChecklistRow["overallStatus"];
+	short?: boolean;
+}) {
+	const config: Record<
+		OnboardingChecklistRow["overallStatus"],
+		{
+			label: string;
+			shortLabel: string;
+			variant: React.ComponentProps<typeof Badge>["variant"];
+		}
+	> = {
+		completed: { label: "Completed", shortLabel: "Done", variant: "success" },
+		blocked: { label: "Blocked", shortLabel: "Block", variant: "secondary" },
+		failed: { label: "Failed", shortLabel: "Fail", variant: "destructive" },
+		"next-action": {
+			label: "Next Action",
+			shortLabel: "Next",
+			variant: "warning",
+		},
+	};
+
+	return (
+		<Badge
+			variant={config[status].variant}
+			className="text-xs whitespace-nowrap"
+		>
+			{short ? config[status].shortLabel : config[status].label}
 		</Badge>
 	);
 }
