@@ -1,6 +1,6 @@
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { ConvexHttpClient } from "convex/browser";
-import { useConvexAuth, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import {
 	ArrowLeft,
 	Bell,
@@ -31,6 +31,7 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { usePublicAuthState } from "@/lib/publicAuth";
 import { municipalityPath, publicIdentifier } from "@/lib/publicUrls";
 import { canonicalLink, generateMunicipalityJsonLd } from "@/lib/seo";
 import { api } from "../../../convex/_generated/api";
@@ -158,7 +159,8 @@ const MEETING_SKELETON_KEYS = [
 function MunicipalityDetailPage() {
 	const { municipalityId } = Route.useParams();
 	const loaderData = Route.useLoaderData();
-	const { isAuthenticated } = useConvexAuth();
+	const publicAuth = usePublicAuthState();
+	const isAuthenticated = publicAuth.isAuthenticated;
 	const [meetingType, setMeetingType] = useState<string>("");
 	const [cursor, setCursor] = useState<string | null>(null);
 	const [showSubscribeModal, setShowSubscribeModal] = useState(false);
@@ -174,11 +176,7 @@ function MunicipalityDetailPage() {
 			: queriedMunicipality;
 	const resolvedMunicipalityId = municipality?._id;
 
-	// Fetch user if authenticated
-	const user = useQuery(
-		api.functions.users.queries.current,
-		isAuthenticated ? {} : "skip",
-	);
+	const user = publicAuth.user;
 
 	// Check if user is subscribed to this municipality
 	const existingSubscription = useQuery(
@@ -364,7 +362,11 @@ function MunicipalityDetailPage() {
 										</Button>
 									</a>
 								)}
-								{!isAuthenticated ? (
+								{publicAuth.isLoading ? (
+									<Button size="sm" disabled>
+										Loading
+									</Button>
+								) : !isAuthenticated ? (
 									// Not logged in - show sign in button
 									<a href="/sign-in">
 										<Button size="sm">

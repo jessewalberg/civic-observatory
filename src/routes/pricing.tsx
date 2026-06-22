@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useAction, useConvexAuth, useQuery } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import {
 	Building2,
 	Check,
@@ -23,6 +23,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { usePublicAuthState } from "@/lib/publicAuth";
 import { canonicalLink, generatePricingJsonLd } from "@/lib/seo";
 import { cn } from "@/lib/utils";
 import { api } from "../../convex/_generated/api";
@@ -105,7 +106,7 @@ const plans = [
 ];
 
 function PricingPage() {
-	const { isAuthenticated } = useConvexAuth();
+	const { isAuthenticated } = usePublicAuthState();
 	const { success = false, canceled = false } = Route.useSearch();
 
 	return (

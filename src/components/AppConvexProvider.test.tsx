@@ -1,69 +1,102 @@
 // @vitest-environment jsdom
-// Phase 4: AppConvexProvider always mounts Clerk + Convex-Clerk (WorkOS path
-// removed). These tests pin that the publishable key flows to ClerkProvider and
-// ConvexProviderWithClerk gets a real client + the exact Clerk useAuth hook.
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { clerkProviderSpy, convexWithClerkSpy, mockedUseAuth } = vi.hoisted(
-	() => ({
-		clerkProviderSpy: vi.fn(),
-		convexWithClerkSpy: vi.fn(),
-		mockedUseAuth: () => ({ isLoaded: true, isSignedIn: false }),
-	}),
-);
-
-vi.mock("@clerk/tanstack-react-start", () => ({
-	ClerkProvider: (props: {
-		publishableKey?: string;
-		children?: React.ReactNode;
-	}) => {
-		clerkProviderSpy(props.publishableKey);
-		return <div data-testid="clerk-provider">{props.children}</div>;
-	},
-	useAuth: mockedUseAuth,
+const { publicProviderSpy, authenticatedProviderSpy } = vi.hoisted(() => ({
+	publicProviderSpy: vi.fn(),
+	authenticatedProviderSpy: vi.fn(),
 }));
-vi.mock("convex/react-clerk", () => ({
-	ConvexProviderWithClerk: (props: {
-		client?: unknown;
-		useAuth?: unknown;
-		children?: React.ReactNode;
-	}) => {
-		convexWithClerkSpy({ client: props.client, useAuth: props.useAuth });
-		return <div data-testid="convex-with-clerk">{props.children}</div>;
+
+vi.mock("convex/react", () => ({
+	ConvexProvider: (props: { client?: unknown; children?: React.ReactNode }) => {
+		publicProviderSpy(props.client);
+		return <div data-testid="public-convex-provider">{props.children}</div>;
+	},
+	ConvexReactClient: class MockConvexReactClient {
+		url: string;
+
+		constructor(url: string) {
+			this.url = url;
+		}
 	},
 }));
-// UserBootstrap hits real Convex hooks; this test only asserts provider wiring.
-vi.mock("./UserBootstrap", () => ({ UserBootstrap: () => null }));
 
-import { ConvexReactClient } from "convex/react";
-import { AppConvexProvider } from "./AppConvexProvider";
+vi.mock("./AuthenticatedConvexProvider", () => ({
+	AuthenticatedConvexProvider: (props: { children?: React.ReactNode }) => {
+		authenticatedProviderSpy();
+		return (
+			<div data-testid="authenticated-convex-provider">{props.children}</div>
+		);
+	},
+}));
 
-describe("AppConvexProvider (Clerk + Convex)", () => {
+import {
+	AppConvexProvider,
+	requiresAuthenticatedProviders,
+	showsAuthenticatedHeaderControls,
+} from "./AppConvexProvider";
+
+describe("AppConvexProvider", () => {
 	afterEach(() => {
 		cleanup();
 		vi.unstubAllEnvs();
-		clerkProviderSpy.mockClear();
-		convexWithClerkSpy.mockClear();
+		publicProviderSpy.mockClear();
+		authenticatedProviderSpy.mockClear();
 	});
 
-	it("mounts ClerkProvider + ConvexProviderWithClerk with the full contract", () => {
-		vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY", "pk_test_fake123");
+	it("uses plain Convex on public routes without mounting Clerk", () => {
 		vi.stubEnv("VITE_CONVEX_URL", "https://example.convex.cloud");
 
 		render(
-			<AppConvexProvider>
+			<AppConvexProvider mode="public">
 				<span>app-children</span>
 			</AppConvexProvider>,
 		);
 
-		expect(screen.getByTestId("clerk-provider")).toBeDefined();
-		expect(screen.getByTestId("convex-with-clerk")).toBeDefined();
+		expect(screen.getByTestId("public-convex-provider")).toBeDefined();
 		expect(screen.getByText("app-children")).toBeDefined();
-		expect(clerkProviderSpy).toHaveBeenCalledWith("pk_test_fake123");
-		expect(convexWithClerkSpy).toHaveBeenCalledTimes(1);
-		const wired = convexWithClerkSpy.mock.calls[0][0];
-		expect(wired.client).toBeInstanceOf(ConvexReactClient);
-		expect(wired.useAuth).toBe(mockedUseAuth);
+		expect(publicProviderSpy).toHaveBeenCalledTimes(1);
+		expect(authenticatedProviderSpy).not.toHaveBeenCalled();
+	});
+
+	it("uses the authenticated provider only when explicitly requested", async () => {
+		vi.stubEnv("VITE_CONVEX_URL", "https://example.convex.cloud");
+
+		render(
+			<AppConvexProvider mode="authenticated">
+				<span>private-children</span>
+			</AppConvexProvider>,
+		);
+
+		expect(
+			await screen.findByTestId("authenticated-convex-provider"),
+		).toBeDefined();
+		expect(screen.getByText("private-children")).toBeDefined();
+		expect(publicProviderSpy).not.toHaveBeenCalled();
+		expect(authenticatedProviderSpy).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("provider route boundaries", () => {
+	it("limits Clerk/Convex auth providers to auth and protected routes", () => {
+		expect(requiresAuthenticatedProviders("/")).toBe(false);
+		expect(requiresAuthenticatedProviders("/explore")).toBe(false);
+		expect(requiresAuthenticatedProviders("/explore/austin-tx")).toBe(false);
+		expect(requiresAuthenticatedProviders("/pricing")).toBe(false);
+		expect(requiresAuthenticatedProviders("/meeting/austin-tx-2026")).toBe(
+			false,
+		);
+
+		expect(requiresAuthenticatedProviders("/sign-in")).toBe(true);
+		expect(requiresAuthenticatedProviders("/sign-up/setup")).toBe(true);
+		expect(requiresAuthenticatedProviders("/dashboard")).toBe(true);
+		expect(requiresAuthenticatedProviders("/admin/users")).toBe(true);
+	});
+
+	it("shows authenticated header controls only on protected app routes", () => {
+		expect(showsAuthenticatedHeaderControls("/sign-in")).toBe(false);
+		expect(showsAuthenticatedHeaderControls("/pricing")).toBe(false);
+		expect(showsAuthenticatedHeaderControls("/dashboard")).toBe(true);
+		expect(showsAuthenticatedHeaderControls("/admin/coverage")).toBe(true);
 	});
 });

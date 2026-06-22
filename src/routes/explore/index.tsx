@@ -18,6 +18,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { usePublicAuthState } from "@/lib/publicAuth";
 import { canonicalLink } from "@/lib/seo";
 import { US_STATES } from "@/lib/usStates";
 import { api } from "../../../convex/_generated/api";
@@ -73,6 +74,7 @@ function ExplorePage() {
 	const [searchQuery, setSearchQuery] = useState("");
 	const [selectedState, setSelectedState] = useState<string>("");
 	const [isCoverageRequestOpen, setIsCoverageRequestOpen] = useState(false);
+	const publicAuth = usePublicAuthState();
 
 	// Fetch municipalities - use search if query exists, otherwise list
 	const searchResults = useQuery(
@@ -340,6 +342,11 @@ function ExplorePage() {
 				onOpenChange={setIsCoverageRequestOpen}
 				defaultMunicipalityName={searchQuery}
 				defaultState={selectedState}
+				auth={{
+					userEmail: publicAuth.userEmail,
+					isAuthenticated: publicAuth.isAuthenticated,
+					isLoading: publicAuth.isLoading,
+				}}
 			/>
 		</div>
 	);

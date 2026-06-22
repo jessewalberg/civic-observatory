@@ -20,6 +20,15 @@ function. Identity is **create-only**: first Clerk login makes a fresh app-user
 keyed by the Clerk `userId`; WorkOS-era account history is **not** remapped
 (owner-confirmed 2026-06-06).
 
+## Update — 2026-06-22 public route provider boundary
+
+Clerk remains the only authenticated identity path, but it is no longer mounted
+around every route. Signed-out public/SEO routes use a plain Convex provider and
+explicit signed-out UI fallbacks so they can query public data without eagerly
+requesting Clerk UI bundles. ClerkProvider + ConvexProviderWithClerk now mount
+only for sign-in/sign-up and protected dashboard/admin routes; authenticated
+public-page affordances live in lazy auth islands or route through sign-in.
+
 ## Context
 
 This was as much a **security fix** as an auth swap. Pre-migration, the Convex

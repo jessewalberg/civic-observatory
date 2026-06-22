@@ -1,31 +1,46 @@
-import { ClerkProvider, useAuth } from "@clerk/tanstack-react-start";
-import { ConvexReactClient } from "convex/react";
-import { ConvexProviderWithClerk } from "convex/react-clerk";
-import { useState } from "react";
-
+import { ConvexProvider, ConvexReactClient } from "convex/react";
+import { lazy, Suspense, useState } from "react";
+import type { AppProviderMode } from "@/lib/authRoutes";
+import { AuthShellProvider } from "@/lib/authShell";
 import { getConvexUrl } from "./ConvexClientProvider";
-import { getClerkPublishableKey } from "./clerkEnv";
-import { UserBootstrap } from "./UserBootstrap";
+
+export {
+	getAppProviderMode,
+	requiresAuthenticatedProviders,
+	showsAuthenticatedHeaderControls,
+} from "@/lib/authRoutes";
 
 interface AppConvexProviderProps {
+	mode: AppProviderMode;
 	children: React.ReactNode;
 }
 
-/**
- * App-wide Clerk + Convex provider. Clerk is the sole auth path. Convex receives
- * Clerk JWTs through the `convex` JWT template via ConvexProviderWithClerk +
- * Clerk's useAuth. UserBootstrap provisions the Convex `users` row on first
- * sign-in.
- */
-export function AppConvexProvider({ children }: AppConvexProviderProps) {
-	const [client] = useState(() => new ConvexReactClient(getConvexUrl()));
+const AuthenticatedConvexProvider = lazy(() =>
+	import("./AuthenticatedConvexProvider").then((module) => ({
+		default: module.AuthenticatedConvexProvider,
+	})),
+);
+
+export function AppConvexProvider({ children, mode }: AppConvexProviderProps) {
+	if (mode === "authenticated") {
+		return (
+			<AuthShellProvider mode={mode}>
+				<Suspense fallback={null}>
+					<AuthenticatedConvexProvider>{children}</AuthenticatedConvexProvider>
+				</Suspense>
+			</AuthShellProvider>
+		);
+	}
 
 	return (
-		<ClerkProvider publishableKey={getClerkPublishableKey()}>
-			<ConvexProviderWithClerk client={client} useAuth={useAuth}>
-				<UserBootstrap />
-				{children}
-			</ConvexProviderWithClerk>
-		</ClerkProvider>
+		<AuthShellProvider mode={mode}>
+			<PublicConvexProvider>{children}</PublicConvexProvider>
+		</AuthShellProvider>
 	);
+}
+
+function PublicConvexProvider({ children }: { children: React.ReactNode }) {
+	const [client] = useState(() => new ConvexReactClient(getConvexUrl()));
+
+	return <ConvexProvider client={client}>{children}</ConvexProvider>;
 }

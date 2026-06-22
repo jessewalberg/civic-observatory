@@ -3,15 +3,21 @@ import {
 	HeadContent,
 	Outlet,
 	Scripts,
+	useLocation,
 	useRouter,
 } from "@tanstack/react-router";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Toaster } from "sonner";
 
 import { AppConvexProvider } from "@/components/AppConvexProvider";
 import { ErrorBoundary, RootErrorFallback } from "@/components/error";
 import { Header } from "@/components/Header";
 import { RouteLoadingFallback } from "@/components/SuspenseFallback";
+import {
+	getAppProviderMode,
+	hasClerkSessionCookie,
+	showsAuthenticatedHeaderControls,
+} from "@/lib/authRoutes";
 import { DEFAULT_SOCIAL_IMAGE } from "@/lib/seo";
 import appCss from "@/styles.css?url";
 
@@ -135,11 +141,23 @@ function NotFoundPage() {
 }
 
 function RootComponent() {
+	const location = useLocation();
+	const [hasClerkSession, setHasClerkSession] = useState(false);
+	const providerMode = getAppProviderMode(location.pathname, hasClerkSession);
+	const showSignedInHeaderControls = showsAuthenticatedHeaderControls(
+		location.pathname,
+		hasClerkSession,
+	);
+
+	useEffect(() => {
+		setHasClerkSession(readBrowserClerkSessionForPath(location.pathname));
+	}, [location.pathname]);
+
 	return (
 		<RootDocument>
 			<ErrorBoundary>
-				<AppConvexProvider>
-					<Header />
+				<AppConvexProvider mode={providerMode}>
+					<Header showSignedInControls={showSignedInHeaderControls} />
 					<Suspense fallback={<RouteLoadingFallback />}>
 						<Outlet />
 					</Suspense>
@@ -153,6 +171,12 @@ function RootComponent() {
 			</ErrorBoundary>
 		</RootDocument>
 	);
+}
+
+function readBrowserClerkSessionForPath(pathname: string): boolean {
+	if (!pathname) return false;
+
+	return hasClerkSessionCookie(document.cookie);
 }
 
 function RootDocument({ children }: { children: React.ReactNode }) {

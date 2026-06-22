@@ -2,7 +2,6 @@ import { useMutation } from "convex/react";
 import { Check, Loader2 } from "lucide-react";
 import { type FormEvent, useEffect, useId, useState } from "react";
 import { toast } from "sonner";
-import { useCurrentUser } from "@/lib/auth";
 import { TOPIC_OPTIONS } from "@/lib/subscriptionOptions";
 import { US_STATES } from "@/lib/usStates";
 import { cn } from "@/lib/utils";
@@ -34,6 +33,11 @@ type CoverageRequestDialogProps = {
 	defaultMunicipalityName?: string;
 	defaultState?: string;
 	defaultTopicInterests?: string[];
+	auth?: {
+		userEmail?: string;
+		isAuthenticated: boolean;
+		isLoading: boolean;
+	};
 };
 
 export function CoverageRequestDialog({
@@ -42,9 +46,12 @@ export function CoverageRequestDialog({
 	defaultMunicipalityName,
 	defaultState,
 	defaultTopicInterests,
+	auth,
 }: CoverageRequestDialogProps) {
 	const formId = useId();
-	const { user, isAuthenticated, isLoading: isUserLoading } = useCurrentUser();
+	const isAuthenticated = auth?.isAuthenticated ?? false;
+	const isUserLoading = auth?.isLoading ?? false;
+	const userEmail = auth?.userEmail;
 	const createCoverageRequest = useMutation(
 		api.functions.coverageRequests.mutations.create,
 	);
@@ -69,9 +76,9 @@ export function CoverageRequestDialog({
 	}, [defaultMunicipalityName, defaultState, defaultTopicInterests, open]);
 
 	useEffect(() => {
-		if (!open || !user?.email) return;
-		setRequesterEmail((current) => current || user.email);
-	}, [open, user?.email]);
+		if (!open || !userEmail) return;
+		setRequesterEmail((current) => current || userEmail);
+	}, [open, userEmail]);
 
 	const toggleTopic = (topic: string) => {
 		setTopicInterests((current) =>

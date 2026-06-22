@@ -10,7 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useConvexUser } from "@/lib/auth";
+import { usePublicAuthState } from "@/lib/publicAuth";
 import { canonicalLink } from "@/lib/seo";
 import { PUBLIC_TOPIC_FEEDS } from "@/lib/topicFeeds";
 import { api } from "../../convex/_generated/api";
@@ -48,7 +48,7 @@ function SearchPage() {
 	const search = Route.useSearch();
 	const [query, setQuery] = useState(search.q ?? "");
 	const [isCoverageRequestOpen, setIsCoverageRequestOpen] = useState(false);
-	const user = useConvexUser();
+	const publicAuth = usePublicAuthState();
 	const trimmedQuery = query.trim();
 	const results = useQuery(
 		api.functions.summaries.queries.searchPublicSummaries,
@@ -127,7 +127,7 @@ function SearchPage() {
 							<PublicSummaryResultCard
 								key={result.summaryId}
 								result={result}
-								userId={user?._id}
+								userId={publicAuth.userId}
 							/>
 						))}
 					</div>
@@ -137,6 +137,11 @@ function SearchPage() {
 				open={isCoverageRequestOpen}
 				onOpenChange={setIsCoverageRequestOpen}
 				defaultMunicipalityName={query}
+				auth={{
+					userEmail: publicAuth.userEmail,
+					isAuthenticated: publicAuth.isAuthenticated,
+					isLoading: publicAuth.isLoading,
+				}}
 			/>
 		</div>
 	);

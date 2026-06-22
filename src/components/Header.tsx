@@ -1,4 +1,3 @@
-import { useUser } from "@clerk/tanstack-react-start";
 import { Link } from "@tanstack/react-router";
 import { Building2 } from "lucide-react";
 import { lazy, Suspense } from "react";
@@ -10,9 +9,11 @@ const SignedInHeaderControls = lazy(() =>
 	})),
 );
 
-export function Header() {
-	const { isSignedIn } = useUser();
-
+export function Header({
+	showSignedInControls = false,
+}: {
+	showSignedInControls?: boolean;
+}) {
 	return (
 		<header className="fixed top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-lg">
 			<div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
@@ -40,7 +41,7 @@ export function Header() {
 					>
 						Search
 					</Link>
-					{isSignedIn ? (
+					{showSignedInControls ? (
 						<Suspense fallback={null}>
 							<SignedInHeaderControls />
 						</Suspense>

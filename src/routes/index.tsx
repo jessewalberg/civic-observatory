@@ -1,4 +1,3 @@
-import { useUser } from "@clerk/tanstack-react-start";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import {
@@ -21,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getLandingSetupCta } from "@/lib/landingConversion";
+import { usePublicAuthState } from "@/lib/publicAuth";
 import { canonicalLink, generateHomeJsonLd } from "@/lib/seo";
 import {
 	buildSourceProofExamples,
@@ -95,8 +95,8 @@ const audiences = [
 ];
 
 function LandingPage() {
-	const { isSignedIn } = useUser();
-	const primarySetupCta = getLandingSetupCta(isSignedIn);
+	const { isAuthenticated } = usePublicAuthState();
+	const primarySetupCta = getLandingSetupCta(isAuthenticated);
 	const recentSummaries = useQuery(
 		api.functions.summaries.queries.getRecentSummaries,
 		{

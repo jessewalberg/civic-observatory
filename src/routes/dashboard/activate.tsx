@@ -520,6 +520,11 @@ function ActivationPage() {
 				defaultMunicipalityName={searchQuery}
 				defaultState={selectedState}
 				defaultTopicInterests={selectedTopics}
+				auth={{
+					userEmail: user.email,
+					isAuthenticated: true,
+					isLoading: false,
+				}}
 			/>
 		</div>
 	);
