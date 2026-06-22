@@ -28,10 +28,19 @@ import { cn } from "@/lib/utils";
 import { api } from "../../convex/_generated/api";
 
 export const Route = createFileRoute("/pricing")({
-	validateSearch: (search: Record<string, unknown>) => ({
-		success: search.success === "true",
-		canceled: search.canceled === "true",
-	}),
+	validateSearch: (search: Record<string, unknown>) => {
+		const parsedSearch: { success?: true; canceled?: true } = {};
+
+		if (search.success === "true") {
+			parsedSearch.success = true;
+		}
+
+		if (search.canceled === "true") {
+			parsedSearch.canceled = true;
+		}
+
+		return parsedSearch;
+	},
 	head: () => {
 		const description =
 			"Choose the plan that fits your needs. Free tier includes 50 daily summaries. Pro plan at $15/month for unlimited access and real-time alerts.";
@@ -97,7 +106,7 @@ const plans = [
 
 function PricingPage() {
 	const { isAuthenticated } = useConvexAuth();
-	const { success, canceled } = Route.useSearch();
+	const { success = false, canceled = false } = Route.useSearch();
 
 	return (
 		<div className="min-h-screen bg-background">

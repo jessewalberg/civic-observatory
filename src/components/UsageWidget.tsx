@@ -78,7 +78,7 @@ function UsageCardView({ stats }: { stats: UsageStats }) {
 
 			{!isPro && (
 				<div className="mt-4 pt-4 border-t border-border">
-					<Link to="/pricing" search={{ success: false, canceled: false }}>
+					<Link to="/pricing">
 						<Button variant="outline" size="sm" className="w-full">
 							<Sparkles className="h-4 w-4 mr-2" />
 							Upgrade for More

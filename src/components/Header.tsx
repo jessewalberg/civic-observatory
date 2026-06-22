@@ -1,4 +1,4 @@
-import { SignInButton, UserButton, useUser } from "@clerk/tanstack-react-start";
+import { UserButton, useUser } from "@clerk/tanstack-react-start";
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { Bell, Building2, Shield } from "lucide-react";
@@ -49,9 +49,9 @@ export function Header() {
 							<UserButton />
 						</>
 					) : (
-						<SignInButton mode="modal">
-							<Button>Sign in</Button>
-						</SignInButton>
+						<Button asChild>
+							<Link to="/sign-in">Sign in</Link>
+						</Button>
 					)}
 				</nav>
 			</div>

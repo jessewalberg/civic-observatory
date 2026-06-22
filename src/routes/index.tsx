@@ -206,10 +206,7 @@ function LandingPage() {
 									className="gap-2 text-base"
 									asChild
 								>
-									<Link
-										to="/pricing"
-										search={{ success: false, canceled: false }}
-									>
+									<Link to="/pricing">
 										View Pricing
 										<ChevronRight className="h-4 w-4" />
 									</Link>
@@ -590,12 +587,7 @@ function LandingPage() {
 										className="gap-2 text-base"
 										asChild
 									>
-										<Link
-											to="/pricing"
-											search={{ success: false, canceled: false }}
-										>
-											View Pricing
-										</Link>
+										<Link to="/pricing">View Pricing</Link>
 									</Button>
 								</div>
 								<p className="text-sm text-muted-foreground mt-6">
@@ -625,7 +617,6 @@ function LandingPage() {
 								</Link>
 								<Link
 									to="/pricing"
-									search={{ success: false, canceled: false }}
 									className="hover:text-foreground transition-colors"
 								>
 									Pricing
