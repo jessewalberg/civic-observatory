@@ -160,11 +160,17 @@ interface MeetingData {
 	keyDecisions: Array<{
 		title: string;
 		description: string;
+		importance?: "high" | "medium" | "low";
 		voteResult?: {
 			yes: number;
 			no: number;
 			passed: boolean;
 		};
+	}>;
+	sentiment?: "routine" | "contentious" | "celebratory" | "urgent";
+	upcomingItems?: Array<{
+		title: string;
+		expectedDate?: string;
 	}>;
 	meetingUrl: string;
 	sourceUrl?: string;
@@ -200,6 +206,45 @@ function formatMeetingType(type: string): string {
 		other: "Meeting",
 	};
 	return labels[type] ?? type;
+}
+
+function escapeHtml(value: string): string {
+	return value
+		.replace(/&/g, "&amp;")
+		.replace(/"/g, "&quot;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/'/g, "&#39;");
+}
+
+function uniqueLabels(values: string[]): string[] {
+	const labels: string[] = [];
+	const seen = new Set<string>();
+
+	for (const value of values) {
+		const label = value.trim();
+		if (!label) continue;
+
+		const key = label.toLowerCase();
+		if (seen.has(key)) continue;
+
+		seen.add(key);
+		labels.push(label);
+	}
+
+	return labels;
+}
+
+function topicsForMeeting(meeting: MeetingData): string[] {
+	const matchedTopics = uniqueLabels(meeting.matchedTopics);
+	if (matchedTopics.length > 0) return matchedTopics;
+
+	const topics = uniqueLabels(meeting.topics);
+	return topics.length > 0 ? topics : ["Other Updates"];
+}
+
+function primaryTopicForMeeting(meeting: MeetingData): string {
+	return topicsForMeeting(meeting)[0] ?? "Other Updates";
 }
 
 function renderTopics(topics: string[], matchedTopics: string[]): string {
@@ -239,6 +284,157 @@ function renderKeyDecisions(decisions: MeetingData["keyDecisions"]): string {
 	return `
     <div class="section-title">Key Decisions</div>
     ${decisionsHtml}
+  `;
+}
+
+function renderWeeklyEditorialHighlights(meetings: MeetingData[]): string {
+	const notableSentiments = meetings.filter(
+		(meeting) =>
+			meeting.sentiment === "urgent" || meeting.sentiment === "contentious",
+	);
+	const highImportanceDecisions = meetings
+		.flatMap((meeting) =>
+			meeting.keyDecisions
+				.filter((decision) => decision.importance === "high")
+				.map((decision) => ({ meeting, decision })),
+		)
+		.slice(0, 5);
+	const upcomingItems = meetings
+		.flatMap((meeting) =>
+			(meeting.upcomingItems ?? []).map((item) => ({ meeting, item })),
+		)
+		.slice(0, 5);
+
+	if (
+		notableSentiments.length === 0 &&
+		highImportanceDecisions.length === 0 &&
+		upcomingItems.length === 0
+	) {
+		return "";
+	}
+
+	const sentimentHtml =
+		notableSentiments.length > 0
+			? `
+        <div style="margin-bottom: 16px;">
+          <div style="font-weight: 600; color: #1a1a1a; margin-bottom: 8px;">Urgent and Contentious Updates</div>
+          ${notableSentiments
+						.map((meeting) => {
+							const label =
+								meeting.sentiment === "urgent" ? "Urgent" : "Contentious";
+							return `
+              <div style="font-size: 14px; color: #333; margin-bottom: 8px;">
+                <strong>${label}</strong>: ${escapeHtml(meeting.title)} (${escapeHtml(meeting.municipalityName)}, ${escapeHtml(meeting.municipalityState)})
+              </div>
+            `;
+						})
+						.join("")}
+        </div>
+      `
+			: "";
+
+	const decisionsHtml =
+		highImportanceDecisions.length > 0
+			? `
+        <div style="margin-bottom: 16px;">
+          <div style="font-weight: 600; color: #1a1a1a; margin-bottom: 8px;">High-importance Decisions</div>
+          ${highImportanceDecisions
+						.map(
+							({ meeting, decision }) => `
+              <div style="font-size: 14px; color: #333; margin-bottom: 8px;">
+                <strong>${escapeHtml(decision.title)}</strong> - ${escapeHtml(meeting.municipalityName)}
+                <div style="color: #666;">${escapeHtml(decision.description)}</div>
+              </div>
+            `,
+						)
+						.join("")}
+        </div>
+      `
+			: "";
+
+	const upcomingHtml =
+		upcomingItems.length > 0
+			? `
+        <div>
+          <div style="font-weight: 600; color: #1a1a1a; margin-bottom: 8px;">Upcoming Items</div>
+          ${upcomingItems
+						.map(({ meeting, item }) => {
+							const expectedDate = item.expectedDate
+								? ` - ${escapeHtml(item.expectedDate)}`
+								: "";
+							return `
+              <div style="font-size: 14px; color: #333; margin-bottom: 8px;">
+                <strong>${escapeHtml(item.title)}</strong>${expectedDate}
+                <div style="color: #666;">${escapeHtml(meeting.municipalityName)}</div>
+              </div>
+            `;
+						})
+						.join("")}
+        </div>
+      `
+			: "";
+
+	return `
+    <div style="background-color: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+      <div class="section-title">Editorial Highlights</div>
+      ${sentimentHtml}
+      ${decisionsHtml}
+      ${upcomingHtml}
+    </div>
+  `;
+}
+
+function renderWeeklyMunicipalitySections(meetings: MeetingData[]): string {
+	const byMunicipality = meetings.reduce(
+		(acc, meeting) => {
+			const key = `${meeting.municipalityName}, ${meeting.municipalityState}`;
+			if (!acc[key]) acc[key] = [];
+			acc[key].push(meeting);
+			return acc;
+		},
+		{} as Record<string, MeetingData[]>,
+	);
+
+	const municipalitySections = Object.entries(byMunicipality)
+		.map(([municipality, municipalityMeetings]) => {
+			const byTopic = municipalityMeetings.reduce(
+				(acc, meeting) => {
+					const topic = primaryTopicForMeeting(meeting);
+					if (!acc[topic]) acc[topic] = [];
+					acc[topic].push(meeting);
+					return acc;
+				},
+				{} as Record<string, MeetingData[]>,
+			);
+
+			const topicSections = Object.entries(byTopic)
+				.map(([topic, topicMeetings]) => {
+					const meetingsHtml = topicMeetings.map(renderMeetingCard).join("");
+					return `
+            <div style="margin-bottom: 20px;">
+              <h3 style="font-size: 15px; color: #495057; margin: 0 0 12px 0;">
+                ${escapeHtml(topic)}
+              </h3>
+              ${meetingsHtml}
+            </div>
+          `;
+				})
+				.join("");
+
+			return `
+        <div style="margin-bottom: 32px;">
+          <h2 style="font-size: 18px; color: #1a1a1a; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #FF6B4A;">
+            ${escapeHtml(municipality)}
+          </h2>
+          ${topicSections}
+        </div>
+      `;
+		})
+		.join("");
+
+	return `
+    <div class="section-title">Updates by Municipality and Topic</div>
+    ${municipalitySections}
   `;
 }
 
@@ -326,12 +522,7 @@ function safeSourceHref(sourceUrl: string | undefined): string | undefined {
 }
 
 function escapeHtmlAttribute(value: string): string {
-	return value
-		.replace(/&/g, "&amp;")
-		.replace(/"/g, "&quot;")
-		.replace(/</g, "&lt;")
-		.replace(/>/g, "&gt;")
-		.replace(/'/g, "&#39;");
+	return escapeHtml(value);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -485,31 +676,6 @@ export function weeklyDigestTemplate(
 
 	const subject = `Weekly Digest: ${digestItems.subjectLabel} - ${dateRange}`;
 
-	// Group meetings by municipality
-	const byMunicipality = meetings.reduce(
-		(acc, meeting) => {
-			const key = `${meeting.municipalityName}, ${meeting.municipalityState}`;
-			if (!acc[key]) acc[key] = [];
-			acc[key].push(meeting);
-			return acc;
-		},
-		{} as Record<string, MeetingData[]>,
-	);
-
-	const municipalitySections = Object.entries(byMunicipality)
-		.map(([municipality, municipalityMeetings]) => {
-			const meetingsHtml = municipalityMeetings.map(renderMeetingCard).join("");
-			return `
-        <div style="margin-bottom: 32px;">
-          <h2 style="font-size: 18px; color: #1a1a1a; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #FF6B4A;">
-            ${municipality}
-          </h2>
-          ${meetingsHtml}
-        </div>
-      `;
-		})
-		.join("");
-
 	const statsHtml = params.weekStats
 		? `
       <div style="background-color: #f8f9fa; border-radius: 8px; padding: 20px; margin-bottom: 24px; text-align: center;">
@@ -554,7 +720,9 @@ export function weeklyDigestTemplate(
 
       ${statsHtml}
 
-      ${municipalitySections}
+      ${renderWeeklyEditorialHighlights(meetings)}
+
+      ${renderWeeklyMunicipalitySections(meetings)}
 
       <div class="divider"></div>
 

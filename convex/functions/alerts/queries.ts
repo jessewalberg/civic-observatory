@@ -474,6 +474,8 @@ export const getPendingByFrequency = internalQuery({
 							executiveSummary: summary.executiveSummary,
 							topics: summary.topics,
 							keyDecisions: summary.keyDecisions,
+							sentiment: summary.sentiment,
+							upcomingItems: summary.upcomingItems,
 							sourceUrl: summary.sourceUrl,
 						}
 					: null,
@@ -519,6 +521,9 @@ export const getPendingForUserDigest = internalQuery({
 					summary: {
 						executiveSummary: string;
 						topics: string[];
+						keyDecisions: Doc<"summaries">["keyDecisions"];
+						sentiment?: Doc<"summaries">["sentiment"];
+						upcomingItems: Doc<"summaries">["upcomingItems"];
 						sourceUrl?: string;
 					} | null;
 				}>;
@@ -575,6 +580,9 @@ export const getPendingForUserDigest = internalQuery({
 					? {
 							executiveSummary: summary.executiveSummary,
 							topics: summary.topics,
+							keyDecisions: summary.keyDecisions,
+							sentiment: summary.sentiment,
+							upcomingItems: summary.upcomingItems,
 							sourceUrl: summary.sourceUrl,
 						}
 					: null,

@@ -60,7 +60,13 @@ type PendingAlert = {
 	> | null;
 	summary: Pick<
 		Doc<"summaries">,
-		"_id" | "executiveSummary" | "topics" | "keyDecisions" | "sourceUrl"
+		| "_id"
+		| "executiveSummary"
+		| "topics"
+		| "keyDecisions"
+		| "sentiment"
+		| "upcomingItems"
+		| "sourceUrl"
 	> | null;
 };
 
@@ -73,7 +79,12 @@ type DigestAlert = {
 	municipality: Pick<Doc<"municipalities">, "slug" | "name" | "state"> | null;
 	summary: Pick<
 		Doc<"summaries">,
-		"executiveSummary" | "topics" | "sourceUrl"
+		| "executiveSummary"
+		| "topics"
+		| "keyDecisions"
+		| "sentiment"
+		| "upcomingItems"
+		| "sourceUrl"
 	> | null;
 };
 
@@ -96,11 +107,15 @@ type MeetingDataSource = {
 		| Pick<Doc<"municipalities">, "_id" | "slug" | "name" | "state">
 		| Pick<Doc<"municipalities">, "slug" | "name" | "state">
 		| null;
-	summary:
-		| (Pick<Doc<"summaries">, "executiveSummary" | "topics" | "sourceUrl"> & {
-				keyDecisions?: Doc<"summaries">["keyDecisions"];
-		  })
-		| null;
+	summary: Pick<
+		Doc<"summaries">,
+		| "executiveSummary"
+		| "topics"
+		| "keyDecisions"
+		| "sentiment"
+		| "upcomingItems"
+		| "sourceUrl"
+	> | null;
 };
 
 /** Minimal HTML→text fallback so transactional email has a text part
@@ -137,6 +152,8 @@ function buildMeetingData(
 		keyDecisions: options.includeKeyDecisions
 			? (summary?.keyDecisions ?? []).slice(0, 3)
 			: [],
+		sentiment: summary?.sentiment,
+		upcomingItems: summary?.upcomingItems ?? [],
 		meetingUrl: meetingUrl(meeting, alert.meetingId),
 		alertKind: alert.kind ?? "summary",
 	};
@@ -581,7 +598,9 @@ export const sendWeeklyDigest = internalAction({
 			}
 			const maxAttemptCount = queued.attemptCount;
 
-			const meetings = userAlerts.map((alert) => buildMeetingData(alert));
+			const meetings = userAlerts.map((alert) =>
+				buildMeetingData(alert, { includeKeyDecisions: true }),
+			);
 
 			// Count unique municipalities
 			const uniqueMunicipalities = new Set(
