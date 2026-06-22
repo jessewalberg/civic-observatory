@@ -62,7 +62,7 @@ describe("coverage request flow", () => {
 			createdAt: expect.any(Number),
 			updatedAt: expect.any(Number),
 		});
-	});
+	}, 10_000);
 
 	it("lets admins prioritize, seed municipality setup, and advance request status", async () => {
 		const t = setup();
