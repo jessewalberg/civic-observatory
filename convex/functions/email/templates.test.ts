@@ -69,6 +69,36 @@ describe("email templates", () => {
 		);
 	});
 
+	it("escapes meeting content rendered into HTML cards", () => {
+		const { html } = immediateAlertTemplate(
+			{
+				...baseMeeting,
+				title: "Council & Board <Hearing>",
+				executiveSummary: "Discussed <script>alert(1)</script> & budget.",
+				municipalityName: "Coventry <Town>",
+				topics: ["Budget & Finance <FY27>"],
+				matchedTopics: ["Budget & Finance <FY27>"],
+				keyDecisions: [
+					{
+						title: "Approve <Bond>",
+						description: "Use reserve & capital funds.",
+					},
+				],
+			},
+			emailParams,
+		);
+
+		expect(html).toContain("Council &amp; Board &lt;Hearing&gt;");
+		expect(html).toContain(
+			"Discussed &lt;script&gt;alert(1)&lt;/script&gt; &amp; budget.",
+		);
+		expect(html).toContain("Coventry &lt;Town&gt;");
+		expect(html).toContain("Budget &amp; Finance &lt;FY27&gt;");
+		expect(html).toContain("Approve &lt;Bond&gt;");
+		expect(html).toContain("Use reserve &amp; capital funds.");
+		expect(html).not.toContain("<script>alert(1)</script>");
+	});
+
 	it("labels immediate agenda preview alerts as upcoming agenda content", () => {
 		const { subject, html } = immediateAlertTemplate(
 			{
