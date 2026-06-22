@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // Phase 4: Header gates on Clerk's useUser().isSignedIn (same package as the
-// provider) and renders UserButton vs SignInButton. We mock Clerk to a
-// controllable signed-in flag.
+// provider) and renders a lightweight sign-in link vs UserButton. We mock Clerk
+// to a controllable signed-in flag.
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -44,10 +44,13 @@ describe("Header (Phase 4 Clerk)", () => {
 		signedInState.value = false;
 	});
 
-	it("shows the Clerk sign-in control when signed out", () => {
+	it("links to the sign-in page when signed out", () => {
 		signedInState.value = false;
 		render(<Header />);
-		expect(screen.getByTestId("clerk-signin")).toBeDefined();
+		expect(
+			screen.getByRole("link", { name: "Sign in" }).getAttribute("href"),
+		).toBe("/sign-in");
+		expect(screen.queryByTestId("clerk-signin")).toBeNull();
 		expect(screen.queryByTestId("clerk-userbutton")).toBeNull();
 	});
 

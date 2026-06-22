@@ -123,10 +123,7 @@ export function UsageLimitExceeded({
 										<ArrowRight className="ml-2 h-4 w-4" />
 									</Button>
 								</a>
-								<Link
-									to="/pricing"
-									search={{ success: false, canceled: false }}
-								>
+								<Link to="/pricing">
 									<Button variant="outline" className="w-full" size="lg">
 										<Sparkles className="mr-2 h-4 w-4" />
 										View Pro Plan
@@ -142,10 +139,7 @@ export function UsageLimitExceeded({
 									</span>{" "}
 									and more features.
 								</p>
-								<Link
-									to="/pricing"
-									search={{ success: false, canceled: false }}
-								>
+								<Link to="/pricing">
 									<Button className="w-full" size="lg">
 										<Sparkles className="mr-2 h-4 w-4" />
 										Upgrade to Pro - $15/mo

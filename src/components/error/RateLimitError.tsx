@@ -54,7 +54,7 @@ export function RateLimitError({
 
 					<div className="flex gap-3">
 						{showUpgrade && (
-							<Link to="/pricing" search={{ success: false, canceled: false }}>
+							<Link to="/pricing">
 								<Button>
 									<Sparkles className="h-4 w-4 mr-2" />
 									Upgrade Plan

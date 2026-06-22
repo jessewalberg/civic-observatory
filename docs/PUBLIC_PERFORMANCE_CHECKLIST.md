@@ -31,6 +31,27 @@ For each public page above:
 5. Check whether landing-page motion contributes to main-thread work or layout
    instability on mobile.
 
+Recommended Lighthouse CLI commands:
+
+```sh
+pnpm dlx lighthouse "$URL" \
+  --output=json \
+  --output-path="/tmp/civic-observatory-lighthouse/${SLUG}-mobile.json" \
+  --quiet \
+  --chrome-flags="--headless --no-sandbox"
+
+pnpm dlx lighthouse "$URL" \
+  --preset=desktop \
+  --output=json \
+  --output-path="/tmp/civic-observatory-lighthouse/${SLUG}-desktop.json" \
+  --quiet \
+  --chrome-flags="--headless --no-sandbox"
+```
+
+Use a deployed production or preview URL when local `vite preview` cannot render
+SSR routes because Worker secrets such as `CLERK_SECRET_KEY` are intentionally
+absent from local generated vars.
+
 ## Thresholds
 
 - LCP: good under 2.5s.
