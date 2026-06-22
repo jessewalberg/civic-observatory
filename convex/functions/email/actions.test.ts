@@ -840,6 +840,24 @@ describe("Cloudflare email delivery", () => {
 				sentiment: "urgent",
 				keyDecisions: [
 					{
+						title: "Routine item one",
+						description: "Council accepted routine minutes.",
+						topics: ["administration"],
+						importance: "low",
+					},
+					{
+						title: "Routine item two",
+						description: "Council accepted a routine report.",
+						topics: ["administration"],
+						importance: "medium",
+					},
+					{
+						title: "Routine item three",
+						description: "Council scheduled a routine hearing.",
+						topics: ["administration"],
+						importance: "low",
+					},
+					{
 						title: "Emergency shelter funding",
 						description: "Council approved emergency shelter funding.",
 						topics: ["public safety"],

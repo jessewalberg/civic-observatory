@@ -137,8 +137,12 @@ export function htmlToText(html: string): string {
 
 function buildMeetingData(
 	{ alert, meeting, municipality, summary }: MeetingDataSource,
-	options: { includeKeyDecisions?: boolean } = {},
+	options: { includeKeyDecisions?: boolean; keyDecisionLimit?: number } = {},
 ): MeetingData {
+	const keyDecisions = options.includeKeyDecisions
+		? (summary?.keyDecisions ?? [])
+		: [];
+
 	return {
 		title: meeting.title,
 		meetingType: meeting.meetingType,
@@ -149,9 +153,10 @@ function buildMeetingData(
 		executiveSummary: summary?.executiveSummary ?? "",
 		topics: summary?.topics ?? [],
 		matchedTopics: alert.matchedTopics,
-		keyDecisions: options.includeKeyDecisions
-			? (summary?.keyDecisions ?? []).slice(0, 3)
-			: [],
+		keyDecisions:
+			options.keyDecisionLimit === undefined
+				? keyDecisions
+				: keyDecisions.slice(0, options.keyDecisionLimit),
 		sentiment: summary?.sentiment,
 		upcomingItems: summary?.upcomingItems ?? [],
 		meetingUrl: meetingUrl(meeting, alert.meetingId),
@@ -328,6 +333,7 @@ export const sendImmediateAlert = internalAction({
 
 		const meetingData = buildMeetingData(alertInfo, {
 			includeKeyDecisions: true,
+			keyDecisionLimit: 3,
 		});
 
 		const emailParams: EmailParams = {
