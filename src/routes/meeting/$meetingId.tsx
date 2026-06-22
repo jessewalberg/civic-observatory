@@ -57,6 +57,7 @@ import {
 	formatMeetingScheduleDate,
 } from "@/lib/meetingDates";
 import { getMeetingSourceTrust } from "@/lib/meetingTrust";
+import { usePublicAuthState } from "@/lib/publicAuth";
 import { meetingPath, publicIdentifier } from "@/lib/publicUrls";
 import {
 	buildReporterCsv,
@@ -281,7 +282,7 @@ interface MeetingData {
 function MeetingDetailPage() {
 	const { meetingId } = Route.useParams();
 	const loaderData = Route.useLoaderData();
-	const isAuthenticated = false;
+	const { isAuthenticated } = usePublicAuthState();
 	const [showRawContent, setShowRawContent] = useState(false);
 	const [isRetrying, setIsRetrying] = useState(false);
 	const [retryError, setRetryError] = useState<string | null>(null);
@@ -322,7 +323,7 @@ function MeetingDetailPage() {
 				// Silently fail - don't interrupt user experience for tracking
 			});
 		}
-	}, [meeting, recordUsage, usageCheck]);
+	}, [isAuthenticated, meeting, recordUsage, usageCheck]);
 
 	if (meeting === undefined) {
 		return <MeetingDetailSkeleton />;

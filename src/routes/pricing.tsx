@@ -23,6 +23,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { usePublicAuthState } from "@/lib/publicAuth";
 import { canonicalLink, generatePricingJsonLd } from "@/lib/seo";
 import { cn } from "@/lib/utils";
 import { api } from "../../convex/_generated/api";
@@ -105,7 +106,7 @@ const plans = [
 ];
 
 function PricingPage() {
-	const isAuthenticated = false;
+	const { isAuthenticated } = usePublicAuthState();
 	const { success = false, canceled = false } = Route.useSearch();
 
 	return (

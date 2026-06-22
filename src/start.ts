@@ -1,6 +1,9 @@
 import { clerkMiddleware } from "@clerk/tanstack-react-start/server";
 import { createMiddleware, createStart } from "@tanstack/react-start";
-import { requiresClerkRequestMiddleware } from "./lib/authRoutes";
+import {
+	hasClerkSessionCookie,
+	requiresClerkRequestMiddleware,
+} from "./lib/authRoutes";
 
 // Clerk publishable/secret keys are read from the Worker env at SSR time. The
 // publishable key may arrive as VITE_CLERK_PUBLISHABLE_KEY (bundle convention)
@@ -17,8 +20,16 @@ const clerkRequestMiddleware = clerkMiddleware({
 
 const scopedClerkMiddleware = createMiddleware({ type: "request" }).server(
 	(options) => {
+		const hasClerkSession = hasClerkSessionCookie(
+			options.request.headers.get("cookie"),
+		);
+
 		if (
-			!requiresClerkRequestMiddleware(options.pathname, options.handlerType)
+			!requiresClerkRequestMiddleware(
+				options.pathname,
+				options.handlerType,
+				hasClerkSession,
+			)
 		) {
 			return options.next();
 		}
