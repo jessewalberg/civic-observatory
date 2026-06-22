@@ -27,6 +27,16 @@ const emailParams = {
 	baseUrl: "https://civicobservatory.com",
 };
 
+type EditorialMeetingData = MeetingData & {
+	sentiment?: "routine" | "contentious" | "celebratory" | "urgent";
+	upcomingItems?: Array<{ title: string; expectedDate?: string }>;
+	keyDecisions: Array<
+		MeetingData["keyDecisions"][number] & {
+			importance?: "high" | "medium" | "low";
+		}
+	>;
+};
+
 describe("email templates", () => {
 	it("drops unsafe source href schemes", () => {
 		const { html } = immediateAlertTemplate(
@@ -57,6 +67,36 @@ describe("email templates", () => {
 		expect(html).not.toContain(
 			'href="https://source.example/agenda.pdf?x=1&y=2"',
 		);
+	});
+
+	it("escapes meeting content rendered into HTML cards", () => {
+		const { html } = immediateAlertTemplate(
+			{
+				...baseMeeting,
+				title: "Council & Board <Hearing>",
+				executiveSummary: "Discussed <script>alert(1)</script> & budget.",
+				municipalityName: "Coventry <Town>",
+				topics: ["Budget & Finance <FY27>"],
+				matchedTopics: ["Budget & Finance <FY27>"],
+				keyDecisions: [
+					{
+						title: "Approve <Bond>",
+						description: "Use reserve & capital funds.",
+					},
+				],
+			},
+			emailParams,
+		);
+
+		expect(html).toContain("Council &amp; Board &lt;Hearing&gt;");
+		expect(html).toContain(
+			"Discussed &lt;script&gt;alert(1)&lt;/script&gt; &amp; budget.",
+		);
+		expect(html).toContain("Coventry &lt;Town&gt;");
+		expect(html).toContain("Budget &amp; Finance &lt;FY27&gt;");
+		expect(html).toContain("Approve &lt;Bond&gt;");
+		expect(html).toContain("Use reserve &amp; capital funds.");
+		expect(html).not.toContain("<script>alert(1)</script>");
 	});
 
 	it("labels immediate agenda preview alerts as upcoming agenda content", () => {
@@ -93,5 +133,89 @@ describe("email templates", () => {
 		expect(weekly.subject).toContain("agenda preview");
 		expect(weekly.subject).not.toContain("summaries");
 		expect(weekly.html).toContain("published agenda content");
+	});
+
+	it("groups weekly digest updates by municipality and topic", () => {
+		const meetings: EditorialMeetingData[] = [
+			{
+				...baseMeeting,
+				title: "Bond Package",
+				topics: ["Budget & Finance"],
+				matchedTopics: ["Budget & Finance"],
+			},
+			{
+				...baseMeeting,
+				title: "Housing Overlay",
+				topics: ["Housing"],
+				matchedTopics: ["Housing"],
+			},
+			{
+				...baseMeeting,
+				title: "Bus Service",
+				municipalityName: "Manchester",
+				topics: ["Transit"],
+				matchedTopics: ["Transit"],
+			},
+		];
+
+		const { html } = weeklyDigestTemplate(meetings, emailParams);
+
+		expect(html).toContain("Updates by Municipality and Topic");
+		const updatesSection = html.slice(
+			html.indexOf("Updates by Municipality and Topic"),
+		);
+		const coventryStart = updatesSection.indexOf("Coventry, Connecticut");
+		const manchesterStart = updatesSection.indexOf("Manchester, Connecticut");
+		const coventrySection = updatesSection.slice(
+			coventryStart,
+			manchesterStart,
+		);
+
+		expect(coventryStart).toBeGreaterThanOrEqual(0);
+		expect(manchesterStart).toBeGreaterThan(coventryStart);
+		expect(coventrySection).toContain("Budget &amp; Finance");
+		expect(coventrySection).toContain("Bond Package");
+		expect(coventrySection).toContain("Housing");
+		expect(coventrySection).toContain("Housing Overlay");
+		expect(coventrySection.indexOf("Budget &amp; Finance")).toBeLessThan(
+			coventrySection.indexOf("Bond Package"),
+		);
+		expect(coventrySection.indexOf("Housing")).toBeLessThan(
+			coventrySection.indexOf("Housing Overlay"),
+		);
+	});
+
+	it("surfaces weekly editorial highlights from summary metadata", () => {
+		const meetings: EditorialMeetingData[] = [
+			{
+				...baseMeeting,
+				sentiment: "urgent",
+				topics: ["public safety"],
+				matchedTopics: ["public safety"],
+				keyDecisions: [
+					{
+						title: "Emergency shelter funding",
+						description: "Council approved emergency shelter funding.",
+						importance: "high",
+					},
+				],
+				upcomingItems: [
+					{
+						title: "Shelter contract vote",
+						expectedDate: "2026-07-01",
+					},
+				],
+			},
+		];
+
+		const { html } = weeklyDigestTemplate(meetings, emailParams);
+
+		expect(html).toContain("Editorial Highlights");
+		expect(html).toContain("Urgent");
+		expect(html).toContain("High-importance Decisions");
+		expect(html).toContain("Emergency shelter funding");
+		expect(html).toContain("Upcoming Items");
+		expect(html).toContain("Shelter contract vote");
+		expect(html).toContain("2026-07-01");
 	});
 });

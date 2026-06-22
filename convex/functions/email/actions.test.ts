@@ -1,7 +1,7 @@
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { internal } from "../../_generated/api";
-import type { Id } from "../../_generated/dataModel";
+import type { Doc, Id } from "../../_generated/dataModel";
 import schema from "../../schema";
 import { modules } from "../../test.setup";
 
@@ -143,6 +143,19 @@ function permanentBounceResponse() {
 async function seedPendingAlert(
 	t: ReturnType<typeof convexTest>,
 	alertFrequency: "immediate" | "daily" | "weekly" = "immediate",
+	options: {
+		matchedTopics?: string[];
+		summaryOverrides?: Partial<
+			Pick<
+				Doc<"summaries">,
+				| "executiveSummary"
+				| "keyDecisions"
+				| "upcomingItems"
+				| "topics"
+				| "sentiment"
+			>
+		>;
+	} = {},
 ) {
 	const now = Date.UTC(2026, 5, 20, 15, 30);
 	const userId = await t.run(async (ctx) =>
@@ -197,6 +210,7 @@ async function seedPendingAlert(
 			discussionTopics: [],
 			upcomingItems: [],
 			topics: ["budget", "parks"],
+			...options.summaryOverrides,
 			modelUsed: "test",
 			promptVersion: "test",
 			processingTimeMs: 1,
@@ -227,7 +241,7 @@ async function seedPendingAlert(
 			meetingId,
 			summaryId,
 			municipalityId,
-			matchedTopics: ["budget"],
+			matchedTopics: options.matchedTopics ?? ["budget"],
 			matchedKeywords: ["bond"],
 			status: "pending",
 			createdAt: now,
@@ -819,7 +833,45 @@ describe("Cloudflare email delivery", () => {
 
 	it("sends a weekly digest and marks grouped candidates sent", async () => {
 		const t = setup();
-		const { alertId } = await seedPendingAlert(t, "weekly");
+		const { alertId } = await seedPendingAlert(t, "weekly", {
+			matchedTopics: ["public safety"],
+			summaryOverrides: {
+				topics: ["public safety", "budget"],
+				sentiment: "urgent",
+				keyDecisions: [
+					{
+						title: "Routine item one",
+						description: "Council accepted routine minutes.",
+						topics: ["administration"],
+						importance: "low",
+					},
+					{
+						title: "Routine item two",
+						description: "Council accepted a routine report.",
+						topics: ["administration"],
+						importance: "medium",
+					},
+					{
+						title: "Routine item three",
+						description: "Council scheduled a routine hearing.",
+						topics: ["administration"],
+						importance: "low",
+					},
+					{
+						title: "Emergency shelter funding",
+						description: "Council approved emergency shelter funding.",
+						topics: ["public safety"],
+						importance: "high",
+					},
+				],
+				upcomingItems: [
+					{
+						title: "Shelter contract vote",
+						expectedDate: "2026-07-01",
+					},
+				],
+			},
+		});
 		const fetchMock = vi.fn(async () =>
 			okEmailResponse("<email_weekly_123@example.com>"),
 		);
@@ -842,6 +894,10 @@ describe("Cloudflare email delivery", () => {
 		const body = JSON.parse(init.body as string);
 		expect(body.subject).toContain("Weekly Digest");
 		expect(body.html).toContain("Town Council Bond Hearing");
+		expect(body.html).toContain("Editorial Highlights");
+		expect(body.html).toContain("Urgent");
+		expect(body.html).toContain("Emergency shelter funding");
+		expect(body.html).toContain("Shelter contract vote");
 		expect(body.headers["X-Civic-Delivery-Key"]).toContain("digest/weekly/");
 	});
 });
