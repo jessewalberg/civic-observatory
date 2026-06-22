@@ -14,4 +14,18 @@ describe("public performance guards", () => {
 		);
 		expect(rootRoute).toContain("import.meta.env.DEV");
 	});
+
+	it("does not statically import Clerk UI controls in the global header", () => {
+		const header = readFileSync(
+			join(process.cwd(), "src/components/Header.tsx"),
+			"utf8",
+		);
+
+		expect(header).not.toMatch(
+			/import\s+\{[^}]*UserButton[^}]*\}\s+from\s+"@clerk\/tanstack-react-start"/,
+		);
+		expect(header).not.toMatch(
+			/import\s+\{[^}]*SignInButton[^}]*\}\s+from\s+"@clerk\/tanstack-react-start"/,
+		);
+	});
 });

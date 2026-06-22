@@ -54,10 +54,10 @@ describe("Header (Phase 4 Clerk)", () => {
 		expect(screen.queryByTestId("clerk-userbutton")).toBeNull();
 	});
 
-	it("shows the Clerk UserButton when signed in", () => {
+	it("shows the Clerk UserButton when signed in", async () => {
 		signedInState.value = true;
 		render(<Header />);
-		expect(screen.getByTestId("clerk-userbutton")).toBeDefined();
+		expect(await screen.findByTestId("clerk-userbutton")).toBeDefined();
 		expect(screen.queryByTestId("clerk-signin")).toBeNull();
 	});
 });
