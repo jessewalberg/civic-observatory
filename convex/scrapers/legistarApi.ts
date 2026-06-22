@@ -1,7 +1,11 @@
 "use node";
 
 import type { ScrapedMeeting, ScraperResult } from "./types";
-import { hashContent, inferMeetingType } from "./utils";
+import {
+	hashContent,
+	inferMeetingType,
+	normalizeMeetingSourceUrl,
+} from "./utils";
 
 // ═══════════════════════════════════════════════════════════════
 // LEGISTAR REST API CLIENT
@@ -128,7 +132,9 @@ export function mapToScrapedMeeting(
 		meetingType: inferMeetingType(title),
 		sourceUrl,
 		documentUrl: documentUrl || undefined,
-		contentHash: hashContent(`${event.EventBodyName}-${meetingDate}`),
+		contentHash: hashContent(
+			`${event.EventBodyName}-${meetingDate}-${normalizeMeetingSourceUrl(documentUrl || sourceUrl)}`,
+		),
 	};
 }
 

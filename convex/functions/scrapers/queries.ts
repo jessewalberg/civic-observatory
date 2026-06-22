@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { internalQuery, query } from "../../_generated/server";
 import { getCurrentUser } from "../../lib/auth";
+import { normalizeMeetingSourceUrl } from "../../scrapers/utils";
 
 // ═══════════════════════════════════════════════════════════════
 // GET MUNICIPALITY FOR SCRAPING - Get municipality with scrape config
@@ -109,16 +110,21 @@ export const checkMeetingExists = internalQuery({
 		municipalityId: v.id("municipalities"),
 		contentHash: v.optional(v.string()),
 		sourceUrl: v.optional(v.string()),
+		alternateSourceUrls: v.optional(v.array(v.string())),
 	},
 	handler: async (ctx, args) => {
-		// Check by content hash first (most reliable)
+		// Check by content hash first, scoped to the municipality. Hashes are not
+		// globally unique enough to dedupe across different towns.
 		if (args.contentHash) {
-			const byHash = await ctx.db
+			const byHashMatches = await ctx.db
 				.query("meetings")
 				.withIndex("by_content_hash", (q) =>
 					q.eq("contentHash", args.contentHash),
 				)
-				.first();
+				.collect();
+			const byHash = byHashMatches.find(
+				(meeting) => meeting.municipalityId === args.municipalityId,
+			);
 
 			if (byHash) {
 				return { exists: true, meetingId: byHash._id, reason: "content_hash" };
@@ -126,7 +132,11 @@ export const checkMeetingExists = internalQuery({
 		}
 
 		// Check by source URL
-		if (args.sourceUrl) {
+		const sourceUrlCandidates = [
+			args.sourceUrl,
+			...(args.alternateSourceUrls ?? []),
+		].filter((url): url is string => Boolean(url?.trim()));
+		if (sourceUrlCandidates.length > 0) {
 			const meetings = await ctx.db
 				.query("meetings")
 				.withIndex("by_municipality", (q) =>
@@ -134,7 +144,14 @@ export const checkMeetingExists = internalQuery({
 				)
 				.collect();
 
-			const byUrl = meetings.find((m) => m.sourceUrl === args.sourceUrl);
+			const normalizedSourceUrls = new Set(
+				sourceUrlCandidates.map((url) => normalizeMeetingSourceUrl(url)),
+			);
+			const byUrl = meetings.find(
+				(m) =>
+					m.sourceUrl &&
+					normalizedSourceUrls.has(normalizeMeetingSourceUrl(m.sourceUrl)),
+			);
 			if (byUrl) {
 				return { exists: true, meetingId: byUrl._id, reason: "source_url" };
 			}

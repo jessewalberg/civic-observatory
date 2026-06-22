@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { ConvexHttpClient } from "convex/browser";
+import { api } from "../convex/_generated/api.js";
 
 function parseArgs(argv) {
 	const options = {
@@ -128,7 +129,7 @@ async function fetchMeetings(client, municipalityId, limit) {
 	const seenCursors = new Set();
 
 	for (;;) {
-		const page = await client.query("functions.meetings.queries.listByMunicipality", {
+		const page = await client.query(api.functions.meetings.queries.listByMunicipality, {
 			municipalityId,
 			limit,
 			cursor: cursor || undefined,
@@ -179,7 +180,7 @@ async function main() {
 
 	const client = new ConvexHttpClient(deploymentUrl);
 
-	const municipality = await client.query("functions.municipalities.queries.get", {
+	const municipality = await client.query(api.functions.municipalities.queries.get, {
 		id: options.municipalityId,
 	});
 	if (!municipality) {
@@ -235,7 +236,7 @@ async function main() {
 
 	let queued = 0;
 	for (const meeting of candidates) {
-		await client.mutation("functions.meetings.mutations.updateStatus", {
+		await client.mutation(api.functions.meetings.mutations.updateStatus, {
 			meetingId: meeting._id,
 			status: "pending",
 		});

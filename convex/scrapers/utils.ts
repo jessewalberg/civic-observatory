@@ -382,6 +382,30 @@ export function normalizeUrl(url: string): string {
 }
 
 /**
+ * Normalize a meeting source URL for identity checks.
+ *
+ * CivicPlus AgendaCenter exposes the same agenda file through HTML, PDF, and
+ * packet variants. Those variants should dedupe to one meeting record, while
+ * distinct AgendaCenter file ids must remain distinct even when title/date are
+ * generic.
+ */
+export function normalizeMeetingSourceUrl(url: string): string {
+	try {
+		const parsed = new URL(normalizeUrl(url));
+
+		if (/\/AgendaCenter\/ViewFile\//i.test(parsed.pathname)) {
+			parsed.searchParams.delete("html");
+			parsed.searchParams.delete("packet");
+			return `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
+		}
+
+		return normalizeUrl(url);
+	} catch {
+		return normalizeUrl(url);
+	}
+}
+
+/**
  * Resolve a relative URL against a base
  * @param base - Base URL
  * @param relative - Relative URL to resolve

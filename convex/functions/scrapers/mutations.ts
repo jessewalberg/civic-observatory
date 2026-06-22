@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { internal } from "../../_generated/api";
 import type { Doc, Id } from "../../_generated/dataModel";
 import { internalMutation, type MutationCtx } from "../../_generated/server";
 import { createMeetingSlug, createMunicipalitySlug } from "../../lib/seoSlugs";
@@ -165,6 +166,71 @@ export const createMeetingFromScrape = internalMutation({
 		});
 
 		return meetingId;
+	},
+});
+
+export const refreshExistingMeetingFromScrape = internalMutation({
+	args: {
+		meetingId: v.id("meetings"),
+		sourceUrl: v.string(),
+		contentHash: v.optional(v.string()),
+		rawContent: v.optional(v.string()),
+		scrapeJobId: v.optional(v.id("scrapeJobs")),
+	},
+	handler: async (ctx, args) => {
+		const meeting = await ctx.db.get(args.meetingId);
+		if (!meeting) {
+			throw new Error("Meeting not found");
+		}
+
+		const municipality = await ctx.db.get(meeting.municipalityId);
+		if (!municipality) {
+			throw new Error("Municipality not found");
+		}
+
+		const sourceIsListingPage =
+			municipality.meetingsPageUrl !== undefined &&
+			normalizeUrl(args.sourceUrl) ===
+				normalizeUrl(municipality.meetingsPageUrl);
+		const hasInlineContent = Boolean(
+			args.rawContent && args.rawContent.trim().length > 0,
+		);
+		const shouldProcess =
+			hasInlineContent ||
+			isLikelyDocumentUrl(args.sourceUrl) ||
+			!sourceIsListingPage;
+
+		const updates: Record<string, unknown> = {
+			sourceUrl: args.sourceUrl,
+			updatedAt: Date.now(),
+		};
+
+		if (args.contentHash !== undefined) updates.contentHash = args.contentHash;
+		if (args.rawContent !== undefined) updates.rawContent = args.rawContent;
+		if (args.scrapeJobId !== undefined) updates.scrapeJobId = args.scrapeJobId;
+
+		const shouldRequeue =
+			(meeting.status === "failed" || meeting.status === "skipped") &&
+			shouldProcess;
+		if (shouldRequeue) {
+			updates.status = "pending";
+			updates.processingError = undefined;
+		}
+
+		await ctx.db.patch(args.meetingId, updates);
+
+		if (shouldRequeue) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.functions.ai.summarize.summarizeMeeting,
+				{
+					meetingId: args.meetingId,
+					kind: meeting.meetingDate > Date.now() ? "agenda_preview" : "summary",
+				},
+			);
+		}
+
+		return { requeued: shouldRequeue };
 	},
 });
 
