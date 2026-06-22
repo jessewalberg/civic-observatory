@@ -98,4 +98,40 @@ describe("civicplusScraper Coventry AgendaCenter fixtures", () => {
 			"2026-06-15",
 		);
 	});
+
+	it("uses the AgendaCenter file id when hashing generic agenda titles", async () => {
+		const html = `
+			<table>
+				<tbody>
+					${agendaRow({
+						id: "04132026-4485",
+						dateLabel: "April 13, 2026",
+						title: "Agenda for April 13, 2026",
+					})}
+					${agendaRow({
+						id: "04132026-4489",
+						dateLabel: "April 13, 2026",
+						title: "Agenda for April 13, 2026",
+					})}
+				</tbody>
+			</table>
+		`;
+
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => new Response(html, { status: 200 })),
+		);
+
+		const result = await civicplusScraper.scrape(COVENTRY_TOWN_COUNCIL_URL);
+
+		expect(result.success).toBe(true);
+		expect(result.meetings).toHaveLength(2);
+		expect(result.meetings.map((meeting) => meeting.sourceUrl)).toEqual([
+			"https://www.coventry-ct.gov/AgendaCenter/ViewFile/Agenda/_04132026-4485?html=true",
+			"https://www.coventry-ct.gov/AgendaCenter/ViewFile/Agenda/_04132026-4489?html=true",
+		]);
+		expect(
+			new Set(result.meetings.map((meeting) => meeting.contentHash)).size,
+		).toBe(2);
+	});
 });

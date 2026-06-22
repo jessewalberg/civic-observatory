@@ -166,7 +166,8 @@ export const runScraper = internalAction({
 
 			for (const meeting of result.meetings) {
 				try {
-					const sourceUrlForMeeting = meeting.documentUrl ?? meeting.sourceUrl;
+					const sourceUrlForMeeting = meeting.sourceUrl;
+					const alternateSourceUrls = alternateSourceUrlsForMeeting(meeting);
 
 					// Check for duplicates
 					const existing = await ctx.runQuery(
@@ -175,10 +176,23 @@ export const runScraper = internalAction({
 							municipalityId: args.municipalityId,
 							contentHash: meeting.contentHash,
 							sourceUrl: sourceUrlForMeeting,
+							alternateSourceUrls,
 						},
 					);
 
 					if (existing.exists) {
+						if (existing.reason === "source_url" && existing.meetingId) {
+							await ctx.runMutation(
+								internal.functions.scrapers.mutations
+									.refreshExistingMeetingFromScrape,
+								{
+									meetingId: existing.meetingId,
+									sourceUrl: sourceUrlForMeeting,
+									contentHash: meeting.contentHash,
+									scrapeJobId: jobId,
+								},
+							);
+						}
 						meetingsSkipped++;
 						continue;
 					}
@@ -371,6 +385,19 @@ function isLikelyDocumentUrl(url: string): boolean {
 function urlsMatch(a: string, b?: string): boolean {
 	if (!b) return false;
 	return normalizeUrl(a) === normalizeUrl(b);
+}
+
+function alternateSourceUrlsForMeeting(
+	meeting: ScrapedMeeting,
+): string[] | undefined {
+	if (
+		!meeting.documentUrl ||
+		urlsMatch(meeting.documentUrl, meeting.sourceUrl)
+	) {
+		return undefined;
+	}
+
+	return [meeting.documentUrl];
 }
 
 function shouldQueueSummarization(args: {
@@ -593,14 +620,15 @@ export const validateScraper = action({
 			if (args.municipalityId && meetings.length > 0) {
 				duplicateResults = await Promise.all(
 					meetings.map(async (meeting) => {
-						const sourceUrlForMeeting =
-							meeting.documentUrl ?? meeting.sourceUrl;
+						const sourceUrlForMeeting = meeting.sourceUrl;
+						const alternateSourceUrls = alternateSourceUrlsForMeeting(meeting);
 						const existing = await ctx.runQuery(
 							internal.functions.scrapers.queries.checkMeetingExists,
 							{
 								municipalityId: args.municipalityId as Id<"municipalities">,
 								contentHash: meeting.contentHash,
 								sourceUrl: sourceUrlForMeeting,
+								alternateSourceUrls,
 							},
 						);
 						return {

@@ -14,6 +14,7 @@ import {
 	hashContent,
 	htmlToText,
 	inferMeetingType,
+	normalizeMeetingSourceUrl,
 	parseDate,
 	resolveUrl,
 } from "./utils";
@@ -460,8 +461,8 @@ function extractMeeting(
 	// Infer meeting type
 	const meetingType = inferMeetingType(title);
 
-	// Generate content hash from title + date
-	const contentHash = hashContent(`${title}-${meetingDate}`);
+	const identityUrl = normalizeMeetingSourceUrl(documentUrl ?? sourceUrl);
+	const contentHash = hashContent(`${title}-${meetingDate}-${identityUrl}`);
 
 	return {
 		title: cleanTitle(title),

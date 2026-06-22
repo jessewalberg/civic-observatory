@@ -14,6 +14,7 @@ import {
 	hashContent,
 	htmlToText,
 	inferMeetingType,
+	normalizeMeetingSourceUrl,
 	parseDate,
 	resolveUrl,
 } from "./utils";
@@ -458,8 +459,9 @@ function extractMeeting(
 	// Infer meeting type
 	const meetingType = inferMeetingType(title);
 
-	// Generate content hash
-	const contentHash = hashContent(`${title}-${meetingDate}`);
+	const contentHash = hashContent(
+		`${title}-${meetingDate}-${normalizeMeetingSourceUrl(documentUrl ?? sourceUrl)}`,
+	);
 
 	return {
 		title: cleanTitle(title),
@@ -567,7 +569,9 @@ function findMeetingsByHeuristic(
 					meetingType: inferMeetingType(title),
 					sourceUrl,
 					documentUrl,
-					contentHash: hashContent(`${title}-${meetingDate}`),
+					contentHash: hashContent(
+						`${title}-${meetingDate}-${normalizeMeetingSourceUrl(documentUrl ?? sourceUrl)}`,
+					),
 				});
 			});
 		}
@@ -611,7 +615,9 @@ function findMeetingsByHeuristic(
 					meetingDate,
 					meetingType: inferMeetingType(title),
 					sourceUrl,
-					contentHash: hashContent(`${title}-${meetingDate}`),
+					contentHash: hashContent(
+						`${title}-${meetingDate}-${normalizeMeetingSourceUrl(sourceUrl)}`,
+					),
 				});
 			});
 		}
@@ -690,7 +696,9 @@ function findMeetingsByHeuristic(
 					meetingType: inferMeetingType(title),
 					sourceUrl,
 					documentUrl,
-					contentHash: hashContent(`${title}-${meetingDate}`),
+					contentHash: hashContent(
+						`${title}-${meetingDate}-${normalizeMeetingSourceUrl(documentUrl ?? sourceUrl)}`,
+					),
 				});
 			});
 
@@ -741,7 +749,9 @@ function findMeetingsByHeuristic(
 			meetingDate,
 			meetingType: inferMeetingType(title),
 			sourceUrl: resolveUrl(baseUrl, href),
-			contentHash: hashContent(`${title}-${meetingDate}`),
+			contentHash: hashContent(
+				`${title}-${meetingDate}-${normalizeMeetingSourceUrl(resolveUrl(baseUrl, href))}`,
+			),
 		});
 	});
 

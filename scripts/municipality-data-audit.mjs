@@ -3,7 +3,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import * as cheerio from "cheerio";
 import { ConvexHttpClient } from "convex/browser";
+import { api } from "../convex/_generated/api.js";
 
 const VALID_STATUSES = [
 	"pending",
@@ -16,6 +18,7 @@ const VALID_STATUSES = [
 function parseArgs(argv) {
 	const options = {
 		municipalityId: "",
+		meetingsPageUrl: "",
 		limit: 200,
 		output: "",
 	};
@@ -56,6 +59,17 @@ function parseArgs(argv) {
 			continue;
 		}
 
+		if (arg.startsWith("--meetingsPageUrl=")) {
+			options.meetingsPageUrl = arg.split("=")[1] || "";
+			continue;
+		}
+
+		if (arg === "--meetingsPageUrl") {
+			options.meetingsPageUrl = argv[i + 1] || "";
+			i += 1;
+			continue;
+		}
+
 		if (arg.startsWith("--output=")) {
 			options.output = arg.split("=")[1] || "";
 			continue;
@@ -80,7 +94,7 @@ function printUsage() {
 	console.log(
 		[
 			"Usage:",
-			"  node scripts/municipality-data-audit.mjs --municipalityId <id> [--limit 200] [--output ./tmp/report.json]",
+			"  node scripts/municipality-data-audit.mjs --municipalityId <id> [--meetingsPageUrl <url>] [--limit 200] [--output ./tmp/report.json]",
 			"  node scripts/municipality-data-audit.mjs <id>",
 			"",
 			"Requires VITE_CONVEX_URL in environment or .env.local.",
@@ -119,12 +133,37 @@ function normalizeUrl(url) {
 	}
 }
 
+function normalizeMeetingSourceUrl(url) {
+	try {
+		const parsed = new URL(normalizeUrl(url));
+		if (/\/AgendaCenter\/ViewFile\//i.test(parsed.pathname)) {
+			parsed.searchParams.delete("html");
+			parsed.searchParams.delete("packet");
+			return `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
+		}
+		return normalizeUrl(url);
+	} catch {
+		return normalizeUrl(url);
+	}
+}
+
 function isLikelyDocumentUrl(url = "") {
 	return (
 		/\.pdf(\?|#|$)/i.test(url) ||
 		/\/ViewFile/i.test(url) ||
 		/\/View\.ashx/i.test(url)
 	);
+}
+
+function sourceVariant(url = "") {
+	if (!url) return "missing";
+	if (/\/AgendaCenter\/ViewFile\/Agenda\//i.test(url)) {
+		if (/[?&]packet=true\b/i.test(url)) return "civicplus_packet";
+		if (/[?&]html=true\b/i.test(url)) return "civicplus_html";
+		return "civicplus_agenda_file";
+	}
+	if (isLikelyDocumentUrl(url)) return "document";
+	return "html_or_detail";
 }
 
 function toPct(part, total) {
@@ -153,7 +192,7 @@ async function fetchMeetings(client, municipalityId, limit) {
 	const seenCursors = new Set();
 
 	for (;;) {
-		const page = await client.query("functions.meetings.queries.listByMunicipality", {
+		const page = await client.query(api.functions.meetings.queries.listByMunicipality, {
 			municipalityId,
 			limit,
 			cursor: cursor || undefined,
@@ -179,12 +218,114 @@ async function fetchMeetings(client, municipalityId, limit) {
 	return meetings;
 }
 
-function computeReport({ municipalityId, municipality, meetings }) {
+function cleanText(text) {
+	return text.replace(/\s+/g, " ").trim();
+}
+
+function sampleLiveRow(row) {
+	return {
+		title: row.title,
+		date: row.date || null,
+		sourceUrl: row.sourceUrl,
+	};
+}
+
+async function compareLiveAgendaCenter({ meetingsPageUrl, meetings }) {
+	if (!meetingsPageUrl || !/\/AgendaCenter/i.test(meetingsPageUrl)) {
+		return null;
+	}
+
+	const response = await fetch(meetingsPageUrl, {
+		headers: {
+			"User-Agent":
+				"Mozilla/5.0 (compatible; CivicObservatory/1.0; +https://civicobservatory.com)",
+			Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+		},
+	});
+	if (!response.ok) {
+		throw new Error(`Live AgendaCenter returned HTTP ${response.status}`);
+	}
+
+	const $ = cheerio.load(await response.text());
+	const liveRows = $("tr.catAgendaRow")
+		.map((_, row) => {
+			const $row = $(row);
+			const title = cleanText(
+				$row.find('p > a[href*="/AgendaCenter/ViewFile/Agenda/"]').first().text(),
+			);
+			const date = cleanText($row.find("h3 strong").first().text());
+			const links = $row
+				.find('a[href*="/AgendaCenter/ViewFile/Agenda/"]')
+				.map((__, link) => ({
+					text: cleanText($(link).text()),
+					url: new URL($(link).attr("href"), meetingsPageUrl).href,
+				}))
+				.get();
+			const packetUrl =
+				links.find(
+					(link) => /packet/i.test(link.text) || /[?&]packet=true\b/i.test(link.url),
+				)?.url || null;
+			const sourceUrl = packetUrl || links[0]?.url || "";
+
+			return {
+				title,
+				date,
+				sourceUrl,
+				identity: sourceUrl ? normalizeMeetingSourceUrl(sourceUrl) : "",
+			};
+		})
+		.get()
+		.filter((row) => row.title && row.identity);
+
+	const liveIdentitySet = new Set(liveRows.map((row) => row.identity));
+	const storedRows = meetings
+		.filter((meeting) => meeting.sourceUrl)
+		.map((meeting) => ({
+			title: meeting.title,
+			sourceUrl: meeting.sourceUrl,
+			status: meeting.status,
+			identity: normalizeMeetingSourceUrl(meeting.sourceUrl),
+		}));
+	const storedIdentitySet = new Set(storedRows.map((row) => row.identity));
+
+	return {
+		platform: "civicplus_agenda_center",
+		liveRows: liveRows.length,
+		storedRowsWithSource: storedRows.length,
+		liveRowsMissingFromStorage: liveRows.filter(
+			(row) => !storedIdentitySet.has(row.identity),
+		).length,
+		storedRowsMissingFromLive: storedRows.filter(
+			(row) => !liveIdentitySet.has(row.identity),
+		).length,
+		samples: {
+			liveRowsMissingFromStorage: liveRows
+				.filter((row) => !storedIdentitySet.has(row.identity))
+				.slice(0, 20)
+				.map(sampleLiveRow),
+			storedRowsMissingFromLive: storedRows
+				.filter((row) => !liveIdentitySet.has(row.identity))
+				.slice(0, 20)
+				.map((row) => ({
+					title: row.title,
+					sourceUrl: row.sourceUrl,
+					status: row.status,
+				})),
+		},
+	};
+}
+
+function computeReport({ municipalityId, municipality, meetings, liveSourceAudit }) {
 	const statusCounts = Object.fromEntries(VALID_STATUSES.map((s) => [s, 0]));
 	for (const meeting of meetings) {
 		if (VALID_STATUSES.includes(meeting.status)) {
 			statusCounts[meeting.status] += 1;
 		}
+	}
+	const sourceVariantCounts = {};
+	for (const meeting of meetings) {
+		const variant = sourceVariant(meeting.sourceUrl);
+		sourceVariantCounts[variant] = (sourceVariantCounts[variant] || 0) + 1;
 	}
 
 	const meetingsPageUrl = municipality?.meetingsPageUrl;
@@ -246,6 +387,8 @@ function computeReport({ municipalityId, municipality, meetings }) {
 			sourceEqualsMeetingsPage: sourceEqualsListings.length,
 		},
 		statuses: statusCounts,
+		sourceVariants: sourceVariantCounts,
+		liveSourceAudit,
 		coverage: {
 			summaryCoveragePct: toPct(withSummary.length, meetings.length),
 			rawContentCoveragePct: toPct(withRawContent.length, meetings.length),
@@ -281,7 +424,7 @@ async function main() {
 	}
 
 	const client = new ConvexHttpClient(deploymentUrl);
-	const municipality = await client.query("functions.municipalities.queries.get", {
+	const municipality = await client.query(api.functions.municipalities.queries.get, {
 		id: options.municipalityId,
 	});
 
@@ -294,10 +437,22 @@ async function main() {
 		options.municipalityId,
 		options.limit,
 	);
+	let liveSourceAudit = null;
+	try {
+		liveSourceAudit = await compareLiveAgendaCenter({
+			meetingsPageUrl: municipality.meetingsPageUrl || options.meetingsPageUrl,
+			meetings,
+		});
+	} catch (error) {
+		liveSourceAudit = {
+			error: error instanceof Error ? error.message : String(error),
+		};
+	}
 	const report = computeReport({
 		municipalityId: options.municipalityId,
 		municipality,
 		meetings,
+		liveSourceAudit,
 	});
 
 	const outputPath = options.output
@@ -313,6 +468,17 @@ async function main() {
 	console.log(`Summary coverage: ${report.coverage.summaryCoveragePct}%`);
 	console.log(`Raw content coverage: ${report.coverage.rawContentCoveragePct}%`);
 	console.log(`Document-like source URLs: ${report.coverage.documentLikeSourcePct}%`);
+	if (report.liveSourceAudit && !report.liveSourceAudit.error) {
+		console.log(`Live AgendaCenter rows: ${report.liveSourceAudit.liveRows}`);
+		console.log(
+			`Live rows missing from storage: ${report.liveSourceAudit.liveRowsMissingFromStorage}`,
+		);
+		console.log(
+			`Stored rows missing from live site: ${report.liveSourceAudit.storedRowsMissingFromLive}`,
+		);
+	} else if (report.liveSourceAudit?.error) {
+		console.log(`Live source audit failed: ${report.liveSourceAudit.error}`);
+	}
 	console.log(`Report written: ${outputPath}`);
 }
 
