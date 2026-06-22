@@ -9,7 +9,6 @@ import {
 import { TopicBadge } from "@/components/TopicBadge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useConvexUser } from "@/lib/auth";
 import { canonicalLink, NOINDEX_ROBOTS } from "@/lib/seo";
 import { getPublicTopicFeed, PUBLIC_TOPIC_FEEDS } from "@/lib/topicFeeds";
 import { api } from "../../../convex/_generated/api";
@@ -45,7 +44,6 @@ export const Route = createFileRoute("/topics/$topic")({
 function TopicFeedPage() {
 	const { topic } = Route.useParams();
 	const feed = getPublicTopicFeed(topic);
-	const user = useConvexUser();
 	const defaultTopicFilters = useMemo(
 		() => (feed ? [feed.subscriptionLabel] : []),
 		[feed],
@@ -146,7 +144,6 @@ function TopicFeedPage() {
 							<PublicSummaryResultCard
 								key={result.summaryId}
 								result={result}
-								userId={user?._id}
 								defaultTopicFilters={defaultTopicFilters}
 							/>
 						))}

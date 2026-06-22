@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useAction, useConvexAuth, useQuery } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import {
 	Building2,
 	Check,
@@ -105,7 +105,7 @@ const plans = [
 ];
 
 function PricingPage() {
-	const { isAuthenticated } = useConvexAuth();
+	const isAuthenticated = false;
 	const { success = false, canceled = false } = Route.useSearch();
 
 	return (

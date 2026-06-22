@@ -1,6 +1,6 @@
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { ConvexHttpClient } from "convex/browser";
-import { useConvexAuth, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import {
 	ArrowLeft,
 	Bell,
@@ -158,7 +158,7 @@ const MEETING_SKELETON_KEYS = [
 function MunicipalityDetailPage() {
 	const { municipalityId } = Route.useParams();
 	const loaderData = Route.useLoaderData();
-	const { isAuthenticated } = useConvexAuth();
+	const isAuthenticated = false;
 	const [meetingType, setMeetingType] = useState<string>("");
 	const [cursor, setCursor] = useState<string | null>(null);
 	const [showSubscribeModal, setShowSubscribeModal] = useState(false);

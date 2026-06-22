@@ -3,6 +3,7 @@ import {
 	HeadContent,
 	Outlet,
 	Scripts,
+	useLocation,
 	useRouter,
 } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
@@ -12,6 +13,10 @@ import { AppConvexProvider } from "@/components/AppConvexProvider";
 import { ErrorBoundary, RootErrorFallback } from "@/components/error";
 import { Header } from "@/components/Header";
 import { RouteLoadingFallback } from "@/components/SuspenseFallback";
+import {
+	requiresAuthenticatedProviders,
+	showsAuthenticatedHeaderControls,
+} from "@/lib/authRoutes";
 import { DEFAULT_SOCIAL_IMAGE } from "@/lib/seo";
 import appCss from "@/styles.css?url";
 
@@ -135,11 +140,19 @@ function NotFoundPage() {
 }
 
 function RootComponent() {
+	const location = useLocation();
+	const providerMode = requiresAuthenticatedProviders(location.pathname)
+		? "authenticated"
+		: "public";
+	const showSignedInHeaderControls = showsAuthenticatedHeaderControls(
+		location.pathname,
+	);
+
 	return (
 		<RootDocument>
 			<ErrorBoundary>
-				<AppConvexProvider>
-					<Header />
+				<AppConvexProvider mode={providerMode}>
+					<Header showSignedInControls={showSignedInHeaderControls} />
 					<Suspense fallback={<RouteLoadingFallback />}>
 						<Outlet />
 					</Suspense>

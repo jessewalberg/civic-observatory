@@ -1,4 +1,3 @@
-import { useUser } from "@clerk/tanstack-react-start";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import {
@@ -95,8 +94,7 @@ const audiences = [
 ];
 
 function LandingPage() {
-	const { isSignedIn } = useUser();
-	const primarySetupCta = getLandingSetupCta(isSignedIn);
+	const primarySetupCta = getLandingSetupCta(false);
 	const recentSummaries = useQuery(
 		api.functions.summaries.queries.getRecentSummaries,
 		{

@@ -5,7 +5,7 @@ import {
 	redirect,
 } from "@tanstack/react-router";
 import { ConvexHttpClient } from "convex/browser";
-import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import {
 	AlertCircle,
 	Calendar,
@@ -281,7 +281,7 @@ interface MeetingData {
 function MeetingDetailPage() {
 	const { meetingId } = Route.useParams();
 	const loaderData = Route.useLoaderData();
-	const { isAuthenticated } = useConvexAuth();
+	const isAuthenticated = false;
 	const [showRawContent, setShowRawContent] = useState(false);
 	const [isRetrying, setIsRetrying] = useState(false);
 	const [retryError, setRetryError] = useState<string | null>(null);
@@ -322,7 +322,7 @@ function MeetingDetailPage() {
 				// Silently fail - don't interrupt user experience for tracking
 			});
 		}
-	}, [meeting, isAuthenticated, recordUsage, usageCheck]);
+	}, [meeting, recordUsage, usageCheck]);
 
 	if (meeting === undefined) {
 		return <MeetingDetailSkeleton />;
