@@ -1,3 +1,6 @@
+<!-- portfolio-global-policy -->
+> Global policy lives in `~/.ai/` (`tdd-solid-policy.md`, `conventional-commits-policy.md`, `decision-radar-policy.md`, `agent-execution-policy.md`). Keep this file repo-specific; do not duplicate global policy here.
+
 # Civic Observatory — Municipal Meeting Intelligence Platform
 
 ## What This Project Is
