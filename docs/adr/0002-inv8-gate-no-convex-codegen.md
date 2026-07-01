@@ -94,4 +94,5 @@ then committing `_generated/` could become optional. Until such a mode exists, c
 `docs/decisions/README.md` previously pointed new decisions at a shared cross-repo store
 that is now retired. This ADR is filed **repo-local** per the current portfolio operating
 model: durable, in-repo decisions are read in-context by agents. Recorded here as the
-load-bearing committed record; the README is left as-is and should be reconciled separately.
+load-bearing committed record; ADRs now live in `docs/adr/` and the legacy
+`docs/decisions/README.md` redirects there.
