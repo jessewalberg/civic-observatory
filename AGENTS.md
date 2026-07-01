@@ -1,0 +1,241 @@
+<!-- portfolio-global-policy -->
+> Global policy lives in `~/.ai/` (`tdd-solid-policy.md`, `conventional-commits-policy.md`, `decision-radar-policy.md`, `agent-execution-policy.md`). Keep this file repo-specific; do not duplicate global policy here.
+
+# Civic Observatory — Municipal Meeting Intelligence Platform
+
+## What This Project Is
+
+Civic Observatory is a SaaS platform that automatically scrapes meeting documents from municipal government websites, summarizes them with AI, and alerts users when topics they care about are discussed. Think "Google Alerts for local government meetings."
+
+## Tech Stack (Non-Negotiable)
+
+| Layer | Technology | Notes |
+|-------|-----------|-------|
+| Frontend Framework | TanStack Start (React) | SSR, type-safe routing, server functions |
+| Backend / Database | Convex | Reactive DB, server functions, crons, file storage |
+| Authentication | Clerk | Hosted UI + components, social logins, Convex JWT template |
+| Hosting | Cloudflare Workers | Edge deployment via Wrangler |
+| UI Components | shadcn/ui + Tailwind v4 | CSS-first config, all components from shadcn |
+| AI | OpenRouter (Claude) | Meeting summarization via Convex actions |
+| Scraping | Convex Actions + Cheerio | Serverless, runs in Convex runtime |
+| Payments | Stripe | Subscriptions, webhooks, customer portal |
+| Email | Cloudflare Email Sending | Alert notification emails |
+| Animation | Motion (Framer Motion) | Page transitions, micro-interactions |
+| Package Manager | pnpm@9.15.9 | For all installs, scripts, and commands (pinned via `packageManager` field) |
+
+## Project Documentation
+
+Read these documents IN ORDER before starting any work:
+
+1. **`docs/DESIGN_SYSTEM.md`** — Design philosophy, color palette, typography, component patterns. Read FIRST before writing any UI code.
+2. **Auth** — Clerk for sessions (clerkMiddleware in `src/start.ts`); Convex authorizes via `ctx.auth` (see `convex/lib/auth.ts`). Every route and Convex function must follow this pattern.
+3. **`docs/CONVEX_GUIDE.md`** — How to write Convex functions (queries, mutations, actions), schema design, and cron jobs.
+4. **`docs/ROUTES_AND_PAGES.md`** — Every page in the app, what data it needs, which tier can access it.
+5. **`docs/SCRAPER.md`** — The scraping pipeline: platform detection, HTML extraction, rate limiting.
+6. **`docs/DEPLOYMENT.md`** — Cloudflare Workers setup, Convex deployment, environment variables.
+
+## Critical Rules
+
+0. **pnpm only, never bun/npm/yarn.** The repo is pinned to `pnpm@9.15.9` via the `packageManager` field in `package.json`, with a committed `pnpm-lock.yaml`; CI deploys with `pnpm install --frozen-lockfile`. Always use `pnpm` for installs, scripts, and commands. Never use npm, yarn, or bun. (Use `pnpm dlx` where you would have reached for `npx`/`bunx`.)
+
+1. **Design first, code second.** Set up shadcn/ui and the full design system before building any pages. Every component should look production-grade from day one.
+
+2. **Auth is Clerk.** Do not invent custom auth. Server-side route guards use the `requireAuth` server-fn (`src/lib/serverAuth.ts`) over Clerk's `auth()`; Convex resolves the caller from `ctx.auth` via `getCurrentUser`/`requireAdmin`. New Clerk users are synced to Convex by `UserBootstrap` (calls `users.ensureFromIdentity`).
+
+3. **Convex is the API for all data operations.** Never create REST endpoints for reading/writing data. All data flows through Convex queries/mutations/actions. **Exception: auth.** Clerk session management runs via clerkMiddleware in `src/start.ts`.
+
+4. **Type safety everywhere.** Convex generates types from your schema. Use them. TanStack Router infers route params. Use them. Never use `any`.
+
+5. **Real-time by default.** Use `useQuery` from Convex React for all data fetching. Data updates live via WebSocket automatically.
+
+6. **Tiered access in Convex, not the frontend.** Subscription checks happen in Convex query/mutation handlers, not in React components. The frontend shows/hides UI, but the backend enforces access.
+
+7. **Dark mode is default.** No light mode toggle. The app is dark-themed only.
+
+## File Structure
+
+```
+civic-observatory/
+├── src/                          # TanStack Start application
+│   ├── routes/                   # File-based routes
+│   │   ├── __root.tsx            # Root layout: providers, fonts, toaster
+│   │   ├── index.tsx             # Landing page
+│   │   ├── explore/
+│   │   │   ├── index.tsx         # Municipality grid + search
+│   │   │   └── $municipalityId.tsx # Municipality detail
+│   │   ├── meeting/
+│   │   │   └── $meetingId.tsx    # Meeting summary (KEY PAGE)
+│   │   ├── dashboard/
+│   │   │   ├── index.tsx         # Alert feed
+│   │   │   ├── subscriptions.tsx # Manage subscriptions
+│   │   │   └── upload.tsx        # Manual upload
+│   │   ├── admin/
+│   │   │   ├── index.tsx         # Admin overview
+│   │   │   ├── municipalities.tsx
+│   │   │   ├── users.tsx
+│   │   │   └── scrapers.tsx
+│   │   ├── pricing.tsx
+│   │   └── api/
+│   │       ├── sign-in.$.tsx     # Clerk sign-in (catch-all)
+│   │       ├── webhooks/stripe.tsx # Gone stub; Convex handles Stripe webhook
+│   │       ├── sitemap.tsx
+│   │       └── robots.tsx
+│   ├── components/
+│   │   ├── ui/                   # shadcn/ui components (DO NOT MODIFY)
+│   │   ├── layout/               # Header, Footer
+│   │   ├── skeletons/            # Loading states
+│   │   ├── error/                # Error boundaries
+│   │   ├── TopicBadge.tsx        # Topic color badges
+│   │   └── UsageWidget.tsx       # Usage display
+│   ├── lib/
+│   │   ├── utils.ts              # cn(), formatDate()
+│   │   ├── toast.ts              # Toast wrapper
+│   │   └── seo.ts                # SEO helpers
+│   └── styles.css                # Tailwind + design tokens
+├── convex/                       # Convex backend (THIS IS THE ENTIRE BACKEND)
+│   ├── schema.ts                 # Database schema (8 tables)
+│   ├── _generated/               # Auto-generated types
+│   ├── functions/
+│   │   ├── users/                # User queries, mutations
+│   │   ├── municipalities/       # Municipality CRUD
+│   │   ├── meetings/             # Meeting management
+│   │   ├── summaries/            # Summary queries
+│   │   ├── subscriptions/        # Alert subscriptions
+│   │   ├── alerts/               # Alert generation, email
+│   │   ├── scrapeJobs/           # Scraper job tracking
+│   │   ├── usage/                # Rate limiting
+│   │   ├── ai/                   # Summarization actions
+│   │   └── stripe/               # Payment actions
+│   ├── scrapers/
+│   │   ├── types.ts              # Scraper interfaces
+│   │   ├── registry.ts           # Platform detection
+│   │   ├── granicus.ts           # Granicus scraper
+│   │   ├── civicplus.ts          # CivicPlus scraper
+│   │   ├── generic.ts            # Generic HTML scraper
+│   │   └── utils.ts              # Shared utilities
+│   └── crons.ts                  # Scheduled jobs
+├── docs/                         # Documentation for Claude Code
+├── prompts/                      # Build prompts (in order)
+├── vite.config.ts
+├── wrangler.toml
+├── components.json               # shadcn/ui config
+└── package.json
+```
+
+## Database Schema (8 Tables)
+
+| Table | Purpose | Key Fields |
+|-------|---------|------------|
+| `users` | User accounts | clerkUserId, email, tier, isAdmin, stripeCustomerId |
+| `municipalities` | Locations to scrape | name, state, platform, scrapeConfig |
+| `meetings` | Raw meeting documents | municipalityId, title, meetingType, status |
+| `summaries` | AI-generated summaries | meetingId, executiveSummary, keyDecisions, discussionTopics |
+| `subscriptions` | Alert preferences | userId, municipalityId, topics, frequency |
+| `alerts` | Pending/sent alerts | userId, meetingId, matchedTopics, status |
+| `scrapeJobs` | Scraper run history | municipalityId, status, stats, errors |
+| `usageRecords` | Rate limiting | userId, action, timestamp |
+
+## User Tiers
+
+| Feature | Anonymous | Free | Pro ($15/mo) |
+|---------|:---------:|:----:|:------------:|
+| View summaries | 10/day | 50/day | Unlimited |
+| Municipalities | 3 | 10 | Unlimited |
+| Subscriptions | 0 | 5 | Unlimited |
+| Email alerts | — | Daily digest | Immediate |
+| Upload meetings | — | 3/month | 20/month |
+| API access | — | — | Yes |
+
+## Build Order
+
+This is the sequence of work. Do NOT skip ahead. Each phase corresponds to a prompt file in `prompts/`.
+
+### Phase 0: Scaffold + Design System (`prompts/00-scaffold-design-system.md`)
+1. Create project from TanStack Start template
+2. Add Convex + Clerk
+3. Add Cloudflare Workers support
+4. Install and configure shadcn/ui with custom dark theme
+5. Build ALL reusable components with the design system applied
+6. Create layout shell (Header, Footer)
+7. Verify auth flow works end-to-end
+8. Create placeholder routes for every page
+
+### Phase 1: Database + Scraper (`prompts/01-schema-scraper.md`)
+9. Define Convex schema (all 8 tables with indexes)
+10. Create auth helper functions
+11. Build municipality queries and mutations
+12. Build meeting and summary queries
+13. Build scraper actions (registry + platform scrapers + extractors)
+14. Set up crons for scheduled crawling
+15. Seed database with test data
+
+### Phase 2: Core Pages (`prompts/02-core-pages.md`)
+16. Landing page with hero, features, CTA
+17. Explore page with municipality grid + search/filter
+18. Municipality detail with meeting list
+19. Meeting summary page with all 4 tabs (summary, decisions, topics, comments)
+20. Build TopicBadge, VoteDisplay, and chart components
+
+### Phase 3: Upload + AI (`prompts/03-upload-ai.md`)
+21. Upload page with drag-and-drop file input
+22. File storage via Convex
+23. PDF text extraction action
+24. AI summarization action (OpenRouter)
+25. Processing status UI (pending → processing → complete/failed)
+26. Usage tracking for upload limits
+
+### Phase 4: Subscriptions + Alerts (`prompts/04-subscriptions-alerts.md`)
+27. Subscription CRUD mutations
+28. Subscription modal with topic/keyword filters
+29. Alert generation on new summary
+30. Email sending action (Cloudflare Email Sending REST API)
+31. Cron jobs (immediate, daily digest, weekly digest)
+32. Dashboard alert feed
+
+### Phase 5: Monetization (`prompts/05-monetization.md`)
+33. Usage tracking queries
+34. Rate limiting checks
+35. Usage display widgets
+36. Stripe checkout session action
+37. Stripe webhook handler
+38. Customer portal action
+39. Pricing page with tier comparison
+
+### Phase 6: Admin Dashboard (`prompts/06-admin-dashboard.md`)
+40. Admin access control (isAdmin check)
+41. Admin overview with stats
+42. Municipality CRUD admin
+43. User management (tier, admin changes)
+44. Scraper monitoring and manual triggers
+
+### Phase 7: Polish + Production (`prompts/07-polish-production.md`)
+45. Error boundaries on all routes
+46. Loading skeletons on all pages
+47. Toast notifications
+48. SEO (meta tags, sitemap, robots.txt)
+49. Responsive audit
+50. Pre-deploy checklist
+51. Production deployment
+
+## Commands
+
+```bash
+# Development
+pnpm dev               # Start frontend dev server
+pnpm exec convex dev   # Start Convex dev server (run in separate terminal)
+
+# Code Quality
+pnpm typecheck         # TypeScript check
+pnpm lint              # Biome lint
+
+# Production
+pnpm build             # Build for production
+pnpm exec convex deploy     # Deploy Convex
+pnpm exec wrangler deploy --env production # Deploy to Cloudflare
+```
+
+## Environment Variables / Secrets
+
+Secret metadata is declared in `secrets.manifest.json`; values live in 1Password
+and are synced out-of-band via SecretKit. Do not duplicate secret values in docs,
+issues, commits, or CI logs. Public bundle variables must use the `VITE_` prefix.
