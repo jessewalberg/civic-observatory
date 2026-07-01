@@ -7,6 +7,16 @@
 
 Civic Observatory is a SaaS platform that automatically scrapes meeting documents from municipal government websites, summarizes them with AI, and alerts users when topics they care about are discussed. Think "Google Alerts for local government meetings."
 
+## Agent skills
+
+This repo follows the Matt Pocock skills + Linear operating model (canonical policy: `~/.ai/operating-model-policy.md`). Work items are Linear-first; GitHub still holds code, PRs, and CI.
+
+- **Issue tracker**: `docs/agents/issue-tracker.md` — Linear routing (connector `mcp__linear-theroomofrequirement`, team `THE`).
+- **Triage labels**: `docs/agents/triage-labels.md` — triage-role → Linear state/label mapping.
+- **Domain model**: `docs/agents/domain.md` — domain vocabulary and modelling notes (created lazily by `/domain-modeling`).
+
+Durable technical decisions live with the code as ADRs in `docs/adr/` (sequential `NNNN-slug.md`); see `docs/adr/README.md`.
+
 ## Tech Stack (Non-Negotiable)
 
 | Layer | Technology | Notes |
