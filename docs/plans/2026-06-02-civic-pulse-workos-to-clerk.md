@@ -1,6 +1,6 @@
 # Civic-Pulse: WorkOS AuthKit → Clerk Migration Plan
 
-Status: **superseded** (shipped; see `docs/decisions/ADR-0001-clerk-auth-standardization.md`) · Date: 2026-06-02 · Area: auth / security
+Status: **superseded** (shipped; see `docs/adr/0001-clerk-auth-standardization.md`) · Date: 2026-06-02 · Area: auth / security
 Pilot for the portfolio-wide auth standardization (see secretkit
 `docs/STANDARDIZATION.md`, Wave 3). Drop the hand-rolled WorkOS AuthKit SSR
 implementation and adopt **Clerk** as the standard auth provider.

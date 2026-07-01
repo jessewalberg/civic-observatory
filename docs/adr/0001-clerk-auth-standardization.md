@@ -64,5 +64,5 @@ brings the repo onto the Clerk standard (INV-4).
 The 2026-06-02 plan doc shipped fully (PRs #1–#14, through "Phase 6 — remove WorkOS
 legacy fallback, identity-only auth"); `main` now carries `@clerk/*` + the Convex
 auth config and **zero WorkOS deps**. This ADR graduates that shipped plan into a
-durable repo-local decision record per vault ADR-0004 (knowledge in repo files).
+durable repo-local decision record (durable decisions live with the code in `docs/adr/`).
 The plan doc is retained for history and marked superseded by this ADR.
