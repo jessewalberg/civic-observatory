@@ -1,17 +1,20 @@
 # Triage Labels
 
-For Linear, the mattpocock/skills roles usually map to Linear states plus a small label vocabulary. Verify these names with `list_issue_statuses` and `list_issue_labels` during setup, then adjust the right-hand columns if this repo differs.
+The skills speak in terms of canonical triage roles. This file maps those roles to GitHub issue state, labels, and the `Mission Control` status field.
 
-| Role in mattpocock/skills | Linear state      | Linear labels | Meaning                                  |
-| ------------------------- | ----------------- | ------------- | ---------------------------------------- |
-| `needs-triage`            | `Triage`          |               | Maintainer needs to evaluate this issue  |
-| `needs-info`              | `Needs Criteria`  |               | Waiting on reporter for more information |
-| `ready-for-agent`         | `Todo`            | `auto`        | Fully specified, ready for an AFK agent  |
-| `ready-for-human`         | `Ready For Human` | `hitl`        | Requires human implementation            |
-| `wontfix`                 | `Canceled`        |               | Will not be actioned                     |
-| `bug`                     | unchanged         | `type:bug`    | Something is broken                      |
-| `enhancement`             | unchanged         | `type:feature` | New feature or improvement              |
+| Role in mattpocock/skills | GitHub state | GitHub labels | Mission Control status | Meaning |
+| ------------------------- | ------------ | ------------- | ---------------------- | ------- |
+| `needs-triage` | open | `needs-triage`, `status:needs-triage` | `status:needs-triage` | Maintainer needs to evaluate this issue |
+| `needs-info` | open | `needs-info`, `status:needs-info` | `status:needs-info` | Waiting on reporter for more information |
+| `ready-for-agent` | open | `ready-for-agent`, `status:todo` | `status:todo` | Fully specified, ready for an AFK agent |
+| `ready-for-human` | open | `ready-for-human`, `status:ready-for-human` | `status:ready-for-human` | Requires human implementation or owner action |
+| `wontfix` | closed as not planned | `wontfix`, `status:canceled` | `status:canceled` | Will not be actioned |
+| `bug` | unchanged | `type:bug` | unchanged | Something is broken |
+| `enhancement` | unchanged | `type:feature` | unchanged | New feature or improvement |
 
-When a skill mentions a role, apply the matching Linear state and labels from this table. Preserve unrelated labels already on the issue.
+Each active issue must have exactly one status label:
+`status:needs-triage`, `status:needs-info`, `status:backlog`, `status:icebox`,
+`status:planning`, `status:todo`, `status:ready-for-human`, `status:blocked`,
+`status:in-progress`, `status:in-review`, `status:done`, or `status:canceled`.
 
-If a label does not exist, do not invent a near-duplicate silently. Ask whether to create the missing label, map the role to an existing label, or record the role using state only.
+During Linear migration, treat `auto` as a legacy alias for `ready-for-agent` and `hitl` as a legacy alias for `ready-for-human`. Preserve unrelated useful labels.
