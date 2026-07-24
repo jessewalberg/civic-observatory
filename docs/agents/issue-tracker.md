@@ -1,38 +1,40 @@
-# Issue tracker: Linear
+# Issue tracker: GitHub Issues
 
-Issues and PRDs for this repo live in Linear. GitHub may still hold code, PRs, and CI, but Linear is the work-item source of truth unless this file says otherwise.
+GitHub Issues are the work-item source of truth for this repository.
+GitHub also holds code, branches, pull requests, reviews, and CI.
 
 ## Configured routing
 
-- **Workspace connector**: `mcp__linear-theroomofrequirement`
-- **Team**: `THE`
-- **Project / initiative / repo label**: set this during setup if the repo uses one
-- **Default state for agent-ready work**: `Todo` with label `auto`
-- **Default state for owner-gated work**: `Ready For Human` with label `hitl`
+- Repository: `jessewalberg/civic-observatory`
+- Cross-repository project: the owner's GitHub Project `Mission Control`
+- Agent-ready label: `ready-for-agent`
+- Owner-gated label: `ready-for-human`
+- Status source of truth: exactly one `status:*` label per issue
+- Project status: mirror the canonical `status:*` label in `Mission Control`
 
-Do not store Linear API keys in the repo, sandbox, or CI. Use the existing MCP connector or ask the human to perform Linear-only setup.
+Treat migrated `THE-*` identifiers and Linear references as historical metadata only.
+Do not store tracker credentials in the repository, workspace, or CI.
+Use the authenticated GitHub CLI or configured GitHub tools.
 
 ## Conventions
 
-- **Create an issue**: use the configured Linear MCP connector's `save_issue` with `team`, `title`, `description`, optional `project`, `labels`, `state`, `blockedBy`, and `blocks`.
-- **Read an issue**: find the issue by identifier or URL with `list_issues` using `query` and the configured team/project filters, then read comments with `list_comments`.
-- **List issues**: use `list_issues` with the configured team/project filters, plus `state`, `label`, `updatedAt`, or `query` as needed.
-- **Comment on an issue**: use `save_comment` with `issueId` and a Markdown `body`.
-- **Apply triage state**: use `save_issue` with the issue `id` and `state` from `triage-labels.md`.
-- **Apply / remove labels**: use `save_issue` with the complete intended `labels` set when label changes are needed. Verify labels first with `list_issue_labels`.
-- **Close / reject**: post the explanation as a comment, then update the issue state to the configured `wontfix` state, normally `Canceled`.
-- **Dependencies**: use `blockedBy` and `blocks`; do not encode dependencies only as prose.
+- Create work as a GitHub issue in `jessewalberg/civic-observatory` with clear acceptance criteria.
+- Reference work as `jessewalberg/civic-observatory#N` or with its full GitHub issue URL.
+- Read the issue body, comments, labels, and native relationships before acting.
+- Preserve useful labels and keep exactly one canonical `status:*` label.
+- Use native sub-issues and dependencies for same-repository structure.
+- Record cross-repository dependencies as explicit links in both issues.
+- Add portfolio work to `Mission Control` when Project access is available.
+- If Project access is unavailable, keep the issue label correct and record the Project update as owner-gated follow-up.
 
-When passing Markdown strings to Linear tools, use literal newlines. Do not pass escaped `\n` sequences.
+## Pull requests and reviews
 
-## Pull requests and diffs
+- Reference the GitHub issue in branch names and pull request bodies.
+- Use `Closes jessewalberg/civic-observatory#N` only when the pull request completes every acceptance criterion.
+- Use `Refs jessewalberg/civic-observatory#N` for partial, blocked, or owner-gated work.
+- Keep implementer and reviewer roles independent under the canonical global policy.
 
-Linear issues may link GitHub PRs or Linear diffs, but PRs are not the issue tracker. For review work, fetch the implementation diff from GitHub or Linear's diff tools as appropriate, then update the Linear issue with findings or status.
+## Skill routing
 
-## When a skill says "publish to the issue tracker"
-
-Create a Linear issue with the configured team and project routing. If the repo has a parent planning issue, set `parentId` or link it in the description.
-
-## When a skill says "fetch the relevant ticket"
-
-Fetch the Linear issue by identifier (for example `THE-123`) or URL, then fetch its comments. Treat the issue description plus comments as the acceptance source unless a later agent brief explicitly supersedes them.
+When a skill says to publish, fetch, update, or close a work item, operate on the corresponding GitHub issue in `jessewalberg/civic-observatory`.
+Use `docs/agents/triage-labels.md` for status and role labels.
