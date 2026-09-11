@@ -333,6 +333,39 @@ describe("summaries.importStaged — owner-only staged import", () => {
 		expect(rows[0].version).toBe(2);
 	});
 
+	it("refuses an admin row with no Clerk identity rather than writing an unattributable import", async () => {
+		const t = setup();
+		const { meetingId } = await seed(t);
+		// A legacy un-migrated row: admin, but no clerkUserId to attribute to.
+		await t.run(async (ctx) => {
+			const now = Date.now();
+			await ctx.db.insert("users", {
+				workosUserId: "workos_legacy_admin",
+				email: "legacy@example.com",
+				tier: "free" as const,
+				isAdmin: true,
+				createdAt: now,
+				lastLoginAt: now,
+			});
+		});
+
+		const result = await t
+			.withIdentity({ subject: "", issuer: ISSUER })
+			.mutation(api.functions.summaries.importStaged.importStagedSummary, {
+				meetingId,
+				envelope: goldenEnvelope,
+				sourceText,
+				confirmImport: true,
+			})
+			.catch((error: Error) => ({
+				imported: false as const,
+				reason: error.message,
+			}));
+
+		expect(result.imported).toBe(false);
+		expect(await summaryRows(t)).toHaveLength(0);
+	});
+
 	it("refuses an unknown meeting id without writing", async () => {
 		const t = setup();
 		const { meetingId } = await seed(t);

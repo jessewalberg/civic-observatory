@@ -71,23 +71,36 @@ export async function importStagedSummaryHandler(
 		"Forbidden: importing a staged offline summary is owner-only.",
 	);
 
-	// 2. The meeting must exist; its source URL is the binding target.
+	// 2. The admin must be Clerk-backed. A legacy row from the previous auth
+	//    provider has no `clerkUserId` (the schema keeps it optional until
+	//    those rows are cleared) and cannot be named as the approver, so an
+	//    unattributable import is refused rather than recorded against "".
+	const approvedBy = admin.clerkUserId;
+	if (!approvedBy) {
+		return {
+			imported: false,
+			reason:
+				"Importing admin has no Clerk identity on record; the import would be unattributable.",
+		};
+	}
+
+	// 3. The meeting must exist; its source URL is the binding target.
 	const meeting = await ctx.db.get(args.meetingId);
 	if (!meeting) {
 		return { imported: false, reason: "Meeting not found." };
 	}
 
-	// 3. Validate the envelope against the bytes it cites.
+	// 4. Validate the envelope against the bytes it cites.
 	const validation = validateStagedSummary(args.envelope, args.sourceText);
 
-	// 4. Approval is constructed from the server-resolved admin, never from the
+	// 5. Approval is constructed from the server-resolved admin, never from the
 	//    caller. `confirmImport` can only withhold consent, never manufacture it.
 	const evaluation = evaluateStagedImportRequest({
 		actor: { isAdmin: admin.isAdmin === true },
 		validation,
 		approval: {
 			explicit: args.confirmImport === true,
-			approvedBy: admin.clerkUserId,
+			approvedBy,
 		},
 	});
 
@@ -103,7 +116,7 @@ export async function importStagedSummaryHandler(
 		return { imported: false, reason: "Staged summary failed validation." };
 	}
 
-	// 5. Source binding: the envelope must be about *this* meeting's document.
+	// 6. Source binding: the envelope must be about *this* meeting's document.
 	const citedUrl = validation.envelope.provenance.sourceUrl;
 	if (!meeting.sourceUrl) {
 		return {
@@ -119,7 +132,7 @@ export async function importStagedSummaryHandler(
 		};
 	}
 
-	// 6. Write through the product's own mutation. Note what is NOT passed:
+	// 7. Write through the product's own mutation. Note what is NOT passed:
 	//    sourceUrl, sourceContentHash, municipalityId and meetingDate are all
 	//    derived by createSummary from the meeting row, so a caller cannot
 	//    rewrite a summary's provenance by way of this path.
@@ -131,7 +144,7 @@ export async function importStagedSummaryHandler(
 	return {
 		imported: true,
 		summaryId,
-		approvedBy: admin.clerkUserId,
+		approvedBy,
 		warnings: validation.warnings,
 		coveragePublicationChanged: false,
 	};
