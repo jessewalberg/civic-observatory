@@ -104,6 +104,7 @@ import type * as functions_subscriptions_index from "../functions/subscriptions/
 import type * as functions_subscriptions_matching from "../functions/subscriptions/matching.js";
 import type * as functions_subscriptions_mutations from "../functions/subscriptions/mutations.js";
 import type * as functions_subscriptions_queries from "../functions/subscriptions/queries.js";
+import type * as functions_summaries_importStaged from "../functions/summaries/importStaged.js";
 import type * as functions_summaries_queries from "../functions/summaries/queries.js";
 import type * as functions_usage_mutations from "../functions/usage/mutations.js";
 import type * as functions_usage_queries from "../functions/usage/queries.js";
@@ -232,6 +233,7 @@ declare const fullApi: ApiFromModules<{
   "functions/subscriptions/matching": typeof functions_subscriptions_matching;
   "functions/subscriptions/mutations": typeof functions_subscriptions_mutations;
   "functions/subscriptions/queries": typeof functions_subscriptions_queries;
+  "functions/summaries/importStaged": typeof functions_summaries_importStaged;
   "functions/summaries/queries": typeof functions_summaries_queries;
   "functions/usage/mutations": typeof functions_usage_mutations;
   "functions/usage/queries": typeof functions_usage_queries;
