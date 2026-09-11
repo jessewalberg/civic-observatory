@@ -1,0 +1,86 @@
+{
+  "envelopeVersion": "offline-staging-1",
+  "provenance": {
+    "municipality": "Coventry",
+    "state": "CT",
+    "body": "Town Council",
+    "meetingDate": "2026-09-08",
+    "documentType": "agenda",
+    "sourceUrl": "https://www.coventry-ct.gov/AgendaCenter/ViewFile/Agenda/_09082026-4602?html=true",
+    "retrievedAt": "2026-09-11",
+    "retrievalMethod": "read-only public HTTP GET, no authentication, no credentials, HTTP 200",
+    "extractedTextSha256": "882763c2fcf81bfb27c4e33da29ccc59e85a8b252c3562346e4c1d1b91d9a65e",
+    "authoredBy": "operator subscription session (no application inference API)",
+    "paidApiUsed": false
+  },
+  "kind": "agenda_preview",
+  "promptVersion": "offline-1.0",
+  "executiveSummary": "The Coventry Town Council's September 8, 2026 regular meeting agenda schedules five new-business items, 26/27-11 through 26/27-15: discharging the Human Services Advisory Committee, establishing a Youth Services Advisory Board, two job-description revisions (WPCA Assistant Operator, Senior Center Van Driver), and a fee-schedule change to Ordinance No. 42-1 for fire-safety building inspections. The agenda also lists an audience-of-citizens period, acceptance of three sets of prior minutes, and a closing executive session for the Town Manager's performance review. This records what was scheduled; it asserts no vote and no outcome.",
+  "keyDecisions": [
+    {
+      "title": "26/27-11: Discharge of Human Services Advisory Committee",
+      "description": "Scheduled for consideration and possible action, with an HSAC and YSAB memo dated 7-16-26 enclosed.",
+      "topics": ["other"],
+      "importance": "high",
+      "agendaOnly": true,
+      "sourceAnchor": "26/27-11: Consideration/possible action: Discharge of Human Services Advisory Committee"
+    },
+    {
+      "title": "26/27-12: Establishment of Youth Services Advisory Board",
+      "description": "Scheduled for consideration and possible action on Resolution 2026-11, paired with the HSAC discharge item.",
+      "topics": ["education", "other"],
+      "importance": "high",
+      "agendaOnly": true,
+      "sourceAnchor": "26/27-12: Consideration/possible action: Establishment of Youth Services Advisory Board"
+    },
+    {
+      "title": "26/27-13: Modifications to job description, WPCA Assistant Operator",
+      "description": "Scheduled for consideration and possible action; revised job description and Public Works contract appendix enclosed.",
+      "topics": ["infrastructure"],
+      "importance": "medium",
+      "agendaOnly": true,
+      "sourceAnchor": "26/27-13: Consideration/possible action: Modifications to job description, WPCA Assistant Operator"
+    },
+    {
+      "title": "26/27-14: Modification of Ordinance No. 42-1 fire-safety inspection fee schedule",
+      "description": "Scheduled for consideration and possible action on the fee schedule for inspection of buildings used for public service, manufacturing and occupancies regulated by the fire safety code.",
+      "topics": ["safety", "budget"],
+      "importance": "medium",
+      "agendaOnly": true,
+      "sourceAnchor": "Modification of Ordinance No. 42-1, Fee Schedule for Inspection of Buildings"
+    },
+    {
+      "title": "26/27-15: Modification to job description, Senior Center Van Driver",
+      "description": "Scheduled for consideration and possible action; revised July 2026 job description enclosed.",
+      "topics": ["transportation"],
+      "importance": "low",
+      "agendaOnly": true,
+      "sourceAnchor": "26/27-15: Consideration/possible action: Modification to job description, Senior Center Van Driver"
+    }
+  ],
+  "discussionTopics": [
+    {
+      "topic": "Audience of Citizens",
+      "summary": "Thirty minutes are scheduled, five minutes maximum per citizen; written comments may be emailed by 4 PM the Tuesday before the meeting for inclusion under correspondence at the next meeting.",
+      "category": "other"
+    },
+    {
+      "topic": "Town Manager projects and issues update",
+      "summary": "The Town Manager's report lists a projects/issues memo dated 9-4-26 and a State of the Lake Forum scheduled for September 22, 2026.",
+      "category": "infrastructure"
+    },
+    {
+      "topic": "Executive session",
+      "summary": "The meeting is scheduled to close in executive session for the Town Manager's performance review.",
+      "category": "other"
+    }
+  ],
+  "upcomingItems": [
+    { "title": "Understanding Jewish Identity & Antisemitism event", "expectedDate": "2026-09-17" },
+    { "title": "State of the Lake Forum", "expectedDate": "2026-09-22" },
+    { "title": "Town of Tolland public hearing, zoning setback amendment", "expectedDate": "2026-09-14" },
+    { "title": "Town of Andover public hearing, mixed-use floating zone", "expectedDate": "2026-09-15" }
+  ],
+  "topics": ["other", "education", "infrastructure", "safety", "budget", "transportation"],
+  "sentiment": "routine"
+}
