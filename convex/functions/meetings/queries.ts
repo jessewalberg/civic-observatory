@@ -114,6 +114,50 @@ export const listByMunicipality = query({
 	},
 });
 
+export const listRecentSummariesByMunicipality = query({
+	args: { municipalityId: v.id("municipalities") },
+	handler: async (ctx, args) => {
+		const municipality = await getVisibleMunicipality(ctx, args.municipalityId);
+		if (!municipality) return [];
+
+		const recentSummaries: Array<{
+			_id: Id<"meetings">;
+			slug?: string;
+			title: string;
+			meetingDate: number;
+			executiveSummary: string;
+		}> = [];
+		let cursor: string | null = null;
+		while (recentSummaries.length < 20) {
+			const page = await ctx.db
+				.query("meetings")
+				.withIndex("by_municipality_date", (q) =>
+					q.eq("municipalityId", args.municipalityId),
+				)
+				.order("desc")
+				.paginate({ numItems: 20, cursor });
+
+			for (const meeting of page.page) {
+				if (meeting.status !== "summarized") continue;
+				const summary = await getFinalSummaryForMeeting(ctx, meeting._id);
+				if (!summary?.executiveSummary?.trim()) continue;
+
+				recentSummaries.push({
+					_id: meeting._id,
+					slug: meeting.slug,
+					title: meeting.title,
+					meetingDate: meeting.meetingDate,
+					executiveSummary: summary.executiveSummary,
+				});
+				if (recentSummaries.length === 20) break;
+			}
+			if (page.isDone) break;
+			cursor = page.continueCursor;
+		}
+		return recentSummaries;
+	},
+});
+
 // ═══════════════════════════════════════════════════════════════
 // GET - Single meeting by ID
 // ═══════════════════════════════════════════════════════════════
@@ -230,6 +274,90 @@ async function getVisibleMunicipality(
 		return withPublicCoverageBadge(municipality);
 	return null;
 }
+
+// ═══════════════════════════════════════════════════════════════
+// LIST SITEMAP ENTRIES - Lightweight URLs for /sitemap.xml
+// ═══════════════════════════════════════════════════════════════
+export const listSitemapEntries = query({
+	args: {},
+	handler: async (ctx) => {
+		const publishedByStatus = await ctx.db
+			.query("municipalities")
+			.withIndex("by_coverage_status", (q) =>
+				q.eq("coverageStatus", "published"),
+			)
+			.collect();
+
+		const activeMunicipalities = await ctx.db
+			.query("municipalities")
+			.withIndex("by_active", (q) => q.eq("isActive", true))
+			.collect();
+
+		const legacyPublished = activeMunicipalities.filter(
+			(municipality) =>
+				!municipality.coverageStatus && isCoveragePublic(municipality),
+		);
+
+		const municipalityById = new Map<
+			Id<"municipalities">,
+			(typeof publishedByStatus)[number]
+		>();
+		for (const municipality of [...publishedByStatus, ...legacyPublished]) {
+			municipalityById.set(municipality._id, municipality);
+		}
+
+		const municipalities: Array<{
+			_id: Id<"municipalities">;
+			slug?: string;
+			name: string;
+			lastmod: number;
+		}> = [];
+		const meetings: Array<{
+			_id: Id<"meetings">;
+			slug?: string;
+			lastmod: number;
+		}> = [];
+
+		for (const municipality of municipalityById.values()) {
+			const meetingRows = await ctx.db
+				.query("meetings")
+				.withIndex("by_municipality_date", (q) =>
+					q.eq("municipalityId", municipality._id),
+				)
+				.collect();
+
+			let municipalityLastmod = municipality.updatedAt;
+			if (municipality.coverageStatusUpdatedAt) {
+				municipalityLastmod = Math.max(
+					municipalityLastmod,
+					municipality.coverageStatusUpdatedAt,
+				);
+			}
+
+			for (const meeting of meetingRows) {
+				if (meeting.status !== "summarized") continue;
+				const summary = await getFinalSummaryForMeeting(ctx, meeting._id);
+				if (!summary?.executiveSummary?.trim()) continue;
+
+				meetings.push({
+					_id: meeting._id,
+					slug: meeting.slug,
+					lastmod: summary.createdAt,
+				});
+				municipalityLastmod = Math.max(municipalityLastmod, summary.createdAt);
+			}
+
+			municipalities.push({
+				_id: municipality._id,
+				slug: municipality.slug,
+				name: municipality.name,
+				lastmod: municipalityLastmod,
+			});
+		}
+
+		return { municipalities, meetings };
+	},
+});
 
 // ═══════════════════════════════════════════════════════════════
 // GET RECENT - Recent meetings across all municipalities

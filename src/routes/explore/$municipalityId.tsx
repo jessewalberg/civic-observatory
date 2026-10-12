@@ -1,4 +1,9 @@
-import { createFileRoute, Link, redirect } from "@tanstack/react-router";
+import {
+	createFileRoute,
+	Link,
+	notFound,
+	redirect,
+} from "@tanstack/react-router";
 import { ConvexHttpClient } from "convex/browser";
 import { useQuery } from "convex/react";
 import {
@@ -17,7 +22,7 @@ import {
 	X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { CoverageReliabilityBadge } from "@/components/CoverageReliabilityBadge";
 import { MeetingCard, MeetingCardSkeleton } from "@/components/MeetingCard";
 import { SubscriptionModal } from "@/components/SubscriptionModal";
@@ -31,18 +36,21 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatMeetingDate } from "@/lib/meetingDates";
 import { usePublicAuthState } from "@/lib/publicAuth";
+import { failConvexLoader, requireConvexUrl } from "@/lib/publicConvexLoader";
 import { municipalityPath, publicIdentifier } from "@/lib/publicUrls";
-import { canonicalLink, generateMunicipalityJsonLd } from "@/lib/seo";
+import {
+	canonicalLink,
+	generateMunicipalityJsonLd,
+	NOINDEX_ROBOTS,
+} from "@/lib/seo";
 import { api } from "../../../convex/_generated/api";
 
 export const Route = createFileRoute("/explore/$municipalityId")({
 	component: MunicipalityDetailPage,
 	loader: async ({ params }) => {
-		const convexUrl = import.meta.env.VITE_CONVEX_URL;
-		if (!convexUrl) {
-			return { municipality: null };
-		}
+		const convexUrl = requireConvexUrl();
 		try {
 			const convex = new ConvexHttpClient(convexUrl);
 			const municipality = await convex.query(
@@ -62,19 +70,36 @@ export const Route = createFileRoute("/explore/$municipalityId")({
 					replace: true,
 				});
 			}
-			return { municipality };
-		} catch (error) {
-			if (error instanceof Response) {
-				throw error;
+			if (!municipality) {
+				throw notFound();
 			}
-			return { municipality: null };
+
+			const recentSummaries = (
+				await convex.query(
+					api.functions.meetings.queries.listRecentSummariesByMunicipality,
+					{ municipalityId: municipality._id },
+				)
+			).map((meeting) => ({
+				_id: meeting._id,
+				slug: meeting.slug,
+				title: meeting.title,
+				meetingDate: meeting.meetingDate,
+			}));
+
+			return { municipality, recentSummaries };
+		} catch (error) {
+			failConvexLoader(error);
 		}
 	},
+	notFoundComponent: MunicipalityNotFoundPage,
 	head: ({ loaderData }) => {
 		const municipality = loaderData?.municipality;
 		if (!municipality) {
 			return {
-				meta: [{ title: "Municipality Not Found | Civic Observatory" }],
+				meta: [
+					{ title: "Municipality Not Found | Civic Observatory" },
+					{ name: "robots", content: NOINDEX_ROBOTS },
+				],
 			};
 		}
 
@@ -159,11 +184,13 @@ const MEETING_SKELETON_KEYS = [
 function MunicipalityDetailPage() {
 	const { municipalityId } = Route.useParams();
 	const loaderData = Route.useLoaderData();
+	const recentSummaries = loaderData.recentSummaries ?? [];
 	const publicAuth = usePublicAuthState();
 	const isAuthenticated = publicAuth.isAuthenticated;
 	const [meetingType, setMeetingType] = useState<string>("");
 	const [cursor, setCursor] = useState<string | null>(null);
 	const [showSubscribeModal, setShowSubscribeModal] = useState(false);
+	const recentSummariesHeadingId = useId();
 
 	// Fetch municipality details
 	const queriedMunicipality = useQuery(
@@ -259,31 +286,7 @@ function MunicipalityDetailPage() {
 	}
 
 	if (municipality === null) {
-		return (
-			<div className="min-h-screen bg-background flex items-center justify-center">
-				<motion.div
-					initial={{ opacity: 0, y: 20 }}
-					animate={{ opacity: 1, y: 0 }}
-					className="text-center"
-				>
-					<div className="rounded-full bg-muted p-4 mb-4 mx-auto w-fit">
-						<FileText className="h-8 w-8 text-muted-foreground" />
-					</div>
-					<h1 className="font-display text-2xl font-bold text-foreground mb-2">
-						Municipality not found
-					</h1>
-					<p className="text-muted-foreground mb-6">
-						The municipality you're looking for doesn't exist.
-					</p>
-					<Link to="/explore">
-						<Button variant="outline">
-							<ArrowLeft className="h-4 w-4 mr-2" />
-							Back to Explore
-						</Button>
-					</Link>
-				</motion.div>
-			</div>
-		);
+		return <MunicipalityNotFoundPage />;
 	}
 
 	return (
@@ -405,6 +408,47 @@ function MunicipalityDetailPage() {
 					</motion.div>
 				</div>
 			</div>
+
+			{recentSummaries.length > 0 && (
+				<section
+					aria-labelledby={recentSummariesHeadingId}
+					className="border-b border-border bg-surface/30"
+				>
+					<div className="container mx-auto px-4 py-8">
+						<h2
+							id={recentSummariesHeadingId}
+							className="font-display text-2xl font-semibold text-foreground mb-4"
+						>
+							Recent summaries
+						</h2>
+						<ul className="space-y-4">
+							{recentSummaries.map((meeting) => (
+								<li key={meeting._id}>
+									<Link
+										to="/meeting/$meetingId"
+										params={{
+											meetingId: publicIdentifier(meeting),
+										}}
+										className="block rounded-lg border border-border bg-card p-4 hover:border-primary/40 transition-colors"
+									>
+										<div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
+											<h3 className="font-medium text-foreground">
+												{meeting.title}
+											</h3>
+											<time
+												dateTime={new Date(meeting.meetingDate).toISOString()}
+												className="text-sm text-muted-foreground shrink-0"
+											>
+												{formatMeetingDate(meeting.meetingDate)}
+											</time>
+										</div>
+									</Link>
+								</li>
+							))}
+						</ul>
+					</div>
+				</section>
+			)}
 
 			{/* Filters */}
 			<div className="sticky top-0 z-10 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -561,6 +605,34 @@ function MunicipalityDetailPage() {
 					existingSubscription={existingSubscription ?? null}
 				/>
 			)}
+		</div>
+	);
+}
+
+function MunicipalityNotFoundPage() {
+	return (
+		<div className="min-h-screen bg-background flex items-center justify-center">
+			<motion.div
+				initial={{ opacity: 0, y: 20 }}
+				animate={{ opacity: 1, y: 0 }}
+				className="text-center"
+			>
+				<div className="rounded-full bg-muted p-4 mb-4 mx-auto w-fit">
+					<FileText className="h-8 w-8 text-muted-foreground" />
+				</div>
+				<h1 className="font-display text-2xl font-bold text-foreground mb-2">
+					Municipality not found
+				</h1>
+				<p className="text-muted-foreground mb-6">
+					The municipality you're looking for doesn't exist.
+				</p>
+				<Link to="/explore">
+					<Button variant="outline">
+						<ArrowLeft className="h-4 w-4 mr-2" />
+						Back to Explore
+					</Button>
+				</Link>
+			</motion.div>
 		</div>
 	);
 }

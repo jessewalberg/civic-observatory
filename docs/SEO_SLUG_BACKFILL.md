@@ -15,7 +15,8 @@ values before the sitemap can emit slug URLs for all public records.
 4. Validate `/sitemap.xml` after deploy:
    - `X-Sitemap-Source: dynamic` means Convex returned indexable dynamic rows.
    - Municipality URLs should use `/explore/{slug}` for rows with slugs.
-   - Meeting URLs should use `/meeting/{slug}` for summarized rows with slugs.
+   - Meeting URLs should use `/meeting/{slug}` for summarized rows with slugs
+     and nonblank final summaries.
 5. Keep old ID URLs working. The public loaders resolve IDs and redirect to
    slug URLs when a slug exists.
 
@@ -24,3 +25,11 @@ values before the sitemap can emit slug URLs for all public records.
 If a generated slug is already used, append `-2`, `-3`, and so on. Slugs are
 stable after creation; admin updates only fill missing slugs and do not rename
 existing published URLs.
+
+## Search indexing
+
+Slice 1 (2026-10-12): town pages SSR a **Recent summaries** link list;
+`/sitemap.xml` uses `meetings/queries:listSitemapEntries`; meeting pages without
+a final summary (except future agenda previews) carry `noindex`. Verify with
+`pnpm build`, `pnpm preview`, and curl against `/explore/<town>`, `/meeting/<slug>`,
+and `/sitemap.xml`.

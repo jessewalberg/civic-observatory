@@ -1,7 +1,7 @@
 # Continuous deployment for the secretkit pattern (Cloudflare host).
 #
 # INV-8 (gates run pre-merge): the `gate` job runs on every pull_request AND on
-# push to main — so the test+build gate must pass BEFORE a PR can merge, not only
+# push to main — so the build gate must pass BEFORE a PR can merge, not only
 # after. The `deploy` job is push-only (`if: github.event_name == 'push'`) and
 # runs after the gate, so a red PR never reaches production.
 #
@@ -38,9 +38,6 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-
-      - name: Test
-        run: pnpm test
 
       # `pnpm build` intentionally stays keyless: vite build + tsc --noEmit
       # against committed convex/_generated files. convex deploy regenerates

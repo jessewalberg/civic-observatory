@@ -18,4 +18,6 @@ export {
 	getWithSummary,
 	listByMunicipality,
 	listPending,
+	listRecentSummariesByMunicipality,
+	listSitemapEntries,
 } from "./queries";

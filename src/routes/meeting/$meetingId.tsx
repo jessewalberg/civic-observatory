@@ -56,9 +56,15 @@ import {
 	formatMeetingDate,
 	formatMeetingScheduleDate,
 } from "@/lib/meetingDates";
+import { isMeetingIndexable } from "@/lib/meetingIndexability";
 import { getMeetingSourceTrust } from "@/lib/meetingTrust";
 import { usePublicAuthState } from "@/lib/publicAuth";
-import { meetingPath, publicIdentifier } from "@/lib/publicUrls";
+import { failConvexLoader, requireConvexUrl } from "@/lib/publicConvexLoader";
+import {
+	meetingPath,
+	municipalityPath,
+	publicIdentifier,
+} from "@/lib/publicUrls";
 import {
 	buildReporterCsv,
 	buildReporterExportFilename,
@@ -67,6 +73,7 @@ import {
 import {
 	canonicalLink,
 	canonicalUrl,
+	generateBreadcrumbJsonLd,
 	generateMeetingJsonLd,
 	NOINDEX_ROBOTS,
 } from "@/lib/seo";
@@ -78,14 +85,10 @@ export const Route = createFileRoute("/meeting/$meetingId")({
 	component: MeetingDetailPage,
 	pendingComponent: MeetingDetailSkeleton,
 	loader: async ({ params }) => {
-		const convexUrl = import.meta.env.VITE_CONVEX_URL;
-		if (!convexUrl) {
-			throw notFound();
-		}
-		let meeting: MeetingData | null;
+		const convexUrl = requireConvexUrl();
 		try {
 			const convex = new ConvexHttpClient(convexUrl);
-			meeting = await convex.query(
+			const meeting = await convex.query(
 				api.functions.meetings.queries.getWithSummaryByIdentifier,
 				{
 					identifier: params.meetingId,
@@ -99,18 +102,14 @@ export const Route = createFileRoute("/meeting/$meetingId")({
 					replace: true,
 				});
 			}
-		} catch (error) {
-			if (error instanceof Response) {
-				throw error;
+			if (!meeting) {
+				throw notFound();
 			}
-			throw notFound();
-		}
 
-		if (!meeting) {
-			throw notFound();
+			return { meeting };
+		} catch (error) {
+			failConvexLoader(error);
 		}
-
-		return { meeting };
 	},
 	head: ({ loaderData }) => {
 		const meeting = loaderData?.meeting;
@@ -138,11 +137,23 @@ export const Route = createFileRoute("/meeting/$meetingId")({
 
 		const meetingUrl = canonicalUrl(meetingPath(meeting));
 		const sourceUrl = meeting.summary?.sourceUrl ?? meeting.sourceUrl;
+		const indexable = isMeetingIndexable(meeting);
+		const breadcrumbJsonLd = meeting.municipality
+			? generateBreadcrumbJsonLd([
+					{ name: "Explore", url: canonicalUrl("/explore") },
+					{
+						name: meeting.municipality.name,
+						url: canonicalUrl(municipalityPath(meeting.municipality)),
+					},
+					{ name: meeting.title, url: meetingUrl },
+				])
+			: null;
 
 		return {
 			meta: [
 				{ title },
 				{ name: "description", content: description },
+				...(indexable ? [] : [{ name: "robots", content: NOINDEX_ROBOTS }]),
 				// Open Graph
 				{ property: "og:title", content: meeting.title },
 				{ property: "og:description", content: description },
@@ -179,6 +190,14 @@ export const Route = createFileRoute("/meeting/$meetingId")({
 						}),
 					),
 				},
+				...(breadcrumbJsonLd
+					? [
+							{
+								type: "application/ld+json",
+								children: JSON.stringify(breadcrumbJsonLd),
+							},
+						]
+					: []),
 			],
 			links: [canonicalLink(meetingPath(meeting))],
 		};
