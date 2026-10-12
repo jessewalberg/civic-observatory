@@ -120,14 +120,6 @@ export const listRecentSummariesByMunicipality = query({
 		const municipality = await getVisibleMunicipality(ctx, args.municipalityId);
 		if (!municipality) return [];
 
-		const meetingRows = await ctx.db
-			.query("meetings")
-			.withIndex("by_municipality_date", (q) =>
-				q.eq("municipalityId", args.municipalityId),
-			)
-			.order("desc")
-			.collect();
-
 		const recentSummaries: Array<{
 			_id: Id<"meetings">;
 			slug?: string;
@@ -135,19 +127,32 @@ export const listRecentSummariesByMunicipality = query({
 			meetingDate: number;
 			executiveSummary: string;
 		}> = [];
-		for (const meeting of meetingRows) {
-			if (meeting.status !== "summarized") continue;
-			const summary = await getFinalSummaryForMeeting(ctx, meeting._id);
-			if (!summary?.executiveSummary?.trim()) continue;
+		let cursor: string | null = null;
+		while (recentSummaries.length < 20) {
+			const page = await ctx.db
+				.query("meetings")
+				.withIndex("by_municipality_date", (q) =>
+					q.eq("municipalityId", args.municipalityId),
+				)
+				.order("desc")
+				.paginate({ numItems: 20, cursor });
 
-			recentSummaries.push({
-				_id: meeting._id,
-				slug: meeting.slug,
-				title: meeting.title,
-				meetingDate: meeting.meetingDate,
-				executiveSummary: summary.executiveSummary,
-			});
-			if (recentSummaries.length === 20) break;
+			for (const meeting of page.page) {
+				if (meeting.status !== "summarized") continue;
+				const summary = await getFinalSummaryForMeeting(ctx, meeting._id);
+				if (!summary?.executiveSummary?.trim()) continue;
+
+				recentSummaries.push({
+					_id: meeting._id,
+					slug: meeting.slug,
+					title: meeting.title,
+					meetingDate: meeting.meetingDate,
+					executiveSummary: summary.executiveSummary,
+				});
+				if (recentSummaries.length === 20) break;
+			}
+			if (page.isDone) break;
+			cursor = page.continueCursor;
 		}
 		return recentSummaries;
 	},
