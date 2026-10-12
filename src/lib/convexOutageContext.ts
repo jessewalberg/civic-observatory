@@ -1,39 +1,24 @@
 type ConvexOutageGlobal = typeof globalThis & {
-	__civicConvexOutageUrls?: Set<string>;
-	__civicConvexOutageAt?: number;
+	__civicConvexOutageRequests?: WeakSet<Request>;
 };
 
 const globalOutage = globalThis as ConvexOutageGlobal;
 
-function requestOutageKey(request: Request): string {
-	return `${request.method} ${request.url}`;
+function outageRequests(): WeakSet<Request> {
+	if (!globalOutage.__civicConvexOutageRequests) {
+		globalOutage.__civicConvexOutageRequests = new WeakSet<Request>();
+	}
+	return globalOutage.__civicConvexOutageRequests;
 }
 
-function outageUrls(): Set<string> {
-	if (!globalOutage.__civicConvexOutageUrls) {
-		globalOutage.__civicConvexOutageUrls = new Set<string>();
-	}
-	return globalOutage.__civicConvexOutageUrls;
+export function markConvexOutage(request: Request): void {
+	outageRequests().add(request);
 }
 
-export function markConvexOutage(request?: Request): void {
-	globalOutage.__civicConvexOutageAt = Date.now();
-	if (request) {
-		outageUrls().add(requestOutageKey(request));
-	}
+export function isConvexOutageMarked(request: Request): boolean {
+	return outageRequests().has(request);
 }
 
-export function isConvexOutageMarked(request?: Request): boolean {
-	if (request && outageUrls().has(requestOutageKey(request))) {
-		return true;
-	}
-	const markedAt = globalOutage.__civicConvexOutageAt ?? 0;
-	return markedAt > 0 && Date.now() - markedAt < 2_000;
-}
-
-export function clearConvexOutageMark(request?: Request): void {
-	if (request) {
-		outageUrls().delete(requestOutageKey(request));
-	}
-	globalOutage.__civicConvexOutageAt = 0;
+export function clearConvexOutageMark(request: Request): void {
+	outageRequests().delete(request);
 }

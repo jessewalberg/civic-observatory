@@ -19,56 +19,66 @@ import {
 } from "./lib/convexServiceUnavailable";
 
 /** TanStack SSR maps loader failures to HTTP 500; honor Convex outage markers from loaders. */
+function activeRequest(fallback: Request): Request {
+	try {
+		return getRequest();
+	} catch {
+		return fallback;
+	}
+}
+
 const syncResponseStatusMiddleware = createMiddleware({
 	type: "request",
 }).server(async ({ next, request }) => {
-	const ctx = await next();
 	let outageRequest = request;
 	try {
-		outageRequest = getRequest();
-	} catch {
-		// Fall back to middleware request when SSR context is unavailable.
-	}
+		const ctx = await next();
+		outageRequest = activeRequest(request);
+		const response = ctx.response;
+		if (!(response instanceof Response)) {
+			return ctx;
+		}
 
-	const response = ctx.response;
-	if (!(response instanceof Response)) {
-		return ctx;
-	}
+		let markedStatus503 = false;
+		let markedOutageHeader = false;
+		try {
+			markedStatus503 = getResponseStatus() === 503;
+			markedOutageHeader =
+				getResponseHeader(CONVEX_OUTAGE_RESPONSE_HEADER) ===
+				CONVEX_OUTAGE_RESPONSE_VALUE;
+		} catch {
+			// Response may be finalized after SSR context is cleared.
+		}
 
-	let markedStatus503 = false;
-	let markedOutageHeader = false;
-	try {
-		markedStatus503 = getResponseStatus() === 503;
-		markedOutageHeader =
-			getResponseHeader(CONVEX_OUTAGE_RESPONSE_HEADER) ===
+		const headerOnResponse =
+			response.headers.get(CONVEX_OUTAGE_RESPONSE_HEADER) ===
 			CONVEX_OUTAGE_RESPONSE_VALUE;
-	} catch {
-		// Response may be finalized after SSR context is cleared.
-	}
 
-	const headerOnResponse =
-		response.headers.get(CONVEX_OUTAGE_RESPONSE_HEADER) ===
-		CONVEX_OUTAGE_RESPONSE_VALUE;
+		const isConvexOutage =
+			isConvexOutageMarked(outageRequest) ||
+			markedStatus503 ||
+			markedOutageHeader ||
+			headerOnResponse;
 
-	const isConvexOutage =
-		isConvexOutageMarked(outageRequest) ||
-		markedStatus503 ||
-		markedOutageHeader ||
-		headerOnResponse;
+		if (!isConvexOutage || response.status === 503) {
+			return ctx;
+		}
 
-	if (!isConvexOutage || response.status === 503) {
+		const headers = new Headers(response.headers);
+		headers.set(CONVEX_OUTAGE_RESPONSE_HEADER, CONVEX_OUTAGE_RESPONSE_VALUE);
+		ctx.response = new Response(response.body, {
+			status: 503,
+			statusText: "Service Unavailable",
+			headers,
+		});
 		return ctx;
+	} finally {
+		outageRequest = activeRequest(outageRequest);
+		clearConvexOutageMark(request);
+		if (outageRequest !== request) {
+			clearConvexOutageMark(outageRequest);
+		}
 	}
-
-	const headers = new Headers(response.headers);
-	headers.set(CONVEX_OUTAGE_RESPONSE_HEADER, CONVEX_OUTAGE_RESPONSE_VALUE);
-	ctx.response = new Response(response.body, {
-		status: 503,
-		statusText: "Service Unavailable",
-		headers,
-	});
-	clearConvexOutageMark(outageRequest);
-	return ctx;
 });
 
 // Clerk publishable/secret keys are read from the Worker env at SSR time. The
