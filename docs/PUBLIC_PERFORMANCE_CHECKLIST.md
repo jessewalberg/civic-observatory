@@ -9,16 +9,15 @@ public routes, layout, fonts, media, or bundle shape.
 - `/explore`
 - `/pricing`
 - One indexable municipality page, for example `/explore/{municipality-slug}`
-- One indexable meeting page, for example `/meeting/{meeting-slug}`
+- One indexable meeting page with a nonblank final executive summary, for
+  example `/meeting/{meeting-slug}`
 
 ## Local Build Checks
 
-1. Run `pnpm test`.
-2. Run `pnpm check`.
-3. Run `pnpm build`.
-4. Review build output for chunks over 500 KB.
-5. Confirm production root code does not statically import devtools:
-   `pnpm vitest run src/lib/performanceGuards.test.ts`.
+1. Run `pnpm check`.
+2. Run `pnpm build`.
+3. Review build output for chunks over 500 KB.
+4. Confirm production root code does not statically import devtools.
 
 ## Field/Lab Measurement
 
