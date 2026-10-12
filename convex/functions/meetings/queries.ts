@@ -232,6 +232,90 @@ async function getVisibleMunicipality(
 }
 
 // ═══════════════════════════════════════════════════════════════
+// LIST SITEMAP ENTRIES - Lightweight URLs for /sitemap.xml
+// ═══════════════════════════════════════════════════════════════
+export const listSitemapEntries = query({
+	args: {},
+	handler: async (ctx) => {
+		const publishedByStatus = await ctx.db
+			.query("municipalities")
+			.withIndex("by_coverage_status", (q) =>
+				q.eq("coverageStatus", "published"),
+			)
+			.collect();
+
+		const activeMunicipalities = await ctx.db
+			.query("municipalities")
+			.withIndex("by_active", (q) => q.eq("isActive", true))
+			.collect();
+
+		const legacyPublished = activeMunicipalities.filter(
+			(municipality) =>
+				!municipality.coverageStatus && isCoveragePublic(municipality),
+		);
+
+		const municipalityById = new Map<
+			Id<"municipalities">,
+			(typeof publishedByStatus)[number]
+		>();
+		for (const municipality of [...publishedByStatus, ...legacyPublished]) {
+			municipalityById.set(municipality._id, municipality);
+		}
+
+		const municipalities: Array<{
+			_id: Id<"municipalities">;
+			slug?: string;
+			name: string;
+			lastmod: number;
+		}> = [];
+		const meetings: Array<{
+			_id: Id<"meetings">;
+			slug?: string;
+			lastmod: number;
+		}> = [];
+
+		for (const municipality of municipalityById.values()) {
+			const meetingRows = await ctx.db
+				.query("meetings")
+				.withIndex("by_municipality_date", (q) =>
+					q.eq("municipalityId", municipality._id),
+				)
+				.collect();
+
+			let municipalityLastmod = municipality.updatedAt;
+			if (municipality.coverageStatusUpdatedAt) {
+				municipalityLastmod = Math.max(
+					municipalityLastmod,
+					municipality.coverageStatusUpdatedAt,
+				);
+			}
+
+			for (const meeting of meetingRows) {
+				if (meeting.status !== "summarized") continue;
+				const summary = await getFinalSummaryForMeeting(ctx, meeting._id);
+				if (!summary) continue;
+
+				meetings.push({
+					_id: meeting._id,
+					slug: meeting.slug,
+					lastmod: summary.createdAt,
+				});
+				municipalityLastmod = Math.max(municipalityLastmod, summary.createdAt);
+			}
+
+			municipalities.push({
+				_id: municipality._id,
+				slug: municipality.slug,
+				name: municipality.name,
+				lastmod: municipalityLastmod,
+			});
+		}
+
+		return { municipalities, meetings };
+	},
+});
+
+// ═══════════════════════════════════════════════════════════════
 // GET RECENT - Recent meetings across all municipalities
 // ═══════════════════════════════════════════════════════════════
 export const getRecent = query({

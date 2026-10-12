@@ -4,17 +4,21 @@ import { meetingPath, municipalityPath } from "./publicUrls";
 
 export interface SitemapMunicipality {
 	_id: string;
-	_creationTime: number;
 	slug?: string;
-	name: string;
+	name?: string;
+	lastmod?: number;
+	/** @deprecated Legacy sitemap rows */
+	_creationTime?: number;
 }
 
 export interface SitemapMeeting {
 	_id: string;
-	_creationTime: number;
 	slug?: string;
-	meetingDate: number;
-	status: string;
+	lastmod?: number;
+	/** @deprecated Legacy sitemap rows */
+	_creationTime?: number;
+	meetingDate?: number;
+	status?: string;
 }
 
 export interface SitemapDataSource {
@@ -55,8 +59,7 @@ export async function createSitemapResponse(
 			municipalities = records.municipalities;
 			meetings = records.meetings;
 			sitemapSource =
-				municipalities.length > 0 ||
-				meetings.some((meeting) => meeting.status === "summarized")
+				municipalities.length > 0 || meetings.length > 0
 					? "dynamic"
 					: "dynamic-empty";
 		} catch (error) {
@@ -128,17 +131,15 @@ export function generateSitemapXml(
 		loc: municipalityPath(municipality),
 		changefreq: "daily",
 		priority: "0.8",
-		lastmod: toDateOnly(municipality._creationTime),
+		lastmod: resolveSitemapLastmod(municipality),
 	}));
 
-	const meetingUrls: SitemapUrl[] = meetings
-		.filter((meeting) => meeting.status === "summarized")
-		.map((meeting) => ({
-			loc: meetingPath(meeting),
-			changefreq: "weekly",
-			priority: "0.7",
-			lastmod: toDateOnly(meeting.meetingDate),
-		}));
+	const meetingUrls: SitemapUrl[] = meetings.map((meeting) => ({
+		loc: meetingPath(meeting),
+		changefreq: "weekly",
+		priority: "0.7",
+		lastmod: resolveSitemapLastmod(meeting),
+	}));
 
 	const urlElements = [...staticUrls, ...municipalityUrls, ...meetingUrls]
 		.map(
@@ -167,19 +168,10 @@ export function createConvexSitemapSource(
 	return {
 		async getSitemapRecords() {
 			const convex = new ConvexHttpClient(convexUrl);
-			const [municipalities, meetings] = await Promise.all([
-				convex.query(api.functions.municipalities.queries.list, {
-					activeOnly: true,
-				}),
-				convex.query(api.functions.meetings.queries.getRecent, {
-					limit: 500,
-				}),
-			]);
-
-			return {
-				municipalities,
-				meetings,
-			};
+			return await convex.query(
+				api.functions.meetings.queries.listSitemapEntries,
+				{},
+			);
 		},
 	};
 }
@@ -195,6 +187,16 @@ function toAbsoluteUrl(baseUrl: string, path: string): string {
 
 function toDateOnly(timestamp: number): string {
 	return new Date(timestamp).toISOString().split("T")[0];
+}
+
+function resolveSitemapLastmod(entry: {
+	lastmod?: number;
+	meetingDate?: number;
+	_creationTime?: number;
+}): string {
+	const timestamp =
+		entry.lastmod ?? entry.meetingDate ?? entry._creationTime ?? Date.now();
+	return toDateOnly(timestamp);
 }
 
 function escapeXml(value: string): string {

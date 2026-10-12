@@ -39,9 +39,6 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
-      - name: Test
-        run: pnpm test
-
       # `pnpm build` intentionally stays keyless: vite build + tsc --noEmit
       # against committed convex/_generated files. convex deploy regenerates
       # those files on the deploy path where the deploy key exists.

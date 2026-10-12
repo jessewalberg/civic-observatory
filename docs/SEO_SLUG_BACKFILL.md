@@ -24,3 +24,10 @@ values before the sitemap can emit slug URLs for all public records.
 If a generated slug is already used, append `-2`, `-3`, and so on. Slugs are
 stable after creation; admin updates only fill missing slugs and do not rename
 existing published URLs.
+
+## Search indexing
+
+Public town and meeting pages, sitemap behavior, and verification steps are
+documented in `docs/plans/2026-10-12-indexable-meeting-pages.md` (slice 1:
+SSR town summary links, real 404 vs Convex 5xx, meeting `noindex` hygiene, and
+the lightweight `listSitemapEntries` query).
