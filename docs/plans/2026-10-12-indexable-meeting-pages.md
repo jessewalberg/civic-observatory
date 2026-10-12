@@ -71,7 +71,8 @@ Conclusions:
 summarized meetings, return real 404s, and serve a light sitemap.** That is
 the minimum for Google to discover (`/sitemap.xml` + links on
 `/explore/coventry-ct`), fetch (SSR meeting HTML), and index real meeting
-pages. Board pages, the `/explore` index list and the polish items are slice 2.
+pages. Meeting-category pages, the `/explore` index list and the polish items
+are slice 2; exact board pages are slice 3.
 
 Out of slice 1 on purpose: board pages, new schema fields, IndexNow, Event rich
 results, pagination UI, and any change to auth, pricing, or usage limits.
@@ -106,29 +107,24 @@ done.
 
 File: `src/routes/explore/$municipalityId.tsx`.
 
-1. In the existing `loader`, after resolving `municipality`, fetch with the same
-   `ConvexHttpClient` in parallel:
-   - `api.functions.meetings.queries.listByMunicipality`
-     `{ municipalityId: municipality._id, status: "summarized", limit: 20 }`
-   - `api.functions.meetings.queries.getMeetingTypes`
-     `{ municipalityId: municipality._id }`
-   - `api.functions.meetings.queries.countByMunicipality`
-     `{ municipalityId: municipality._id }`
-   Return them as `initialMeetings`, `initialMeetingTypes`, `initialCount`.
-2. In `MunicipalityDetailPage`, use the loader values while the matching
-   `useQuery` is `undefined` **and** the user has not changed filters
-   (`meetingType === ""` and `cursor === null`). Same fallback pattern the
-   file already uses for `municipality`. Live `useQuery` data replaces it after
-   hydration.
-3. `MeetingCard` already wraps each row in `<a href={meetingPath(...)}>`;
-   confirm the SSR HTML shows the title, date and executive-summary excerpt as
-   visible text inside it.
+1. In the existing `loader`, after resolving `municipality`, fetch
+   `api.functions.meetings.queries.listByMunicipality` with the same
+   `ConvexHttpClient` and
+   `{ municipalityId: municipality._id, status: "summarized", limit: 20 }`.
+   Return the rows that have a final summary as `recentSummaries`.
+2. In `MunicipalityDetailPage`, add a separate server-rendered **Recent
+   summaries** section from `loaderData.recentSummaries`. Keep the existing
+   all-status `useQuery` list, filters and pagination unchanged; hydration must
+   not replace or remove the summary section.
+3. Render each summary as a visible title, date and executive-summary excerpt
+   inside a link to `meetingPath(...)`. Confirm the links remain present in raw
+   HTML and after hydration, even when 10 newer pending meetings fill the
+   existing client list.
 4. Unknown or unpublished town: replace `return { municipality: null }` with
    `throw notFound()` (as `/meeting/$meetingId` does), add a
    `notFoundComponent`, and keep the `noindex` meta in the not-found `head`.
-   Keep the Convex-unavailable path (missing `VITE_CONVEX_URL` or a thrown
-   query error) from being cached as a 404 by search engines: on a thrown
-   error, rethrow so the route errors (5xx) instead of returning not-found.
+   A missing `VITE_CONVEX_URL` or a thrown Convex query error must produce a
+   5xx, not a 404; distinguish those failures from a null query result.
 5. Structured data stays as `docs/adr/0003-seo-structured-data-model.md`
    decides: `GovernmentOrganization` (already emitted). Add `BreadcrumbList`
    (existing `generateBreadcrumbJsonLd`) only if the page renders a visible
@@ -140,10 +136,11 @@ File: `src/routes/explore/$municipalityId.tsx`.
 
 File: `src/routes/meeting/$meetingId.tsx`.
 
-1. In `head`, add `{ name: "robots", content: NOINDEX_ROBOTS }` when the meeting
-   has no summary to show: status `failed`, `skipped`, `processing`, or
-   `pending` with `meetingDate` in the past. Future `pending` meetings with
-   `rawContent` (the agenda preview) stay indexable.
+1. In `head`, add `{ name: "robots", content: NOINDEX_ROBOTS }` unless the
+   meeting is `summarized` with a final summary row, or is a future `pending`
+   meeting with nonempty `rawContent` (an agenda preview). This covers failed,
+   skipped, processing, past pending, future pending without content, and a
+   summarized meeting whose summary row is missing.
 2. Add `BreadcrumbList` JSON-LD matching the visible `<Breadcrumb>` the page
    already renders: Explore → town (`municipalityPath`) → meeting. Keep the
    existing `Report` about `Event` JSON-LD (ADR-0003).
@@ -154,6 +151,9 @@ File: `src/routes/meeting/$meetingId.tsx`.
 4. Do not change `UsageLimitExceeded` gating. Anonymous visitors (and crawlers)
    skip `checkLimit` today (`isAuthenticated ? … : "skip"`), so crawlers get the
    full summary. Keep it that way.
+5. In the loader, return 404 only when the query returns no meeting. A missing
+   `VITE_CONVEX_URL` or a thrown Convex query error must produce a 5xx; keep
+   the canonical 301 redirect for a found meeting.
 
 ### Step 3 — Light sitemap query
 
@@ -163,14 +163,20 @@ File: `src/routes/meeting/$meetingId.tsx`.
      include rows with no `coverageStatus` that pass `isCoveragePublic`, to match
      current behavior);
    - for each, reads meetings through `by_municipality_date`, keeps
-     `status === "summarized"`, and returns only
-     `{ _id, slug, meetingDate, lastmod }` where `lastmod` is the summary's
-     `createdAt` (fall back to meeting `updatedAt`);
+     `status === "summarized"` only when a final summary row exists, and
+     returns only `{ _id, slug, lastmod }` where `lastmod` is that summary's
+     `createdAt`;
    - returns `{ municipalities: [{ _id, slug, name, lastmod }], meetings }`.
+     Municipality `lastmod` is `coverageStatusUpdatedAt ?? updatedAt`.
    No `rawContent`, no summary bodies.
 2. Point `createConvexSitemapSource` in `src/lib/seoDiscovery.ts` at the new
-   query and use the returned `lastmod` in `generateSitemapXml`. Keep the
-   `X-Sitemap-Source` header semantics.
+   query. Update `SitemapMunicipality` and `SitemapMeeting` to match the
+   projection: both carry `lastmod`, and meetings no longer need `status` or
+   `_creationTime`. `generateSitemapXml` converts each returned `lastmod` to a
+   date and includes every prefiltered meeting; it no longer filters by status
+   or reads municipality `_creationTime`. In `createSitemapResponse`, classify
+   `dynamic` from the nonempty projected municipality or meeting arrays, not
+   from meeting status. Keep the `X-Sitemap-Source` header semantics.
 3. No codegen needed: `convex/_generated/api.d.ts` types
    `functions/meetings/queries` as `typeof import(...)`, so a new export in that
    module is typed automatically. `pnpm build` (`tsc --noEmit`) confirms it.
@@ -185,30 +191,24 @@ repo; do not create one.
 ### Testing rule for the builder (Jesse, 2026-10-09)
 
 Do not create, edit, or run unit tests (`vitest`, `pnpm test`, `*.test.ts(x)`).
-CI's `gate` job (`.github/workflows/deploy.yml`) still runs `pnpm test`. If it
-fails on a unit test that pinned behavior this change alters (likely
-candidates: `src/lib/seoDiscovery.test.ts`, `src/lib/routeSeo.test.ts`,
-`src/lib/canonicalRoutes.test.ts`, `src/lib/structuredData.test.ts`), delete
-that test file rather than update it, and name it in the PR. Removing the CI
-test step itself is a separate errand. Checks to run and report: `pnpm build`
-(includes `tsc --noEmit`), `pnpm check` (Biome), and the §5.1 real-surface
-reproduction. Any check not run is reported as not run.
+As part of slice 1, remove the `Test` step (`pnpm test`) from the `gate` job in
+`.github/workflows/deploy.yml`; keep its build step. Checks to run and report:
+`pnpm build` (includes `tsc --noEmit`), `pnpm check` (Biome), and the §5.1
+real-surface reproduction. Any check not run is reported as not run.
 
 ## 4. Slice 2 (after slice 1 is indexed)
 
-1. **Board pages** `/explore/<town>/<board>`, board slug = `meetingType` with
-   `_` → `-` (`city-council`, `planning-commission`, …). Use a non-nested file
-   `src/routes/explore/$municipalityId_.$board.tsx` so the existing town route
+1. **Meeting-category pages** `/explore/<town>/category/<type>`, where `<type>`
+   is the `meetingType` value with `_` → `-` (`city-council`,
+   `planning-commission`, …). Use a non-nested route
+   `src/routes/explore/$municipalityId_.category.$type.tsx` so the town route
    needs no `<Outlet>`. Loader: `listByMunicipality` with `meetingType`,
-   `status: "summarized"`, `limit: 50`; 404 for unknown board slugs or boards
-   with zero summarized meetings. Town page links to each board from
-   `getMeetingTypes`. Add board URLs to the sitemap. JSON-LD:
-   `GovernmentOrganization` (board) with `parentOrganization` = town, plus
-   `BreadcrumbList`.
-   Risk: labels come from the coarse enum (`city_council` → "City Council");
-   Coventry calls its body "Town Council" (fixture doc). Showing the wrong body
-   name on a public page is a trust problem; decide on a per-town label before
-   shipping board pages.
+   `status: "summarized"`, `limit: 50`; 404 for unknown categories or categories
+   with zero meetings that have a final summary. Town page links to each
+   category from `getMeetingTypes`. Add category URLs with final summaries to
+   the sitemap. Label these as meeting categories, not individual boards; use
+   `CollectionPage` and `ItemList` JSON-LD plus `BreadcrumbList`, with no
+   `GovernmentOrganization` per category.
 2. `/explore` loader: SSR the published town list (`list {activeOnly:true}`)
    as plain links.
 3. Fix `geo.region` to `US-<abbr>` using a state-abbreviation helper shared with
@@ -216,6 +216,13 @@ reproduction. Any check not run is reported as not run.
 4. Drop `initial={{ opacity: 0 }}` on summary content if URL Inspection shows
    rendered HTML missing or hidden text.
 5. Second town only after Coventry pages show as indexed.
+
+## Slice 3 — exact board pages
+
+Carry an exact board-name field from the scraper source category through the
+meeting record before making per-board URLs or `GovernmentOrganization` markup
+for a board. `meetingType` alone groups distinct Coventry bodies, including
+Town Council and Town Council Steering Committee.
 
 ## 5. How to verify indexing
 
@@ -231,19 +238,23 @@ pnpm preview            # serves the Worker build locally via the Cloudflare plu
 
 Then, with `BASE=http://localhost:<preview port>`:
 
-1. `curl -sS $BASE/explore/coventry-ct` — raw HTML (no JS) contains at least one
-   `href="/meeting/coventry-ct-` link and a meeting title. If step 0 is not
-   done yet, expect HTTP **404** with `noindex`; record "content check not run:
-   Coventry unpublished".
+1. `curl -sS $BASE/explore/coventry-ct` — raw HTML (no JS) contains a **Recent
+   summaries** section with at least one `href="/meeting/coventry-ct-` link and
+   a meeting title. Confirm the link remains after hydration, including when
+   the separate all-status list contains only newer pending meetings. If step 0
+   is not done yet, expect HTTP **404** with `noindex`; record "content check
+   not run: Coventry unpublished".
 2. `curl -sS -o /dev/null -w '%{http_code}' $BASE/explore/not-a-town` → `404`.
 3. Pick one meeting URL from (1): raw HTML contains the executive summary text,
    at least one key decision, the meeting date, the source link, a canonical
    `<link>`, and an `application/ld+json` block that parses as JSON.
-4. `curl -sSI $BASE/sitemap.xml` → `X-Sitemap-Source: dynamic` and the body
-   lists `/explore/coventry-ct` and each summarized Coventry meeting. Response
-   time is noted in the PR.
-5. A failed/skipped meeting (if any exists) has `<meta name="robots"
-   content="noindex, nofollow">`.
+4. `curl -sS -D sitemap.headers -o sitemap.xml $BASE/sitemap.xml` makes a GET
+   request: `sitemap.headers` has `X-Sitemap-Source: dynamic`, and `sitemap.xml`
+   lists `/explore/coventry-ct` and each Coventry meeting with a final summary.
+   Response time is noted in the PR.
+5. A failed/skipped meeting (if any exists), a future pending meeting without
+   `rawContent`, and a summarized meeting without a final summary (if those
+   states exist) have `<meta name="robots" content="noindex, nofollow">`.
 
 If `pnpm preview` cannot run in the sandbox, report it as not run; do not
 substitute a unit test.
@@ -258,8 +269,7 @@ Repeat 5.1 checks 1–4 against `https://civicobservatory.com`.
    Console with the DNS TXT record in Cloudflare DNS. Jesse's Google account;
    no code change needed.
 2. Submit `https://civicobservatory.com/sitemap.xml` in Search Console →
-   Sitemaps. Optionally import the property into Bing Webmaster Tools from
-   Search Console.
+   Sitemaps.
 3. URL Inspection → **Test live URL** on `/explore/coventry-ct` and one meeting
    URL: rendered HTML contains the summary text; "Page can be indexed".
 
@@ -285,16 +295,14 @@ Repeat 5.1 checks 1–4 against `https://civicobservatory.com`.
   link and the existing `SummaryTrustPanel`; pause coverage
   (`/admin/coverage`) if a summary is found wrong.
 - **Thin or duplicate pages.** Many near-empty meeting pages can lower site
-  quality. Slice 1 lists only summarized meetings in the sitemap and
-  `noindex`es pages without summaries.
+  quality. Slice 1 lists only meetings with final summaries in the sitemap and
+  `noindex`es pages without summaries or a substantive future agenda preview.
 - **Convex read limits** on the sitemap query as towns grow; step 3 reads only
   published towns through indexes. Past a few thousand meetings, split into a
   sitemap index per town.
-- **Soft 404 → hard 404 transition**: a Convex outage must not turn into 404s
-  that drop pages from the index (step 1.4 rethrows errors).
+- **Soft 404 → hard 404 transition**: a Convex outage must not turn town or
+  meeting pages into 404s that drop them from the index (steps 1.4 and 2.5).
 - **Hydration hiding content** (`opacity:0` until JS runs); checked by URL
   Inspection, fixed in slice 2 if needed.
-- **Board labels** from the coarse `meetingType` enum may misname bodies
-  (slice 2).
-- **CI still runs unit tests** while Jesse's 2026-10-09 decision says none;
-  tests pinned to old SEO behavior may fail the gate (handling in §3).
+- **Board identity** is not available from `meetingType`; slice 2 labels those
+  pages as categories and slice 3 needs exact names from scraper source data.
