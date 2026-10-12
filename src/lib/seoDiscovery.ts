@@ -134,12 +134,14 @@ export function generateSitemapXml(
 		lastmod: resolveSitemapLastmod(municipality),
 	}));
 
-	const meetingUrls: SitemapUrl[] = meetings.map((meeting) => ({
-		loc: meetingPath(meeting),
-		changefreq: "weekly",
-		priority: "0.7",
-		lastmod: resolveSitemapLastmod(meeting),
-	}));
+	const meetingUrls: SitemapUrl[] = meetings
+		.filter((meeting) => !meeting.status || meeting.status === "summarized")
+		.map((meeting) => ({
+			loc: meetingPath(meeting),
+			changefreq: "weekly",
+			priority: "0.7",
+			lastmod: resolveSitemapLastmod(meeting),
+		}));
 
 	const urlElements = [...staticUrls, ...municipalityUrls, ...meetingUrls]
 		.map(

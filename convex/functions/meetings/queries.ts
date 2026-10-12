@@ -293,7 +293,7 @@ export const listSitemapEntries = query({
 			for (const meeting of meetingRows) {
 				if (meeting.status !== "summarized") continue;
 				const summary = await getFinalSummaryForMeeting(ctx, meeting._id);
-				if (!summary) continue;
+				if (!summary?.executiveSummary?.trim()) continue;
 
 				meetings.push({
 					_id: meeting._id,

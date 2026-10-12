@@ -27,7 +27,8 @@ existing published URLs.
 
 ## Search indexing
 
-Public town and meeting pages, sitemap behavior, and verification steps are
-documented in `docs/plans/2026-10-12-indexable-meeting-pages.md` (slice 1:
-SSR town summary links, real 404 vs Convex 5xx, meeting `noindex` hygiene, and
-the lightweight `listSitemapEntries` query).
+Slice 1 (2026-10-12): town pages SSR a **Recent summaries** link list;
+`/sitemap.xml` uses `meetings/queries:listSitemapEntries`; meeting pages without
+a final summary (except future agenda previews) carry `noindex`. Verify with
+`pnpm build`, `pnpm preview`, and curl against `/explore/<town>`, `/meeting/<slug>`,
+and `/sitemap.xml`.
