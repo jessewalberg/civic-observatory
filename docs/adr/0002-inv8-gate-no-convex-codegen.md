@@ -27,7 +27,7 @@ not `npx convex codegen && vite build && tsc --noEmit`.
 ## Context
 
 The INV-8 gate runs `pnpm build` as a pre-merge check (`.github/workflows/deploy.yml`,
-job `Test & build gate`) so the test+build gate passes BEFORE a PR can merge — the repo
+job `Test & build gate`) so the build gate passes BEFORE a PR can merge — the repo
 deploys on push to `main`, so a red gate cannot be allowed to merge. Per **INV-7**, that
 gate job carries **no `CONVEX_DEPLOYMENT` / no Convex deploy key** (runtime/deploy secrets
 are synced out-of-band by the owner and live only on the deploy path, never in CI). But

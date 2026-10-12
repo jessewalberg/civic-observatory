@@ -76,3 +76,74 @@ describe("recent municipality summaries", () => {
 		]);
 	});
 });
+
+describe("sitemap entries", () => {
+	it("includes published towns and only meetings with a nonblank final summary", async () => {
+		const t = convexTest(schema, modules);
+		const { townId, validId } = await t.run(async (ctx) => {
+			const townId = await ctx.db.insert("municipalities", {
+				name: "Testville",
+				state: "CT",
+				platform: "manual",
+				isActive: true,
+				isVerified: true,
+				coverageStatus: "published",
+				createdAt: 1,
+				updatedAt: 2,
+			});
+			const hiddenTownId = await ctx.db.insert("municipalities", {
+				name: "Hidden town",
+				state: "CT",
+				platform: "manual",
+				isActive: true,
+				isVerified: false,
+				coverageStatus: "unpublished",
+				createdAt: 1,
+				updatedAt: 2,
+			});
+			const insertMeeting = (municipalityId: Id<"municipalities">, title: string) =>
+				ctx.db.insert("meetings", {
+					municipalityId,
+					title,
+					meetingType: "city_council",
+					meetingDate: 3,
+					sourceType: "manual_entry",
+					status: "summarized",
+					createdAt: 3,
+					updatedAt: 3,
+				});
+			const insertSummary = (meetingId: Id<"meetings">, executiveSummary: string) =>
+				ctx.db.insert("summaries", {
+					meetingId,
+					version: 1,
+					executiveSummary,
+					keyDecisions: [],
+					discussionTopics: [],
+					upcomingItems: [],
+					topics: [],
+					modelUsed: "test",
+					promptVersion: "test",
+					processingTimeMs: 1,
+					kind: "summary",
+					createdAt: 4,
+				});
+			const validId = await insertMeeting(townId, "Published summary");
+			await insertSummary(validId, "Library renovation approved");
+			const blankId = await insertMeeting(townId, "Blank summary");
+			await insertSummary(blankId, "   ");
+			await insertMeeting(townId, "No summary");
+			const hiddenId = await insertMeeting(hiddenTownId, "Hidden summary");
+			await insertSummary(hiddenId, "Secret");
+			return { townId, validId };
+		});
+
+		const entries = await t.query(
+			api.functions.meetings.queries.listSitemapEntries,
+			{},
+		);
+		expect(entries.municipalities.map(({ _id }) => _id)).toEqual([townId]);
+		expect(entries.meetings.map(({ _id }) => _id)).toEqual([validId]);
+		expect(entries.municipalities[0]?.lastmod).toBe(4);
+		expect(entries.meetings[0]?.lastmod).toBe(4);
+	});
+});

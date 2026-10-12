@@ -1,5 +1,10 @@
 import { isNotFound, isRedirect } from "@tanstack/react-router";
 import { createIsomorphicFn } from "@tanstack/react-start";
+import {
+	getRequest,
+	setResponseHeader,
+	setResponseStatus,
+} from "@tanstack/react-start/server";
 import { markConvexOutage } from "./convexOutageContext";
 import {
 	CONVEX_OUTAGE_RESPONSE_HEADER,
@@ -12,10 +17,7 @@ const throwConvexServiceUnavailable = createIsomorphicFn()
 		throw new ConvexServiceUnavailableError();
 	})
 	.server((): never => {
-		const server = // eslint-disable-next-line @typescript-eslint/no-require-imports
-			require("@tanstack/react-start/server") as typeof import("@tanstack/react-start/server");
-		markConvexOutage(server.getRequest());
-		const { setResponseHeader, setResponseStatus } = server;
+		markConvexOutage(getRequest());
 		setResponseHeader(
 			CONVEX_OUTAGE_RESPONSE_HEADER,
 			CONVEX_OUTAGE_RESPONSE_VALUE,
