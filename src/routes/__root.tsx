@@ -18,6 +18,8 @@ import {
 	hasClerkSessionCookie,
 	showsAuthenticatedHeaderControls,
 } from "@/lib/authRoutes";
+import { markConvexOutage } from "@/lib/convexOutageContext";
+import { isConvexServiceUnavailable } from "@/lib/convexServiceUnavailable";
 import { DEFAULT_SOCIAL_IMAGE } from "@/lib/seo";
 import appCss from "@/styles.css?url";
 
@@ -100,6 +102,17 @@ export const Route = createRootRoute({
 });
 
 function RootErrorComponent({ error }: { error: Error }) {
+	if (typeof window === "undefined" && isConvexServiceUnavailable(error)) {
+		try {
+			const { getRequest } =
+				// eslint-disable-next-line @typescript-eslint/no-require-imports
+				require("@tanstack/react-start/server") as typeof import("@tanstack/react-start/server");
+			markConvexOutage(getRequest());
+		} catch {
+			markConvexOutage();
+		}
+	}
+
 	const router = useRouter();
 	return (
 		<RootDocument>
