@@ -111,7 +111,11 @@ File: `src/routes/explore/$municipalityId.tsx`.
    `api.functions.meetings.queries.listByMunicipality` with the same
    `ConvexHttpClient` and
    `{ municipalityId: municipality._id, status: "summarized", limit: 20 }`.
-   Return the rows that have a final summary as `recentSummaries`.
+   Keep rows with a final summary and project each to
+   `{ _id, slug, title, meetingDate, summaryPreview }`, where
+   `summaryPreview` is a short excerpt of `summary.executiveSummary`. Return
+   only those projected rows as `recentSummaries`; do not serialize
+   `rawContent` or full summary records into town loader data.
 2. In `MunicipalityDetailPage`, add a separate server-rendered **Recent
    summaries** section from `loaderData.recentSummaries`. Keep the existing
    all-status `useQuery` list, filters and pagination unchanged; hydration must
@@ -167,7 +171,9 @@ File: `src/routes/meeting/$meetingId.tsx`.
      returns only `{ _id, slug, lastmod }` where `lastmod` is that summary's
      `createdAt`;
    - returns `{ municipalities: [{ _id, slug, name, lastmod }], meetings }`.
-     Municipality `lastmod` is `coverageStatusUpdatedAt ?? updatedAt`.
+     For each municipality, `lastmod` is the latest of `updatedAt`,
+     `coverageStatusUpdatedAt` (when present), and the final-summary `createdAt`
+     values from all its included meetings, not just the 20 recent town links.
    No `rawContent`, no summary bodies.
 2. Point `createConvexSitemapSource` in `src/lib/seoDiscovery.ts` at the new
    query. Update `SitemapMunicipality` and `SitemapMeeting` to match the
@@ -202,11 +208,14 @@ real-surface reproduction. Any check not run is reported as not run.
    is the `meetingType` value with `_` → `-` (`city-council`,
    `planning-commission`, …). Use a non-nested route
    `src/routes/explore/$municipalityId_.category.$type.tsx` so the town route
-   needs no `<Outlet>`. Loader: `listByMunicipality` with `meetingType`,
-   `status: "summarized"`, `limit: 50`; 404 for unknown categories or categories
-   with zero meetings that have a final summary. Town page links to each
-   category from `getMeetingTypes`. Add category URLs with final summaries to
-   the sitemap. Label these as meeting categories, not individual boards; use
+   needs no `<Outlet>`. The category loader selects up to 50 meetings with the
+   requested `meetingType`, `status: "summarized"`, and a final summary; apply
+   the limit after checking summary eligibility, and 404 only for an unknown
+   category or one with no eligible meetings. Add a public per-town query for
+   distinct types using that same eligibility rule and use it for town-page
+   category links; keep the existing `getMeetingTypes` query for the all-status
+   client filter. Add category URLs to the sitemap only for types with eligible
+   meetings. Label these as meeting categories, not individual boards; use
    `CollectionPage` and `ItemList` JSON-LD plus `BreadcrumbList`, with no
    `GovernmentOrganization` per category.
 2. `/explore` loader: SSR the published town list (`list {activeOnly:true}`)
