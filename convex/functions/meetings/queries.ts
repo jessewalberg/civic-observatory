@@ -114,6 +114,45 @@ export const listByMunicipality = query({
 	},
 });
 
+export const listRecentSummariesByMunicipality = query({
+	args: { municipalityId: v.id("municipalities") },
+	handler: async (ctx, args) => {
+		const municipality = await getVisibleMunicipality(ctx, args.municipalityId);
+		if (!municipality) return [];
+
+		const meetingRows = await ctx.db
+			.query("meetings")
+			.withIndex("by_municipality_date", (q) =>
+				q.eq("municipalityId", args.municipalityId),
+			)
+			.order("desc")
+			.collect();
+
+		const recentSummaries: Array<{
+			_id: Id<"meetings">;
+			slug?: string;
+			title: string;
+			meetingDate: number;
+			executiveSummary: string;
+		}> = [];
+		for (const meeting of meetingRows) {
+			if (meeting.status !== "summarized") continue;
+			const summary = await getFinalSummaryForMeeting(ctx, meeting._id);
+			if (!summary?.executiveSummary?.trim()) continue;
+
+			recentSummaries.push({
+				_id: meeting._id,
+				slug: meeting.slug,
+				title: meeting.title,
+				meetingDate: meeting.meetingDate,
+				executiveSummary: summary.executiveSummary,
+			});
+			if (recentSummaries.length === 20) break;
+		}
+		return recentSummaries;
+	},
+});
+
 // ═══════════════════════════════════════════════════════════════
 // GET - Single meeting by ID
 // ═══════════════════════════════════════════════════════════════

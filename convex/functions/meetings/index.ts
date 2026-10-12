@@ -17,6 +17,7 @@ export {
 	getRecent,
 	getWithSummary,
 	listByMunicipality,
+	listRecentSummariesByMunicipality,
 	listPending,
 	listSitemapEntries,
 } from "./queries";

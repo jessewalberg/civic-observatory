@@ -74,24 +74,17 @@ export const Route = createFileRoute("/explore/$municipalityId")({
 				throw notFound();
 			}
 
-			const meetingsPage = await convex.query(
-				api.functions.meetings.queries.listByMunicipality,
-				{
-					municipalityId: municipality._id,
-					status: "summarized",
-					limit: 20,
-				},
-			);
-			const recentSummaries = meetingsPage.meetings
-				.filter((meeting) => meeting.summary?.executiveSummary?.trim())
-				.map((meeting) => ({
+			const recentSummaries = (
+				await convex.query(
+					api.functions.meetings.queries.listRecentSummariesByMunicipality,
+					{ municipalityId: municipality._id },
+				)
+			).map((meeting) => ({
 					_id: meeting._id,
 					slug: meeting.slug,
 					title: meeting.title,
 					meetingDate: meeting.meetingDate,
-					summaryPreview: buildSummaryPreview(
-						meeting.summary?.executiveSummary ?? "",
-					),
+					summaryPreview: buildSummaryPreview(meeting.executiveSummary),
 				}));
 
 			return { municipality, recentSummaries };
