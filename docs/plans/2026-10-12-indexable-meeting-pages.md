@@ -132,9 +132,7 @@ File: `src/routes/explore/$municipalityId.tsx`.
 5. Structured data stays as `docs/adr/0003-seo-structured-data-model.md`
    decides: `GovernmentOrganization` (already emitted). Add `BreadcrumbList`
    (existing `generateBreadcrumbJsonLd`) only if the page renders a visible
-   breadcrumb; the ADR ties breadcrumb JSON-LD to visible breadcrumbs. The
-   ADR's "add tests that parse route JSON-LD" line is superseded by Jesse's
-   2026-10-09 no-unit-tests decision; JSON-LD is checked in §5.1 instead.
+   breadcrumb; the ADR ties breadcrumb JSON-LD to visible breadcrumbs.
 
 ### Step 2 — Meeting page: indexing hygiene
 

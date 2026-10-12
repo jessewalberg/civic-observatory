@@ -37,5 +37,3 @@ The prior model had two risks:
   warnings.
 - Meeting summaries may not qualify for every article/news rich result, but the
   markup now matches the actual product surface.
-- New public content routes should add tests that parse route JSON-LD and assert
-  the intended Schema.org shape.
