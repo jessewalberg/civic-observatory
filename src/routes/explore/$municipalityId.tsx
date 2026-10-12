@@ -80,12 +80,11 @@ export const Route = createFileRoute("/explore/$municipalityId")({
 					{ municipalityId: municipality._id },
 				)
 			).map((meeting) => ({
-					_id: meeting._id,
-					slug: meeting.slug,
-					title: meeting.title,
-					meetingDate: meeting.meetingDate,
-					summaryPreview: buildSummaryPreview(meeting.executiveSummary),
-				}));
+				_id: meeting._id,
+				slug: meeting.slug,
+				title: meeting.title,
+				meetingDate: meeting.meetingDate,
+			}));
 
 			return { municipality, recentSummaries };
 		} catch (error) {
@@ -443,9 +442,6 @@ function MunicipalityDetailPage() {
 												{formatMeetingDate(meeting.meetingDate)}
 											</time>
 										</div>
-										<p className="mt-2 text-sm text-muted-foreground line-clamp-3">
-											{meeting.summaryPreview}
-										</p>
 									</Link>
 								</li>
 							))}
@@ -611,16 +607,6 @@ function MunicipalityDetailPage() {
 			)}
 		</div>
 	);
-}
-
-const SUMMARY_PREVIEW_LENGTH = 160;
-
-function buildSummaryPreview(text: string): string {
-	const trimmed = text.trim();
-	if (trimmed.length <= SUMMARY_PREVIEW_LENGTH) {
-		return trimmed;
-	}
-	return `${trimmed.slice(0, SUMMARY_PREVIEW_LENGTH).trim()}...`;
 }
 
 function MunicipalityNotFoundPage() {
