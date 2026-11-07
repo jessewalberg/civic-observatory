@@ -30,7 +30,8 @@ import * as m27 from "./functions/usage/mutations";
 import * as m28 from "./functions/usage/queries";
 import * as m29 from "./functions/users/mutations";
 import * as m30 from "./functions/users/queries";
-import * as m31 from "./seedMunicipalities";
+import * as m31 from "./functions/jobs/operations";
+import * as m32 from "./seedMunicipalities";
 export const registry = {
 "functions/ai/extractPdf:extractPdf":m0.extractPdf,
 "functions/ai/mutations:updateMeetingStatus":m1.updateMeetingStatus,
@@ -173,9 +174,7 @@ export const registry = {
 "functions/stripe/actions:createPortalSession":m22.createPortalSession,
 "functions/stripe/actions:handleWebhook":m22.handleWebhook,
 "functions/stripe/mutations:updateStripeCustomer":m23.updateStripeCustomer,
-"functions/stripe/mutations:handleCheckoutCompleted":m23.handleCheckoutCompleted,
-"functions/stripe/mutations:handleSubscriptionUpdated":m23.handleSubscriptionUpdated,
-"functions/stripe/mutations:handleSubscriptionDeleted":m23.handleSubscriptionDeleted,
+"functions/stripe/mutations:applyEvent":m23.applyEvent,
 "functions/subscriptions/mutations:create":m24.create,
 "functions/subscriptions/mutations:update":m24.update,
 "functions/subscriptions/mutations:remove":m24.remove,
@@ -215,11 +214,14 @@ export const registry = {
 "functions/users/queries:getAdminBootstrapStatus":m30.getAdminBootstrapStatus,
 "functions/users/queries:listAll":m30.listAll,
 "functions/users/queries:getAdminStats":m30.getAdminStats,
-"seedMunicipalities:insertStateBatch":m31.insertStateBatch,
-"seedMunicipalities:seedState":m31.seedState,
-"seedMunicipalities:seedAllStates":m31.seedAllStates,
-"seedMunicipalities:syncUrls":m31.syncUrls,
-"seedMunicipalities:syncUrlsBatch":m31.syncUrlsBatch,
-"seedMunicipalities:seedingStatus":m31.seedingStatus,
-"seedMunicipalities:analyzeBroken":m31.analyzeBroken
+"functions/jobs/operations:list":m31.list,
+"functions/jobs/operations:attempts":m31.attempts,
+"functions/jobs/operations:retry":m31.retry,
+"seedMunicipalities:insertStateBatch":m32.insertStateBatch,
+"seedMunicipalities:seedState":m32.seedState,
+"seedMunicipalities:seedAllStates":m32.seedAllStates,
+"seedMunicipalities:syncUrls":m32.syncUrls,
+"seedMunicipalities:syncUrlsBatch":m32.syncUrlsBatch,
+"seedMunicipalities:seedingStatus":m32.seedingStatus,
+"seedMunicipalities:analyzeBroken":m32.analyzeBroken
 };

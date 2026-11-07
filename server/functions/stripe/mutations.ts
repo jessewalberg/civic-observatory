@@ -2,10 +2,7 @@ import { z } from "zod";
 import { entityId } from "../../id";
 import { privateWrite } from "../../procedure";
 export const updateStripeCustomer = privateWrite({
-	args: {
-		userId: entityId("users"),
-		stripeCustomerId: z.string(),
-	},
+	args: { userId: entityId("users"), stripeCustomerId: z.string() },
 	handler: async (ctx, args) => {
 		await ctx.data.update(args.userId, {
 			stripeCustomerId: args.stripeCustomerId,
@@ -13,88 +10,63 @@ export const updateStripeCustomer = privateWrite({
 		});
 	},
 });
-export const handleCheckoutCompleted = privateWrite({
+export const applyEvent = privateWrite({
 	args: {
-		stripeCustomerId: z.string(),
-		stripeSubscriptionId: z.string(),
-		currentPeriodEnd: z.number(),
+		eventId: z.string().min(1),
+		eventType: z.string(),
+		change: z.discriminatedUnion("kind", [
+			z.object({
+				kind: z.literal("checkout"),
+				customerId: z.string(),
+				subscriptionId: z.string(),
+				periodEnd: z.number().positive(),
+			}),
+			z.object({
+				kind: z.literal("updated"),
+				subscriptionId: z.string(),
+				periodEnd: z.number().positive(),
+				status: z.string(),
+			}),
+			z.object({ kind: z.literal("deleted"), subscriptionId: z.string() }),
+			z.object({ kind: z.literal("ignored") }),
+		]),
 	},
-	handler: async (ctx, args) => {
-		// Find user by Stripe customer ID
+	handler: async (ctx, args): Promise<{ duplicate: boolean }> => {
+		if (!(await ctx.data.claimStripeEvent(args.eventId, args.eventType)))
+			return { duplicate: true };
+		const change = args.change;
+		if (change.kind === "ignored") return { duplicate: false };
 		const user = await ctx.data
 			.select("users")
-			.orderBy(["stripeCustomerId", "_creationTime", "_id"])
-			.where("stripeCustomerId", "=", args.stripeCustomerId)
-			.one();
-		if (!user || user.billingMode !== "test") {
-			console.error(
-				"User not found for Stripe customer:",
-				args.stripeCustomerId,
+			.where(
+				change.kind === "checkout"
+					? "stripeCustomerId"
+					: "stripeSubscriptionId",
+				"=",
+				change.kind === "checkout" ? change.customerId : change.subscriptionId,
+			)
+			.only();
+		if (!user || user.billingMode !== "test")
+			throw new Error(
+				"Test billing account mapping is unavailable; event was not acknowledged",
 			);
-			return;
-		}
-		// Upgrade user to pro
-		await ctx.data.update(user._id, {
-			tier: "pro",
-			stripeSubscriptionId: args.stripeSubscriptionId,
-			stripeCurrentPeriodEnd: args.currentPeriodEnd,
-		});
-		console.log(`User ${user._id} upgraded to pro`);
-	},
-});
-export const handleSubscriptionUpdated = privateWrite({
-	args: {
-		stripeSubscriptionId: z.string(),
-		currentPeriodEnd: z.number(),
-		status: z.string(),
-	},
-	handler: async (ctx, args) => {
-		// Find user by subscription ID
-		const users = await ctx.data.select("users").all();
-		const user = users.find(
-			(u) => u.stripeSubscriptionId === args.stripeSubscriptionId,
-		);
-		if (!user || user.billingMode !== "test") {
-			console.error(
-				"User not found for subscription:",
-				args.stripeSubscriptionId,
-			);
-			return;
-		}
-		// Update subscription period
-		const isActive = ["active", "trialing"].includes(args.status);
-		await ctx.data.update(user._id, {
-			tier: isActive ? "pro" : "free",
-			stripeCurrentPeriodEnd: args.currentPeriodEnd,
-		});
-		console.log(
-			`User ${user._id} subscription updated: status=${args.status}, tier=${isActive ? "pro" : "free"}`,
-		);
-	},
-});
-export const handleSubscriptionDeleted = privateWrite({
-	args: {
-		stripeSubscriptionId: z.string(),
-	},
-	handler: async (ctx, args) => {
-		// Find user by subscription ID
-		const users = await ctx.data.select("users").all();
-		const user = users.find(
-			(u) => u.stripeSubscriptionId === args.stripeSubscriptionId,
-		);
-		if (!user || user.billingMode !== "test") {
-			console.error(
-				"User not found for subscription:",
-				args.stripeSubscriptionId,
-			);
-			return;
-		}
-		// Downgrade user to free
-		await ctx.data.update(user._id, {
-			tier: "free",
-			stripeSubscriptionId: undefined,
-			stripeCurrentPeriodEnd: undefined,
-		});
-		console.log(`User ${user._id} downgraded to free (subscription deleted)`);
+		if (change.kind === "checkout")
+			await ctx.data.update(user._id, {
+				tier: "pro",
+				stripeSubscriptionId: change.subscriptionId,
+				stripeCurrentPeriodEnd: change.periodEnd,
+			});
+		else if (change.kind === "updated")
+			await ctx.data.update(user._id, {
+				tier: ["active", "trialing"].includes(change.status) ? "pro" : "free",
+				stripeCurrentPeriodEnd: change.periodEnd,
+			});
+		else
+			await ctx.data.update(user._id, {
+				tier: "free",
+				stripeSubscriptionId: undefined,
+				stripeCurrentPeriodEnd: undefined,
+			});
+		return { duplicate: false };
 	},
 });

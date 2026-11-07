@@ -190,6 +190,12 @@ function AdminContent() {
 							description="Delivery health"
 						/>
 						<QuickLink
+							to="/admin/jobs"
+							icon={Clock}
+							label="Jobs"
+							description="Failures + recovery"
+						/>
+						<QuickLink
 							to="/admin/investigations"
 							icon={Search}
 							label="Investigate"

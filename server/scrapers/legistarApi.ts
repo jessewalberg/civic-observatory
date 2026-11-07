@@ -1,3 +1,4 @@
+import { fetchPublicSource, SourcePolicyError } from "../sourceFetch";
 import type { ScrapedMeeting, ScraperResult } from "./types";
 import {
 	hashContent,
@@ -58,17 +59,14 @@ export async function fetchLegistarEvents(
 	const top = options?.top ?? 100;
 	const apiUrl = `${LEGISTAR_API_BASE}/${slug}/events?$top=${top}&$orderby=EventDate%20desc`;
 	try {
-		const controller = new AbortController();
-		const timeoutId = setTimeout(() => controller.abort(), 10000);
-		const response = await fetch(apiUrl, {
-			signal: controller.signal,
+		const response = await fetchPublicSource(apiUrl, {
+			timeout: 10000,
 			headers: {
 				Accept: "application/json",
 				"User-Agent":
 					"Mozilla/5.0 (compatible; CivicObservatory/1.0; +https://civicobservatory.com)",
 			},
 		});
-		clearTimeout(timeoutId);
 		if (!response.ok) return null;
 		const text = await response.text();
 		// Wildcard subdomains return 200 with ~19 bytes of non-JSON content
@@ -79,7 +77,8 @@ export async function fetchLegistarEvents(
 		const events: LegistarEvent[] = JSON.parse(trimmed);
 		if (!Array.isArray(events) || events.length === 0) return null;
 		return events;
-	} catch {
+	} catch (error) {
+		if (error instanceof SourcePolicyError) throw error;
 		return null;
 	}
 }

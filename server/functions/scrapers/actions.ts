@@ -306,7 +306,14 @@ export const runScraper = privateTask({
 				},
 			);
 			return {
-				success: true,
+				success: finalStatus !== "failed",
+				...(finalStatus === "failed"
+					? {
+							error:
+								result.errors[0]?.message ??
+								"Every discovered meeting failed processing",
+						}
+					: {}),
 				jobId,
 				stats: {
 					found: result.stats.found,

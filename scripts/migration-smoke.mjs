@@ -30,6 +30,14 @@ try {
 				createdAt: created,
 				lastLoginAt: created,
 			}),
+			fixture("legacy_workos_user", {
+				workosUserId: "workos_original",
+				email: "workos@example.test",
+				tier: "pro",
+				isAdmin: true,
+				createdAt: created,
+				lastLoginAt: created,
+			}),
 		],
 		municipalities: [
 			fixture("legacy_municipality", {
@@ -53,7 +61,7 @@ try {
 				meetingDate: created,
 				sourceType: "uploaded",
 				documentStorageId: "legacy_document",
-				uploadedByUserId: "legacy_user",
+				uploadedByUserId: "legacy_workos_user",
 				status: "summarized",
 				createdAt: created,
 				updatedAt: created,
@@ -167,6 +175,19 @@ try {
 			`${rows.map((row) => JSON.stringify(row)).join("\n")}\n`,
 		);
 	}
+	const metadata = path.join(snapshot, "_tables");
+	fs.mkdirSync(metadata);
+	fs.writeFileSync(
+		path.join(metadata, "documents.jsonl"),
+		`${JSON.stringify({ _id: "metadata_table", name: "users" })}\n`,
+	);
+	const identityMap = path.join(root, "owner-identity-map.json");
+	fs.writeFileSync(
+		identityMap,
+		JSON.stringify([
+			{ appUserId: "legacy_workos_user", clerkUserId: "workos_replacement" },
+		]),
+	);
 	const storage = path.join(snapshot, "_storage");
 	fs.mkdirSync(storage);
 	fs.writeFileSync(
@@ -198,6 +219,23 @@ try {
 					},
 				],
 			},
+			{
+				id: "workos_replacement",
+				first_name: "Legacy",
+				last_name: "Resident",
+				banned: false,
+				locked: false,
+				two_factor_enabled: false,
+				totp_enabled: false,
+				primary_email_address_id: "workos_email",
+				email_addresses: [
+					{
+						id: "workos_email",
+						email_address: "workos@example.test",
+						verification: { status: "verified" },
+					},
+				],
+			},
 		]),
 	);
 	await run("bun", [
@@ -206,6 +244,9 @@ try {
 		snapshot,
 		"--clerk-users",
 		providerUsers,
+		"--identity-map",
+		identityMap,
+		"--require-complete-identities",
 		"--output",
 		output,
 	]);
@@ -213,9 +254,12 @@ try {
 		fs.readFileSync(path.join(output, "counts.json"), "utf8"),
 	);
 	assert.deepEqual(counts, {
-		tables: Object.fromEntries(Object.keys(tables).map((table) => [table, 1])),
+		tables: Object.fromEntries(
+			Object.entries(tables).map(([table, rows]) => [table, rows.length]),
+		),
 		documents: 2,
-		accounts: 1,
+		accounts: 2,
+		pendingAccounts: 0,
 	});
 	await cli([
 		"d1",
@@ -245,7 +289,7 @@ try {
 		"--local",
 	]);
 	const query =
-		"SELECT json_extract(u.body,'$._id') AS id,json_extract(u.body,'$.tier') AS tier,json_extract(u.body,'$.isAdmin') AS admin,json_extract(u.body,'$.billingMode') AS mode,json_extract(u.body,'$.stripeCustomerId') AS customer,json_extract(u.body,'$.clerkUserId') AS oldIdentity,a.email AS email,d.owner_id=a.id AS ownsDocument,json_extract(m.body,'$.documentId') AS document,json_extract(m.body,'$.slug') AS slug,(SELECT count(*) FROM app_records) AS records,(SELECT count(*) FROM documents) AS blobs FROM app_records u JOIN user a ON a.id=json_extract(u.body,'$.authUserId') JOIN documents d ON d.id='legacy_document' JOIN app_records m ON m.id='legacy_meeting' WHERE u.id='legacy_user'";
+		"SELECT json_extract(u.body,'$._id') AS id,json_extract(u.body,'$.tier') AS tier,json_extract(u.body,'$.isAdmin') AS admin,json_extract(u.body,'$.billingMode') AS mode,json_extract(u.body,'$.stripeCustomerId') AS customer,json_extract(u.body,'$.clerkUserId') AS oldIdentity,a.email AS email,d.owner_id=(SELECT json_extract(body,'$.authUserId') FROM app_records WHERE id='legacy_workos_user') AS ownsDocument,json_extract(m.body,'$.documentId') AS document,json_extract(m.body,'$.slug') AS slug,(SELECT count(*) FROM app_records) AS records,(SELECT count(*) FROM documents) AS blobs FROM app_records u JOIN user a ON a.id=json_extract(u.body,'$.authUserId') JOIN documents d ON d.id='legacy_document' JOIN app_records m ON m.id='legacy_meeting' WHERE u.id='legacy_user'";
 	const result = JSON.parse(
 		(
 			await cli([
@@ -272,11 +316,97 @@ try {
 		ownsDocument: 1,
 		document: "legacy_document",
 		slug: "preserved-minutes",
-		records: 11,
+		records: 12,
 		blobs: 2,
 	});
 	console.log(
 		"PASS all app tables, stable IDs/slugs, account ownership, tiers/admin/billing identities, and referenced/orphan blobs survive real local D1/R2 import",
+	);
+	const pendingOutput = path.join(root, "pending");
+	await run("bun", [
+		"scripts/import-export.ts",
+		"--snapshot",
+		snapshot,
+		"--clerk-users",
+		providerUsers,
+		"--output",
+		pendingOutput,
+	]);
+	assert.deepEqual(
+		JSON.parse(
+			fs.readFileSync(
+				path.join(pendingOutput, "activation-required.json"),
+				"utf8",
+			),
+		),
+		[
+			{
+				appUserId: "legacy_workos_user",
+				provider: "workos",
+				subject: "workos_original",
+			},
+		],
+	);
+	const pendingState = path.join(root, "pending-state");
+	await cli([
+		"d1",
+		"migrations",
+		"apply",
+		"DB",
+		"--local",
+		"--persist-to",
+		pendingState,
+	]);
+	await cli([
+		"d1",
+		"execute",
+		"DB",
+		"--local",
+		"--persist-to",
+		pendingState,
+		"--file",
+		path.join(pendingOutput, "data.sql"),
+	]);
+	const pendingRows = JSON.parse(
+		(
+			await cli([
+				"d1",
+				"execute",
+				"DB",
+				"--local",
+				"--persist-to",
+				pendingState,
+				"--json",
+				"--command",
+				"SELECT json_extract(body,'$.authUserId') AS auth, json_extract(body,'$.tier') AS tier,json_extract(body,'$.isAdmin') AS admin,(SELECT owner_id FROM documents WHERE id='legacy_document') AS owner FROM app_records WHERE id='legacy_workos_user'",
+			])
+		).stdout,
+	);
+	assert.deepEqual(pendingRows[0].results[0], {
+		auth: null,
+		tier: "pro",
+		admin: 1,
+		owner: "legacy:pending:legacy_workos_user",
+	});
+	let incomplete = false;
+	try {
+		await run("bun", [
+			"scripts/import-export.ts",
+			"--snapshot",
+			snapshot,
+			"--clerk-users",
+			providerUsers,
+			"--require-complete-identities",
+			"--output",
+			path.join(root, "incomplete"),
+		]);
+	} catch {
+		incomplete = true;
+	}
+	assert(incomplete);
+	assert(!fs.existsSync(path.join(root, "incomplete")));
+	console.log(
+		"PASS _tables metadata accepted; WorkOS-only records and private ownership survive without email-based privilege transfer, and explicit owner mappings restore access",
 	);
 	// A source reference error must fail offline, before creating any import output.
 	const bad = path.join(snapshot, "subscriptions", "documents.jsonl");

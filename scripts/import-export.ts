@@ -107,6 +107,30 @@ try {
 			`INSERT INTO account(id,accountId,providerId,userId,createdAt,updatedAt) VALUES(${literal(crypto.randomUUID())},${literal(account.id)},'credential',${literal(account.id)},${migratedAt},${migratedAt});`,
 		);
 	}
+	const identityMapPath = option("--identity-map");
+	const identityMap = new Map<string, string>();
+	if (identityMapPath) {
+		const mappings = z
+			.array(
+				z.object({ appUserId: z.string(), clerkUserId: z.string() }).strict(),
+			)
+			.parse(JSON.parse(fs.readFileSync(identityMapPath, "utf8")));
+		for (const mapping of mappings) {
+			if (
+				identityMap.has(mapping.appUserId) ||
+				!accounts.has(mapping.clerkUserId)
+			)
+				throw new MigrationError(
+					"Identity map must name unique app users and verified exported provider accounts",
+				);
+			identityMap.set(mapping.appUserId, mapping.clerkUserId);
+		}
+	}
+	const pendingIdentities: Array<{
+		appUserId: string;
+		provider: string;
+		subject?: string;
+	}> = [];
 	const assignedIdentities = new Set<string>();
 	async function rows(
 		file: string,
@@ -153,29 +177,53 @@ try {
 			)
 				throw new MigrationError("Missing or duplicate record identity");
 			if (table === "users") {
-				const legacy =
-					typeof row.clerkUserId === "string"
-						? accounts.get(row.clerkUserId)
-						: undefined;
-				if (!legacy)
+				const originalSubject =
+					typeof row.clerkUserId === "string" ? row.clerkUserId : undefined;
+				const mappedSubject = identityMap.get(_id);
+				if (
+					originalSubject &&
+					mappedSubject &&
+					originalSubject !== mappedSubject
+				)
 					throw new MigrationError(
-						"Every app account needs a matching owner-supplied verified Clerk export identity",
+						"Identity map cannot replace an existing Clerk subject",
 					);
-				if (String(row.email).toLowerCase() !== legacy.email)
+				const subject = originalSubject ?? mappedSubject;
+				const legacy = subject ? accounts.get(subject) : undefined;
+				if (subject && !legacy)
 					throw new MigrationError(
-						"App/provider email mismatch requires owner review",
+						"A mapped Clerk subject is missing from the verified owner export",
 					);
+				if (legacy) {
+					if (String(row.email).toLowerCase() !== legacy.email)
+						throw new MigrationError(
+							"App/provider email mismatch requires owner review",
+						);
+					if (assignedIdentities.has(legacy.id))
+						throw new MigrationError(
+							"Multiple app rows claim the same provider identity; owner review required",
+						);
+					assignedIdentities.add(legacy.id);
+					row.authUserId = legacy.id;
+					userMappings.set(_id, legacy.id);
+				} else {
+					// Preserve data and references, but never transfer privileges by matching email.
+					pendingIdentities.push({
+						appUserId: _id,
+						provider:
+							typeof row.workosUserId === "string" ? "workos" : "unassigned",
+						subject:
+							typeof row.workosUserId === "string"
+								? row.workosUserId
+								: undefined,
+					});
+					userMappings.set(_id, `legacy:pending:${_id}`);
+				}
+				identityMap.delete(_id);
 				delete row.clerkUserId;
 				delete row.workosUserId;
-				row.authUserId = legacy.id;
 				if (row.stripeCustomerId || row.stripeSubscriptionId)
 					row.billingMode = "live";
-				if (assignedIdentities.has(legacy.id))
-					throw new MigrationError(
-						"Multiple app rows claim the same provider identity; owner review required",
-					);
-				assignedIdentities.add(legacy.id);
-				userMappings.set(_id, legacy.id);
 			}
 			if (table === "meetings" && row.documentStorageId !== undefined) {
 				row.documentId = row.documentStorageId;
@@ -212,6 +260,7 @@ try {
 		if (
 			entry.isDirectory() &&
 			entry.name !== "_storage" &&
+			entry.name !== "_tables" &&
 			!Object.hasOwn(models, entry.name)
 		)
 			throw new MigrationError(
@@ -286,12 +335,28 @@ try {
 			throw new MigrationError(
 				"Dangling or mistyped source reference; repair export before importing",
 			);
+	if (identityMap.size)
+		throw new MigrationError(
+			"Identity map names an app user absent from the snapshot",
+		);
+	if (
+		pendingIdentities.length &&
+		argv.includes("--require-complete-identities")
+	)
+		throw new MigrationError(
+			"Legacy accounts still require owner-approved identity mappings before cutover",
+		);
 	fs.mkdirSync(output, { mode: 0o700 });
+	fs.writeFileSync(
+		path.join(output, "activation-required.json"),
+		JSON.stringify(pendingIdentities, null, 2),
+		{ mode: 0o600 },
+	);
 	const guard =
 		"CREATE TABLE migration_guard(value INTEGER CHECK(value=0));\nINSERT INTO migration_guard SELECT (SELECT count(*) FROM app_records)+(SELECT count(*) FROM user);\n";
 	fs.writeFileSync(
 		path.join(output, "data.sql"),
-		`${guard}${statements.join("\n")}\nUPDATE app_revision SET revision=revision+1 WHERE id=1;\nDROP TABLE migration_guard;\n`,
+		`${guard}${statements.join("\n")}\nDROP TABLE migration_guard;\n`,
 		{ mode: 0o600 },
 	);
 	fs.writeFileSync(
@@ -302,7 +367,12 @@ try {
 	fs.writeFileSync(
 		path.join(output, "counts.json"),
 		JSON.stringify(
-			{ tables: counts, documents: blobs.length, accounts: accounts.size },
+			{
+				tables: counts,
+				documents: blobs.length,
+				accounts: accounts.size,
+				pendingAccounts: pendingIdentities.length,
+			},
 			null,
 			2,
 		),

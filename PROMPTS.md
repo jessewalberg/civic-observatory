@@ -6,6 +6,7 @@ Read `README.md` and `ARCHITECTURE.md` before changing application behavior.
 
 - Jesse, 2026-10-09: no unit tests. Do not create, run, maintain, restore, request or delegate unit tests, including through gates, CI or review. Remove obsolete unit-test dependencies and instructions when touching an affected surface.
 - Jesse, 2026-11-07: migrate off Convex and Clerk; use Alchemy, Effect, Better Auth and Cloudflare D1. Keep sign-in, billing, uploads, scraping and scheduled processing functional.
+- Jesse, LIFE-288, 2026-11-07: Effect at the server edges is sufficient now; convert handlers later as they are touched. Do not require a wholesale handler rewrite for this migration.
 - This errand is not a production cutover. No production DNS, remote data writes, provider deployment deletion, spending, public posting or live Stripe activity. A merge must not deploy.
 
 ## Implementation contracts

@@ -15,7 +15,7 @@ import {
 // ═══════════════════════════════════════════════════════════════
 // CONFIGURATION
 // ═══════════════════════════════════════════════════════════════
-const FROM_ADDRESS = "alerts@civicobservatory.com";
+const FROM_ADDRESS = env.EMAIL_FROM_ADDRESS ?? "alerts@civicobservatory.com";
 const FROM_NAME = "Civic Observatory";
 const CLOUDFLARE_API_BASE = "https://api.cloudflare.com/client/v4";
 const BASE_URL = env.APP_URL;
@@ -176,6 +176,17 @@ export const sendEmail = privateTask({
 				success: false,
 				error: "Outbound delivery is disabled",
 				retryable: true,
+			};
+		if (
+			env.DEPLOYMENT_STAGE === "staging" &&
+			(!env.STAGING_MAIL_TO ||
+				args.to.trim().toLowerCase() !== env.STAGING_MAIL_TO.toLowerCase() ||
+				!env.EMAIL_FROM_ADDRESS)
+		)
+			return {
+				success: false,
+				error:
+					"Staging mail is restricted to its configured test recipient and verified sender",
 			};
 		const apiToken = env.EMAIL_API_TOKEN;
 		const accountId = env.EMAIL_ACCOUNT_ID;

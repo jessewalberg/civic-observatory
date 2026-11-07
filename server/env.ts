@@ -10,6 +10,9 @@ export interface Bindings {
 	STRIPE_WEBHOOK_SECRET?: string;
 	EMAIL_API_TOKEN?: string;
 	EMAIL_ACCOUNT_ID?: string;
+	EMAIL_FROM_ADDRESS?: string;
+	DEPLOYMENT_STAGE?: "staging";
+	STAGING_MAIL_TO?: string;
 	ADMIN_EMAIL?: string;
 	OUTBOUND_ENABLED?: string;
 	SCHEDULED_ENABLED?: string;

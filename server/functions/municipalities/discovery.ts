@@ -2,6 +2,7 @@ import { z } from "zod";
 import { internal } from "../../api";
 import { entityId } from "../../id";
 import { privateTask } from "../../procedure";
+import { fetchPublicSource, SourcePolicyError } from "../../sourceFetch";
 
 // ═══════════════════════════════════════════════════════════════
 // STATE ABBREVIATION MAP
@@ -98,19 +99,14 @@ async function fetchWithTimeout(
 	url: string,
 	timeoutMs: number = TIMEOUT_MS,
 ): Promise<Response | null> {
-	const controller = new AbortController();
-	const timer = setTimeout(() => controller.abort(), timeoutMs);
 	try {
-		const resp = await fetch(url, {
+		return await fetchPublicSource(url, {
+			timeout: timeoutMs,
 			headers: { "User-Agent": UA },
-			signal: controller.signal,
-			redirect: "follow",
 		});
-		return resp;
-	} catch {
+	} catch (error) {
+		if (error instanceof SourcePolicyError) throw error;
 		return null;
-	} finally {
-		clearTimeout(timer);
 	}
 }
 /** Check Legistar API — real clients return a JSON array, fakes return error JSON. */

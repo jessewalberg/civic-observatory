@@ -6,6 +6,7 @@ import { entityId } from "../../id";
 import { readModelContent } from "../../modelResponse";
 import { privateTask } from "../../procedure";
 import { htmlToText, normalizeUrl } from "../../scrapers/utils";
+import { fetchPublicSource } from "../../sourceFetch";
 import { ocrPdf } from "./ocrPdf";
 
 // Id type used in inline type annotations
@@ -354,7 +355,7 @@ async function hydrateContentFromSourceUrl(args: {
 	) {
 		return null;
 	}
-	const response = await fetch(args.sourceUrl, {
+	const response = await fetchPublicSource(args.sourceUrl, {
 		headers: {
 			"User-Agent":
 				"Mozilla/5.0 (compatible; CivicObservatory/1.0; +https://civicobservatory.com)",

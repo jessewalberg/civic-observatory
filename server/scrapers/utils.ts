@@ -1,3 +1,4 @@
+import { fetchPublicSource, SourcePolicyError } from "../sourceFetch";
 import type { MeetingType } from "./types";
 // ═══════════════════════════════════════════════════════════════
 // HTTP FETCH - Shared fetch with retry and timeout
@@ -18,10 +19,8 @@ export async function fetchWithRetry(
 	let lastError: Error | null = null;
 	for (let i = 0; i < retries; i++) {
 		try {
-			const controller = new AbortController();
-			const timeoutId = setTimeout(() => controller.abort(), timeout);
-			const response = await fetch(url, {
-				signal: controller.signal,
+			const response = await fetchPublicSource(url, {
+				timeout,
 				headers: {
 					"User-Agent":
 						"Mozilla/5.0 (compatible; CivicObservatory/1.0; +https://civicobservatory.com)",
@@ -30,9 +29,9 @@ export async function fetchWithRetry(
 					...options?.headers,
 				},
 			});
-			clearTimeout(timeoutId);
 			return response;
 		} catch (error) {
+			if (error instanceof SourcePolicyError) throw error;
 			lastError = error instanceof Error ? error : new Error(String(error));
 			// Don't retry on abort (timeout)
 			if (lastError.name === "AbortError") {

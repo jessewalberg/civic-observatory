@@ -1,5 +1,5 @@
 import { type Doc, type Id, models, type Row, type TableName } from "./model";
-export class RevisionConflict extends Error {}
+export class WriteConflict extends Error {}
 type Value = string | number | null;
 type Operator = "=" | "!=" | ">" | ">=" | "<" | "<=";
 interface Column {
@@ -71,19 +71,43 @@ export interface QueuedJob {
 export class DataStore {
 	readonly staged = new Map<string, StagedRow>();
 	readonly jobs: QueuedJob[] = [];
-	private revision = -1;
+	private versions = new Map<TableName, number>();
+	private missing = new Set<string>();
+	private receipts: Array<{ id: string; type: string }> = [];
 	constructor(
 		readonly db: D1DatabaseSession,
 		readonly writable: boolean,
 	) {}
-	async begin() {
+	private remember(collection: TableName, revision: number) {
+		if (!this.writable) return;
+		const previous = this.versions.get(collection);
+		if (previous !== undefined && previous !== revision)
+			throw new WriteConflict();
+		this.versions.set(collection, revision);
+	}
+	async observe(collection: TableName) {
+		if (!this.writable) return;
 		const row = await this.db
-			.prepare("SELECT revision FROM app_revision WHERE id=1")
-			.first<{
-				revision: number;
-			}>();
+			.prepare(
+				"SELECT revision FROM app_collection_versions WHERE collection=?",
+			)
+			.bind(collection)
+			.first<{ revision: number }>();
 		if (!row) throw new Error("Apply D1 migrations before starting the app");
-		this.revision = row.revision;
+		this.remember(collection, row.revision);
+	}
+	async claimStripeEvent(id: string, type: string): Promise<boolean> {
+		this.assertWritable();
+		if (
+			this.receipts.some((receipt) => receipt.id === id) ||
+			(await this.db
+				.prepare("SELECT event_id FROM stripe_events WHERE event_id=?")
+				.bind(id)
+				.first())
+		)
+			return false;
+		this.receipts.push({ id, type });
+		return true;
 	}
 	select<T extends TableName>(table: T) {
 		return new Select(this, table);
@@ -92,11 +116,13 @@ export class DataStore {
 		const pending = this.staged.get(id);
 		if (pending) return pending.body as Doc<T> | null;
 		const row = await this.db
-			.prepare("SELECT body FROM app_records WHERE id=?")
+			.prepare(
+				"SELECT body,collection,(SELECT revision FROM app_collection_versions WHERE collection=app_records.collection) AS revision FROM app_records WHERE id=?",
+			)
 			.bind(id)
-			.first<{
-				body: string;
-			}>();
+			.first<{ body: string; collection: TableName; revision: number }>();
+		if (row) this.remember(row.collection, row.revision);
+		else if (this.writable) this.missing.add(id);
 		return row ? (JSON.parse(row.body) as Doc<T>) : null;
 	}
 	async add<T extends TableName>(collection: T, data: Row<T>): Promise<Id<T>> {
@@ -135,34 +161,46 @@ export class DataStore {
 		const pending = this.staged.get(id);
 		if (pending) return pending.collection;
 		const row = await this.db
-			.prepare("SELECT collection FROM app_records WHERE id=?")
+			.prepare(
+				"SELECT collection,(SELECT revision FROM app_collection_versions WHERE collection=app_records.collection) AS revision FROM app_records WHERE id=?",
+			)
 			.bind(id)
-			.first<{
-				collection: TableName;
-			}>();
+			.first<{ collection: TableName; revision: number }>();
 		if (!row) throw new Error("Record not found");
+		this.remember(row.collection, row.revision);
 		return row.collection;
 	}
 	assertWritable() {
 		if (!this.writable) throw new Error("Read-only procedure");
 	}
 	async finish() {
-		if (!this.staged.size && !this.jobs.length) {
-			const current = await this.db
-				.prepare("SELECT revision FROM app_revision WHERE id=1")
-				.first<{
-					revision: number;
-				}>();
-			if (current?.revision !== this.revision) throw new RevisionConflict();
-			return;
-		}
-		const statements = [
-			this.db
-				.prepare(
-					"INSERT INTO app_revision(id,revision) SELECT 1,0 WHERE (SELECT revision FROM app_revision WHERE id=1) != ?",
-				)
-				.bind(this.revision),
-		];
+		if (!this.staged.size && !this.jobs.length && !this.receipts.length) return;
+		this.assertWritable();
+		const statements: D1PreparedStatement[] = [];
+		for (const [collection, revision] of this.versions)
+			statements.push(
+				this.db
+					.prepare(
+						"INSERT INTO app_write_guard(id) SELECT 1 WHERE COALESCE((SELECT revision FROM app_collection_versions WHERE collection=?),-1)!=?",
+					)
+					.bind(collection, revision),
+			);
+		for (const id of this.missing)
+			statements.push(
+				this.db
+					.prepare(
+						"INSERT INTO app_write_guard(id) SELECT 1 WHERE EXISTS(SELECT 1 FROM app_records WHERE id=?)",
+					)
+					.bind(id),
+			);
+		for (const receipt of this.receipts)
+			statements.push(
+				this.db
+					.prepare(
+						"INSERT INTO stripe_events(event_id,event_type,received_at) VALUES(?,?,?)",
+					)
+					.bind(receipt.id, receipt.type, Date.now()),
+			);
 		for (const [id, row] of this.staged) {
 			statements.push(
 				row.body === null
@@ -180,14 +218,15 @@ export class DataStore {
 					.prepare("INSERT INTO jobs(id,path,args,due_at) VALUES (?,?,?,?)")
 					.bind(job.id, job.path, job.args, job.due),
 			);
-		statements.push(
-			this.db.prepare("UPDATE app_revision SET revision=revision+1 WHERE id=1"),
-		);
 		try {
 			await this.db.batch(statements);
 		} catch (error) {
-			if (String(error).includes("UNIQUE constraint failed: app_revision.id"))
-				throw new RevisionConflict();
+			if (
+				/UNIQUE constraint failed: (app_write_guard.id|stripe_events.event_id)/.test(
+					String(error),
+				)
+			)
+				throw new WriteConflict();
 			throw error;
 		}
 	}
@@ -239,6 +278,7 @@ class Select<T extends TableName> {
 		return this;
 	}
 	private async execute(count?: number, offset = 0): Promise<Doc<T>[]> {
+		await this.store.observe(this.table);
 		const pending = [...this.store.staged.entries()].filter(
 			([, r]) => r.collection === this.table,
 		);

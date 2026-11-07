@@ -3,7 +3,7 @@ import superjson from "superjson";
 import { z } from "zod";
 import { createAuth } from "./auth";
 import type { Endpoint, ProcedureKind } from "./contract";
-import { DataStore, RevisionConflict } from "./database";
+import { DataStore, WriteConflict } from "./database";
 import type { Bindings } from "./env";
 import { requireAdmin } from "./lib/auth";
 import type { Identity, ServiceContext } from "./procedure";
@@ -94,6 +94,7 @@ async function authorize(
 		path.startsWith("functions/municipalities/mutations:") ||
 		path.startsWith("functions/scrapers/") ||
 		path.startsWith("functions/scrapeJobs/") ||
+		path.startsWith("functions/jobs/") ||
 		/:(admin|listForAdmin|getDeliveryHealth|listCoverage|listOnboarding|listDueForScrape)/.test(
 			path,
 		) ||
@@ -136,7 +137,7 @@ function execute(
 			env.DB.withSession("first-primary"),
 			procedure.kind === "write",
 		);
-		if (procedure.kind !== "task") yield* attempt(() => data.begin());
+
 		const ctx: ServiceContext = {
 			data,
 			identity,
@@ -191,7 +192,10 @@ function execute(
 	}).pipe(
 		Effect.retry({
 			times: 4,
-			while: (error) => error instanceof RevisionConflict,
+			while: (error) =>
+				!parent &&
+				procedures[path]?.kind === "write" &&
+				error instanceof WriteConflict,
 		}),
 	);
 }

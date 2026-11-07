@@ -147,6 +147,21 @@ export const handleWebhook = privateTask({
 			console.error("Stripe webhook signature verification failed");
 			return { ok: false, error: "Invalid signature" };
 		}
+		let change:
+			| { kind: "ignored" }
+			| {
+					kind: "checkout";
+					customerId: string;
+					subscriptionId: string;
+					periodEnd: number;
+			  }
+			| {
+					kind: "updated";
+					subscriptionId: string;
+					periodEnd: number;
+					status: string;
+			  }
+			| { kind: "deleted"; subscriptionId: string } = { kind: "ignored" };
 		switch (event.type) {
 			case "checkout.session.completed": {
 				const session = event.data.object as Stripe.Checkout.Session;
@@ -158,40 +173,38 @@ export const handleWebhook = privateTask({
 					const subscription = await stripe.subscriptions.retrieve(
 						session.subscription as string,
 					);
-					await ctx.call(
-						internal.functions.stripe.mutations.handleCheckoutCompleted,
-						{
-							stripeCustomerId: session.customer as string,
-							stripeSubscriptionId: subscription.id,
-							currentPeriodEnd: periodEnd(subscription),
-						},
-					);
+					change = {
+						kind: "checkout",
+						customerId: session.customer as string,
+						subscriptionId: subscription.id,
+						periodEnd: periodEnd(subscription),
+					};
 				}
 				break;
 			}
 			case "customer.subscription.updated": {
 				const subscription = event.data.object as Stripe.Subscription;
-				await ctx.call(
-					internal.functions.stripe.mutations.handleSubscriptionUpdated,
-					{
-						stripeSubscriptionId: subscription.id,
-						currentPeriodEnd: periodEnd(subscription),
-						status: subscription.status,
-					},
-				);
+				change = {
+					kind: "updated",
+					subscriptionId: subscription.id,
+					periodEnd: periodEnd(subscription),
+					status: subscription.status,
+				};
 				break;
 			}
 			case "customer.subscription.deleted": {
 				const subscription = event.data.object as Stripe.Subscription;
-				await ctx.call(
-					internal.functions.stripe.mutations.handleSubscriptionDeleted,
-					{ stripeSubscriptionId: subscription.id },
-				);
+				change = { kind: "deleted", subscriptionId: subscription.id };
 				break;
 			}
 			default:
 				console.log("Unhandled Stripe event type:", event.type);
 		}
+		await ctx.call(internal.functions.stripe.mutations.applyEvent, {
+			eventId: event.id,
+			eventType: event.type,
+			change,
+		});
 		return { ok: true };
 	},
 });
