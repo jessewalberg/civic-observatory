@@ -1,5 +1,4 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useAction, useQuery } from "convex/react";
 import {
 	Building2,
 	Check,
@@ -23,29 +22,28 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { useCommand, useRead } from "@/lib/data";
 import { usePublicAuthState } from "@/lib/publicAuth";
 import { canonicalLink, generatePricingJsonLd } from "@/lib/seo";
 import { cn } from "@/lib/utils";
-import { api } from "../../convex/_generated/api";
-
+import { api } from "../../server/api";
 export const Route = createFileRoute("/pricing")({
 	validateSearch: (search: Record<string, unknown>) => {
-		const parsedSearch: { success?: true; canceled?: true } = {};
-
+		const parsedSearch: {
+			success?: true;
+			canceled?: true;
+		} = {};
 		if (search.success === "true") {
 			parsedSearch.success = true;
 		}
-
 		if (search.canceled === "true") {
 			parsedSearch.canceled = true;
 		}
-
 		return parsedSearch;
 	},
 	head: () => {
 		const description =
 			"Choose the plan that fits your needs. Free tier includes 50 daily summaries. Pro plan at $15/month for unlimited access and real-time alerts.";
-
 		return {
 			meta: [
 				{ title: "Pricing | Civic Observatory" },
@@ -68,7 +66,6 @@ export const Route = createFileRoute("/pricing")({
 	},
 	component: PricingPage,
 });
-
 const plans = [
 	{
 		name: "Free",
@@ -104,11 +101,9 @@ const plans = [
 		highlighted: true,
 	},
 ];
-
 function PricingPage() {
 	const { isAuthenticated } = usePublicAuthState();
 	const { success = false, canceled = false } = Route.useSearch();
-
 	return (
 		<div className="min-h-screen bg-background">
 			<div className="container mx-auto px-4 py-8 max-w-5xl pt-24">
@@ -279,14 +274,10 @@ function PricingPage() {
 		</div>
 	);
 }
-
 function CurrentUsage() {
-	const usageStats = useQuery(api.functions.usage.queries.getUsageStats, {});
-
+	const usageStats = useRead(api.functions.usage.queries.getUsageStats, {});
 	if (!usageStats) return null;
-
 	const isPro = usageStats.tier === "pro";
-
 	return (
 		<motion.div
 			initial={{ opacity: 0, y: 10 }}
@@ -345,35 +336,28 @@ function CurrentUsage() {
 		</motion.div>
 	);
 }
-
 interface PlanCardProps {
 	plan: (typeof plans)[0];
 	isLoggedIn: boolean;
 }
-
 function PlanCard({ plan, isLoggedIn }: PlanCardProps) {
 	const [isLoading, setIsLoading] = useState(false);
-
-	const usageStats = useQuery(
+	const usageStats = useRead(
 		api.functions.usage.queries.getUsageStats,
 		isLoggedIn ? {} : "skip",
 	);
-
-	const createCheckoutSession = useAction(
+	const createCheckoutSession = useCommand(
 		api.functions.stripe.actions.createCheckoutSession,
 	);
-	const createPortalSession = useAction(
+	const createPortalSession = useCommand(
 		api.functions.stripe.actions.createPortalSession,
 	);
-
 	const currentTier = usageStats?.tier || "anonymous";
 	const isCurrentPlan = currentTier.toLowerCase() === plan.name.toLowerCase();
 	const isPro = plan.name === "Pro";
 	const isUserPro = currentTier === "pro";
-
 	const handleUpgrade = async () => {
 		if (!isLoggedIn) return;
-
 		setIsLoading(true);
 		try {
 			const { url } = await createCheckoutSession({});
@@ -388,10 +372,8 @@ function PlanCard({ plan, isLoggedIn }: PlanCardProps) {
 			setIsLoading(false);
 		}
 	};
-
 	const handleManagePlan = async () => {
 		if (!isLoggedIn) return;
-
 		setIsLoading(true);
 		try {
 			const { url } = await createPortalSession({});
@@ -406,7 +388,6 @@ function PlanCard({ plan, isLoggedIn }: PlanCardProps) {
 			setIsLoading(false);
 		}
 	};
-
 	return (
 		<Card
 			className={cn(
@@ -499,7 +480,6 @@ function PlanCard({ plan, isLoggedIn }: PlanCardProps) {
 		</Card>
 	);
 }
-
 const featureComparison = [
 	{ feature: "Summary Views", free: "50/day", pro: "Unlimited" },
 	{ feature: "Meeting Uploads", free: "3/month", pro: "20/month" },
@@ -510,7 +490,6 @@ const featureComparison = [
 	{ feature: "Priority Support", free: false, pro: true },
 	{ feature: "Custom Integrations", free: false, pro: false, enterprise: true },
 ];
-
 function FeatureComparisonTable() {
 	return (
 		<div className="mb-16">
@@ -569,7 +548,6 @@ function FeatureComparisonTable() {
 		</div>
 	);
 }
-
 function FeatureValue({
 	value,
 	highlighted,
@@ -610,17 +588,14 @@ function FeatureValue({
 		</span>
 	);
 }
-
 function formatResetTime(timestamp: number): string {
 	const now = Date.now();
 	const diffMs = timestamp - now;
 	const diffHours = Math.ceil(diffMs / (1000 * 60 * 60));
 	const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-
 	if (diffHours < 1) return "soon";
 	if (diffHours < 24)
 		return `in ${diffHours} hour${diffHours !== 1 ? "s" : ""}`;
 	if (diffDays < 7) return `in ${diffDays} day${diffDays !== 1 ? "s" : ""}`;
-
 	return `on ${new Date(timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
 }

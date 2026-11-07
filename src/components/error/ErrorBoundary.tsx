@@ -8,12 +8,10 @@ interface ErrorBoundaryProps {
 	fallback?: ReactNode;
 	onError?: (error: Error, errorInfo: React.ErrorInfo) => void;
 }
-
 interface ErrorBoundaryState {
 	hasError: boolean;
 	error: Error | null;
 }
-
 export class ErrorBoundary extends Component<
 	ErrorBoundaryProps,
 	ErrorBoundaryState
@@ -22,26 +20,21 @@ export class ErrorBoundary extends Component<
 		super(props);
 		this.state = { hasError: false, error: null };
 	}
-
 	static getDerivedStateFromError(error: Error): ErrorBoundaryState {
 		return { hasError: true, error };
 	}
-
 	componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
 		console.error("ErrorBoundary caught an error:", error, errorInfo);
 		this.props.onError?.(error, errorInfo);
 	}
-
 	handleRetry = () => {
 		this.setState({ hasError: false, error: null });
 	};
-
 	render() {
 		if (this.state.hasError) {
 			if (this.props.fallback) {
 				return this.props.fallback;
 			}
-
 			return (
 				<div className="flex items-center justify-center p-8">
 					<Card className="p-6 max-w-md w-full">
@@ -69,7 +62,6 @@ export class ErrorBoundary extends Component<
 				</div>
 			);
 		}
-
 		return this.props.children;
 	}
 }

@@ -1,5 +1,4 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "convex/react";
 import { Search } from "lucide-react";
 import { useState } from "react";
 import { CoverageRequestDialog } from "@/components/CoverageRequestDialog";
@@ -10,11 +9,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useRead } from "@/lib/data";
 import { usePublicAuthState } from "@/lib/publicAuth";
 import { canonicalLink } from "@/lib/seo";
 import { PUBLIC_TOPIC_FEEDS } from "@/lib/topicFeeds";
-import { api } from "../../convex/_generated/api";
-
+import { api } from "../../server/api";
 export const Route = createFileRoute("/search")({
 	validateSearch: (search: Record<string, unknown>) => ({
 		q: typeof search.q === "string" && search.q.trim() ? search.q : undefined,
@@ -43,21 +42,19 @@ export const Route = createFileRoute("/search")({
 	}),
 	component: SearchPage,
 });
-
 function SearchPage() {
 	const search = Route.useSearch();
 	const [query, setQuery] = useState(search.q ?? "");
 	const [isCoverageRequestOpen, setIsCoverageRequestOpen] = useState(false);
 	const publicAuth = usePublicAuthState();
 	const trimmedQuery = query.trim();
-	const results = useQuery(
+	const results = useRead(
 		api.functions.summaries.queries.searchPublicSummaries,
 		{
 			query: trimmedQuery || undefined,
 			limit: trimmedQuery ? 30 : 12,
 		},
 	) as PublicSummaryResult[] | undefined;
-
 	return (
 		<div className="min-h-screen bg-background">
 			<section className="border-b border-border bg-surface/50">
@@ -146,7 +143,6 @@ function SearchPage() {
 		</div>
 	);
 }
-
 function SearchResultSkeleton() {
 	return (
 		<div className="rounded-lg border border-border p-5">

@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { Building2 } from "lucide-react";
 import { lazy, Suspense } from "react";
+import { useSessionState } from "@/lib/session";
 import { Button } from "./ui/button";
 
 const SignedInHeaderControls = lazy(() =>
@@ -8,12 +9,8 @@ const SignedInHeaderControls = lazy(() =>
 		default: module.SignedInHeaderControls,
 	})),
 );
-
-export function Header({
-	showSignedInControls = false,
-}: {
-	showSignedInControls?: boolean;
-}) {
+export function Header() {
+	const { isAuthenticated: showSignedInControls } = useSessionState();
 	return (
 		<header className="fixed top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-lg">
 			<div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">

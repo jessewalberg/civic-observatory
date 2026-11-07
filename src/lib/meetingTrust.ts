@@ -6,13 +6,11 @@ type MeetingStatus =
 	| "failed"
 	| "skipped";
 type SummaryStatus = "summarized" | "failed" | "skipped";
-
 export type MeetingSourceTrustState =
 	| "source-backed"
 	| "source-linked"
 	| "missing-source"
 	| "failed";
-
 export interface MeetingSourceMetadataInput {
 	sourceUrl?: string | null;
 	sourceType?: SourceType | null;
@@ -25,7 +23,6 @@ export interface MeetingSourceMetadataInput {
 		error?: string | null;
 	} | null;
 }
-
 export interface MeetingSourceTrustInput extends MeetingSourceMetadataInput {
 	status: MeetingStatus;
 	summary?:
@@ -34,14 +31,12 @@ export interface MeetingSourceTrustInput extends MeetingSourceMetadataInput {
 		  })
 		| null;
 }
-
 export interface MeetingSourceMetadata {
 	sourceUrl: string | null;
 	sourceType: SourceType | null;
 	contentHash: string | null;
 	error: string | null;
 }
-
 export interface MeetingSourceTrust {
 	state: MeetingSourceTrustState;
 	label: string;
@@ -51,7 +46,6 @@ export interface MeetingSourceTrust {
 	hasContentHash: boolean;
 	error: string | null;
 }
-
 export function getMeetingSourceMetadata(
 	meeting: MeetingSourceMetadataInput,
 ): MeetingSourceMetadata {
@@ -63,7 +57,6 @@ export function getMeetingSourceMetadata(
 		error: meeting.summary?.error ?? meeting.processingError ?? null,
 	};
 }
-
 export function getMeetingSourceTrust(
 	meeting: MeetingSourceTrustInput,
 ): MeetingSourceTrust {
@@ -74,7 +67,6 @@ export function getMeetingSourceTrust(
 		Boolean(meeting.summary) &&
 		meeting.summary?.status !== "failed" &&
 		meeting.summary?.status !== "skipped";
-
 	if (meeting.status === "failed" || meeting.summary?.status === "failed") {
 		return {
 			state: "failed",
@@ -87,7 +79,6 @@ export function getMeetingSourceTrust(
 			error,
 		};
 	}
-
 	if (!sourceUrl) {
 		return {
 			state: "missing-source",
@@ -100,7 +91,6 @@ export function getMeetingSourceTrust(
 			error,
 		};
 	}
-
 	if (!contentHash) {
 		return {
 			state: "source-linked",
@@ -114,7 +104,6 @@ export function getMeetingSourceTrust(
 			error,
 		};
 	}
-
 	return {
 		state: "source-backed",
 		label: hasUsableSummary ? "Source-backed summary" : "Source-backed record",
@@ -127,7 +116,6 @@ export function getMeetingSourceTrust(
 		error,
 	};
 }
-
 const sourceTypeLabels: Record<SourceType, string> = {
 	scraped: "Scraped public record",
 	uploaded: "Uploaded document",

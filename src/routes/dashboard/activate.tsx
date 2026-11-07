@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "convex/react";
 import {
 	ArrowRight,
 	Bell,
@@ -31,14 +30,14 @@ import {
 	getActivationFunnelSteps,
 	getSubscriptionLimitState,
 } from "@/lib/activationFlow";
+import { useRead } from "@/lib/data";
 import { NOINDEX_ROBOTS } from "@/lib/seo";
 import { requireAuth } from "@/lib/serverAuth";
 import { MEETING_TYPE_OPTIONS, TOPIC_OPTIONS } from "@/lib/subscriptionOptions";
 import { buildSubscriptionPreview } from "@/lib/subscriptionPreview";
 import { cn } from "@/lib/utils";
-import { api } from "../../../convex/_generated/api";
-import type { Id } from "../../../convex/_generated/dataModel";
-
+import { api } from "../../../server/api";
+import type { Id } from "../../../server/model";
 export const Route = createFileRoute("/dashboard/activate")({
 	beforeLoad: async () => {
 		await requireAuth();
@@ -55,9 +54,7 @@ export const Route = createFileRoute("/dashboard/activate")({
 	}),
 	component: ActivationPage,
 });
-
 const ACTIVATION_RESULT_LIMIT = 12;
-
 function ActivationPage() {
 	const [searchQuery, setSearchQuery] = useState("");
 	const [selectedState, setSelectedState] = useState("");
@@ -69,10 +66,9 @@ function ActivationPage() {
 	);
 	const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
 	const [isCoverageRequestOpen, setIsCoverageRequestOpen] = useState(false);
-
-	const user = useQuery(api.functions.users.queries.current, {});
+	const user = useRead(api.functions.users.queries.current, {});
 	const normalizedSearchQuery = searchQuery.trim();
-	const searchResults = useQuery(
+	const searchResults = useRead(
 		api.functions.municipalities.queries.search,
 		normalizedSearchQuery
 			? {
@@ -82,7 +78,7 @@ function ActivationPage() {
 				}
 			: "skip",
 	);
-	const listResults = useQuery(
+	const listResults = useRead(
 		api.functions.municipalities.queries.list,
 		!normalizedSearchQuery
 			? {
@@ -92,34 +88,31 @@ function ActivationPage() {
 				}
 			: "skip",
 	);
-	const stateGroups = useQuery(
+	const stateGroups = useRead(
 		api.functions.municipalities.queries.listByState,
 		{
 			activeOnly: true,
 		},
 	);
-	const subscriptionCount = useQuery(
+	const subscriptionCount = useRead(
 		api.functions.subscriptions.queries.countByUser,
 		user ? {} : "skip",
 	);
-	const alertCounts = useQuery(
+	const alertCounts = useRead(
 		api.functions.alerts.queries.countByUser,
 		user ? {} : "skip",
 	);
-	const existingSubscription = useQuery(
+	const existingSubscription = useRead(
 		api.functions.subscriptions.queries.getForMunicipality,
 		user && selectedMunicipalityId
 			? { municipalityId: selectedMunicipalityId }
 			: "skip",
 	);
-
 	const availableStates = useMemo(() => {
 		if (!stateGroups) return [];
 		return stateGroups.map((group) => group.state);
 	}, [stateGroups]);
-
 	const municipalities = normalizedSearchQuery ? searchResults : listResults;
-
 	const selectedMunicipality = useMemo(() => {
 		if (!municipalities || !selectedMunicipalityId) return null;
 		return (
@@ -128,7 +121,6 @@ function ActivationPage() {
 			) ?? null
 		);
 	}, [municipalities, selectedMunicipalityId]);
-
 	if (
 		!user ||
 		municipalities === undefined ||
@@ -138,7 +130,6 @@ function ActivationPage() {
 	) {
 		return <ActivationSkeleton />;
 	}
-
 	const limitState = getSubscriptionLimitState({
 		tier: user.tier,
 		totalSubscriptions: subscriptionCount.total,
@@ -164,7 +155,6 @@ function ActivationPage() {
 	const canOpenSubscriptionModal =
 		Boolean(selectedMunicipality) &&
 		(Boolean(existingSubscription) || limitState.canCreateSubscription);
-
 	const toggleTopic = (topic: string) => {
 		setSelectedTopics((current) =>
 			current.includes(topic)
@@ -172,7 +162,6 @@ function ActivationPage() {
 				: [...current, topic],
 		);
 	};
-
 	const toggleMeetingType = (meetingType: string) => {
 		setSelectedMeetingTypes((current) =>
 			current.includes(meetingType)
@@ -188,7 +177,6 @@ function ActivationPage() {
 		setSelectedState(value === "all" ? "" : value);
 		setSelectedMunicipalityId(null);
 	};
-
 	return (
 		<div className="min-h-screen bg-background">
 			<div className="container mx-auto max-w-6xl px-4 py-8 pt-24">
@@ -529,7 +517,6 @@ function ActivationPage() {
 		</div>
 	);
 }
-
 function ActivationProgress({
 	steps,
 }: {
@@ -573,7 +560,6 @@ function ActivationProgress({
 		</Card>
 	);
 }
-
 function ActivationSkeleton() {
 	return (
 		<div className="min-h-screen bg-background">

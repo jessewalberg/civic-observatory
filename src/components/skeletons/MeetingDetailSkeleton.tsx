@@ -1,6 +1,5 @@
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-
 export function MeetingDetailSkeleton() {
 	return (
 		<div className="min-h-screen bg-background">

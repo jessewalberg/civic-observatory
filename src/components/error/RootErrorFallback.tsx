@@ -6,7 +6,6 @@ interface RootErrorFallbackProps {
 	error: Error;
 	reset?: () => void;
 }
-
 export function RootErrorFallback({ error, reset }: RootErrorFallbackProps) {
 	return (
 		<div className="min-h-screen bg-background flex items-center justify-center p-4">

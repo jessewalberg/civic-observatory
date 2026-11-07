@@ -7,7 +7,6 @@ interface ListSkeletonProps {
 	variant?: "card" | "simple" | "compact";
 	className?: string;
 }
-
 export function ListSkeleton({
 	count = 5,
 	variant = "card",
@@ -29,7 +28,6 @@ export function ListSkeleton({
 			</div>
 		);
 	}
-
 	if (variant === "simple") {
 		return (
 			<div className={cn("space-y-3", className)}>
@@ -45,7 +43,6 @@ export function ListSkeleton({
 			</div>
 		);
 	}
-
 	return (
 		<div className={cn("space-y-4", className)}>
 			{Array.from({ length: count }).map((_, i) => (

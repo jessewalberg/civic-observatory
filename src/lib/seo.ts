@@ -1,26 +1,21 @@
 /**
  * SEO utilities for Civic Observatory
  */
-
 export const SITE_NAME = "Civic Observatory";
 export const SITE_URL = "https://civicobservatory.com";
 export const NOINDEX_ROBOTS = "noindex, nofollow";
 export const DEFAULT_SOCIAL_IMAGE = `${SITE_URL}/social-preview.png`;
 export const DEFAULT_DESCRIPTION =
 	"AI-powered summaries of local government meetings. Stay informed about city councils, school boards, and planning commissions.";
-
 export function canonicalUrl(path: string): string {
 	return new URL(path, SITE_URL).toString();
 }
-
 export function canonicalLink(path: string) {
 	return { rel: "canonical", href: canonicalUrl(path) };
 }
-
 const ORGANIZATION_ID = `${SITE_URL}/#organization`;
 const WEBSITE_ID = `${SITE_URL}/#website`;
 const SOFTWARE_ID = `${SITE_URL}/#software`;
-
 /**
  * Generate meta tags for a page
  */
@@ -40,7 +35,6 @@ export function generateMeta({
 	const fullTitle = title.includes(SITE_NAME)
 		? title
 		: `${title} | ${SITE_NAME}`;
-
 	const meta = [
 		{ title: fullTitle },
 		{ name: "description", content: description },
@@ -55,21 +49,17 @@ export function generateMeta({
 		{ name: "twitter:title", content: fullTitle },
 		{ name: "twitter:description", content: description },
 	];
-
 	if (image) {
 		meta.push(
 			{ property: "og:image", content: image },
 			{ name: "twitter:image", content: image },
 		);
 	}
-
 	if (noIndex) {
 		meta.push({ name: "robots", content: NOINDEX_ROBOTS });
 	}
-
 	return meta;
 }
-
 /**
  * Generate JSON-LD for a meeting summary
  */
@@ -88,7 +78,10 @@ export function generateMeetingJsonLd({
 	description: string;
 	datePublished: string;
 	meetingDate: string;
-	municipality: { name: string; state: string };
+	municipality: {
+		name: string;
+		state: string;
+	};
 	meetingType: string;
 	url: string;
 	sourceUrl?: string;
@@ -126,7 +119,6 @@ export function generateMeetingJsonLd({
 		...(sourceUrl && { citation: sourceUrl }),
 	};
 }
-
 /**
  * Generate JSON-LD for a municipality
  */
@@ -159,7 +151,6 @@ export function generateMunicipalityJsonLd({
 		...(websiteUrl && { url: websiteUrl }),
 	};
 }
-
 /**
  * Generate JSON-LD for the organization (used on homepage)
  */
@@ -174,7 +165,6 @@ export function generateOrganizationJsonLd() {
 		logo: `${SITE_URL}/icon-512.png`,
 	};
 }
-
 export function generateHomeJsonLd() {
 	return {
 		"@context": "https://schema.org",
@@ -194,7 +184,6 @@ export function generateHomeJsonLd() {
 		],
 	};
 }
-
 export function generatePricingJsonLd({
 	description,
 }: {
@@ -212,12 +201,14 @@ export function generatePricingJsonLd({
 		}),
 	};
 }
-
 /**
  * Generate breadcrumb JSON-LD
  */
 export function generateBreadcrumbJsonLd(
-	items: { name: string; url: string }[],
+	items: {
+		name: string;
+		url: string;
+	}[],
 ) {
 	return {
 		"@context": "https://schema.org",
@@ -230,7 +221,6 @@ export function generateBreadcrumbJsonLd(
 		})),
 	};
 }
-
 function softwareApplicationJsonLd({
 	description,
 	url,
@@ -270,7 +260,6 @@ function softwareApplicationJsonLd({
 		],
 	};
 }
-
 function organizationReference() {
 	return {
 		"@type": "Organization",

@@ -8,7 +8,6 @@ interface UsageProgressBarProps {
 	size?: "sm" | "md" | "lg";
 	className?: string;
 }
-
 export function UsageProgressBar({
 	current,
 	limit,
@@ -30,28 +29,23 @@ export function UsageProgressBar({
 			</div>
 		);
 	}
-
 	const percentage = Math.min(100, (current / limit) * 100);
-
 	// Color based on usage percentage
 	const getColor = () => {
 		if (percentage >= 100) return "bg-red-500";
 		if (percentage >= 80) return "bg-amber-500";
 		return "bg-emerald-500";
 	};
-
 	const getTextColor = () => {
 		if (percentage >= 100) return "text-red-500";
 		if (percentage >= 80) return "text-amber-500";
 		return "text-emerald-500";
 	};
-
 	const heights = {
 		sm: "h-1",
 		md: "h-2",
 		lg: "h-3",
 	};
-
 	return (
 		<div className={cn("space-y-1", className)}>
 			{(label || showNumbers) && (
@@ -81,14 +75,12 @@ export function UsageProgressBar({
 		</div>
 	);
 }
-
 // Compact version for menus/dropdowns
 interface UsageCompactProps {
 	current: number;
 	limit: number;
 	label: string;
 }
-
 export function UsageCompact({ current, limit, label }: UsageCompactProps) {
 	if (limit === Infinity || limit === -1) {
 		return (
@@ -98,16 +90,13 @@ export function UsageCompact({ current, limit, label }: UsageCompactProps) {
 			</div>
 		);
 	}
-
 	const percentage = Math.min(100, (current / limit) * 100);
 	const remaining = Math.max(0, limit - current);
-
 	const getColor = () => {
 		if (percentage >= 100) return "text-red-500";
 		if (percentage >= 80) return "text-amber-500";
 		return "text-muted-foreground";
 	};
-
 	return (
 		<div className="flex items-center justify-between py-1">
 			<span className="text-sm text-muted-foreground">{label}</span>

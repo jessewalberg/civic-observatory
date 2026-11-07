@@ -89,7 +89,11 @@ function createIco(images) {
 		return directory;
 	});
 
-	return Buffer.concat([header, ...directories, ...images.map((i) => i.buffer)]);
+	return Buffer.concat([
+		header,
+		...directories,
+		...images.map((i) => i.buffer),
+	]);
 }
 
 async function renderFaviconIco() {

@@ -1,5 +1,4 @@
 import type { Topic } from "@/components/TopicBadge";
-
 export type PublicTopicFeed = {
 	slug: string;
 	topic: Topic;
@@ -7,7 +6,6 @@ export type PublicTopicFeed = {
 	description: string;
 	subscriptionLabel: string;
 };
-
 export const PUBLIC_TOPIC_FEEDS = [
 	{
 		slug: "housing",
@@ -58,7 +56,6 @@ export const PUBLIC_TOPIC_FEEDS = [
 		subscriptionLabel: "Transportation",
 	},
 ] as const satisfies readonly PublicTopicFeed[];
-
 export function getPublicTopicFeed(slug: string): PublicTopicFeed | null {
 	return PUBLIC_TOPIC_FEEDS.find((feed) => feed.slug === slug) ?? null;
 }

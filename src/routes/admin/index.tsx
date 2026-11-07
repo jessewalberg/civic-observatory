@@ -1,5 +1,4 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMutation, useQuery } from "convex/react";
 import {
 	BarChart3,
 	Bell,
@@ -19,10 +18,10 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { useCommand, useRead } from "@/lib/data";
 import { requireAuth } from "@/lib/serverAuth";
 import { cn } from "@/lib/utils";
-import { api } from "../../../convex/_generated/api";
-
+import { api } from "../../../server/api";
 export const Route = createFileRoute("/admin/")({
 	beforeLoad: async () => {
 		await requireAuth();
@@ -36,36 +35,27 @@ export const Route = createFileRoute("/admin/")({
 	}),
 	component: AdminIndexPage,
 });
-
 function AdminIndexPage() {
 	return <AdminContent />;
 }
-
 function AdminContent() {
 	const [isClaimingAdmin, setIsClaimingAdmin] = useState(false);
-
-	// Queries (identity-derived: Convex resolves the caller from the Clerk JWT)
-	const isAdmin = useQuery(api.functions.users.queries.isAdmin, {});
-	const bootstrapStatus = useQuery(
+	const isAdmin = useRead(api.functions.users.queries.isAdmin, {});
+	const bootstrapStatus = useRead(
 		api.functions.users.queries.getAdminBootstrapStatus,
 		{},
 	);
-	const userStats = useQuery(api.functions.users.queries.getAdminStats, {});
-	const scrapeStats = useQuery(api.functions.scrapeJobs.queries.getStats, {});
-	const municipalities = useQuery(
-		api.functions.municipalities.queries.list,
-		{},
-	);
-	const claimInitialAdmin = useMutation(
+	const userStats = useRead(api.functions.users.queries.getAdminStats, {});
+	const scrapeStats = useRead(api.functions.scrapeJobs.queries.getStats, {});
+	const municipalities = useRead(api.functions.municipalities.queries.list, {});
+	const claimInitialAdmin = useCommand(
 		api.functions.users.mutations.claimInitialAdmin,
 	);
-
 	const isLoading =
 		isAdmin === undefined ||
 		bootstrapStatus === undefined ||
 		userStats === undefined ||
 		municipalities === undefined;
-
 	if (isLoading) {
 		return (
 			<div className="min-h-screen bg-background flex items-center justify-center">
@@ -73,7 +63,6 @@ function AdminContent() {
 			</div>
 		);
 	}
-
 	const handleClaimInitialAdmin = async () => {
 		setIsClaimingAdmin(true);
 		try {
@@ -87,7 +76,6 @@ function AdminContent() {
 			setIsClaimingAdmin(false);
 		}
 	};
-
 	if (!isAdmin) {
 		return (
 			<div className="min-h-screen bg-background flex items-center justify-center">
@@ -134,14 +122,12 @@ function AdminContent() {
 			</div>
 		);
 	}
-
 	// Calculate municipality stats
 	const totalMunicipalities = municipalities?.length ?? 0;
 	const activeMunicipalities =
 		municipalities?.filter((m) => m.isActive).length ?? 0;
 	const verifiedMunicipalities =
 		municipalities?.filter((m) => m.isVerified).length ?? 0;
-
 	return (
 		<div className="min-h-screen bg-background">
 			<div className="container mx-auto px-4 py-8">
@@ -402,7 +388,6 @@ function AdminContent() {
 		</div>
 	);
 }
-
 function QuickLink({
 	to,
 	icon: Icon,
@@ -410,7 +395,9 @@ function QuickLink({
 	description,
 }: {
 	to: string;
-	icon: React.ComponentType<{ className?: string }>;
+	icon: React.ComponentType<{
+		className?: string;
+	}>;
 	label: string;
 	description: string;
 }) {
@@ -430,7 +417,6 @@ function QuickLink({
 		</Link>
 	);
 }
-
 function StatCard({
 	label,
 	value,
@@ -439,7 +425,9 @@ function StatCard({
 }: {
 	label: string;
 	value: string | number;
-	icon: React.ComponentType<{ className?: string }>;
+	icon: React.ComponentType<{
+		className?: string;
+	}>;
 	variant?: "default" | "success" | "destructive" | "warning" | "info";
 }) {
 	const iconColors = {
@@ -449,7 +437,6 @@ function StatCard({
 		warning: "text-amber-400",
 		info: "text-blue-400",
 	};
-
 	return (
 		<Card className="p-4">
 			<div className="flex items-center gap-3">
@@ -462,7 +449,6 @@ function StatCard({
 		</Card>
 	);
 }
-
 function HealthMetric({
 	label,
 	value,
@@ -481,7 +467,6 @@ function HealthMetric({
 		warning: "text-amber-400",
 		bad: "text-red-400",
 	};
-
 	return (
 		<div className="text-center">
 			<p className={cn("text-3xl font-bold", statusColors[status])}>

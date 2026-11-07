@@ -8,7 +8,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { meetingPath, municipalityPath } from "@/lib/publicUrls";
-import type { Id } from "../../convex/_generated/dataModel";
+import type { Id } from "../../server/model";
 import {
 	CoverageReliabilityBadge,
 	type PublicCoverageBadge,
@@ -22,14 +22,12 @@ type MeetingType =
 	| "zoning_board"
 	| "budget_committee"
 	| "other";
-
 type MeetingStatus =
 	| "pending"
 	| "processing"
 	| "summarized"
 	| "failed"
 	| "skipped";
-
 export type PublicSummaryResult = {
 	meetingId: Id<"meetings">;
 	meetingSlug?: string;
@@ -48,7 +46,6 @@ export type PublicSummaryResult = {
 		coverageBadge?: PublicCoverageBadge;
 	};
 };
-
 const meetingTypeLabels: Record<MeetingType, string> = {
 	city_council: "City Council",
 	school_board: "School Board",
@@ -57,7 +54,6 @@ const meetingTypeLabels: Record<MeetingType, string> = {
 	budget_committee: "Budget Committee",
 	other: "Other",
 };
-
 const statusLabels: Record<MeetingStatus, string> = {
 	pending: "Pending",
 	processing: "Processing",
@@ -65,7 +61,6 @@ const statusLabels: Record<MeetingStatus, string> = {
 	failed: "Failed",
 	skipped: "Skipped",
 };
-
 export function PublicSummaryResultCard({
 	result,
 	userId,
@@ -84,7 +79,6 @@ export function PublicSummaryResultCard({
 		_id: result.municipality.id,
 		slug: result.municipality.slug,
 	});
-
 	return (
 		<Card className="p-5">
 			<div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">

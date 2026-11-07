@@ -1,5 +1,4 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useAction, useMutation, useQuery } from "convex/react";
 import {
 	Building2,
 	Edit,
@@ -42,10 +41,10 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
+import { useCommand, useRead } from "@/lib/data";
 import { requireAuth } from "@/lib/serverAuth";
-import { api } from "../../../convex/_generated/api";
-import type { Id } from "../../../convex/_generated/dataModel";
-
+import { api } from "../../../server/api";
+import type { Id } from "../../../server/model";
 export const Route = createFileRoute("/admin/municipalities")({
 	beforeLoad: async () => {
 		await requireAuth();
@@ -59,9 +58,7 @@ export const Route = createFileRoute("/admin/municipalities")({
 	}),
 	component: MunicipalitiesAdminPage,
 });
-
 type Platform = "granicus" | "civicplus" | "generic" | "manual";
-
 interface MunicipalityFormData {
 	name: string;
 	state: string;
@@ -75,7 +72,6 @@ interface MunicipalityFormData {
 	isActive: boolean;
 	isVerified: boolean;
 }
-
 const initialFormData: MunicipalityFormData = {
 	name: "",
 	state: "",
@@ -89,7 +85,6 @@ const initialFormData: MunicipalityFormData = {
 	isActive: true,
 	isVerified: false,
 };
-
 const US_STATES = [
 	"AL",
 	"AK",
@@ -142,7 +137,6 @@ const US_STATES = [
 	"WI",
 	"WY",
 ];
-
 const TIMEZONES = [
 	"America/New_York",
 	"America/Chicago",
@@ -152,11 +146,9 @@ const TIMEZONES = [
 	"America/Anchorage",
 	"Pacific/Honolulu",
 ];
-
 function MunicipalitiesAdminPage() {
 	return <MunicipalitiesContent />;
 }
-
 function MunicipalitiesContent() {
 	const formId = useId();
 	const [searchQuery, setSearchQuery] = useState("");
@@ -171,36 +163,29 @@ function MunicipalitiesContent() {
 	const [formData, setFormData] =
 		useState<MunicipalityFormData>(initialFormData);
 	const [isSubmitting, setIsSubmitting] = useState(false);
-
 	// Queries
-	const isAdmin = useQuery(api.functions.users.queries.isAdmin, {});
-	const municipalities = useQuery(
-		api.functions.municipalities.queries.list,
-		{},
-	);
-
+	const isAdmin = useRead(api.functions.users.queries.isAdmin, {});
+	const municipalities = useRead(api.functions.municipalities.queries.list, {});
 	// Mutations
-	const createMunicipality = useMutation(
+	const createMunicipality = useCommand(
 		api.functions.municipalities.mutations.create,
 	);
-	const updateMunicipality = useMutation(
+	const updateMunicipality = useCommand(
 		api.functions.municipalities.mutations.update,
 	);
-	const deleteMunicipality = useMutation(
+	const deleteMunicipality = useCommand(
 		api.functions.municipalities.mutations.remove,
 	);
-	const toggleActive = useMutation(
+	const toggleActive = useCommand(
 		api.functions.municipalities.mutations.toggleActive,
 	);
-	const verifyMunicipality = useMutation(
+	const verifyMunicipality = useCommand(
 		api.functions.municipalities.mutations.verify,
 	);
-
 	// Actions
-	const triggerScrape = useAction(
+	const triggerScrape = useCommand(
 		api.functions.scrapeJobs.mutations.triggerScrape,
 	);
-
 	const handleScrapeNow = async (
 		municipalityId: Id<"municipalities">,
 		name: string,
@@ -221,9 +206,7 @@ function MunicipalitiesContent() {
 			});
 		}
 	};
-
 	const isLoading = isAdmin === undefined || municipalities === undefined;
-
 	if (isLoading) {
 		return (
 			<div className="min-h-screen bg-background flex items-center justify-center">
@@ -231,7 +214,6 @@ function MunicipalitiesContent() {
 			</div>
 		);
 	}
-
 	if (!isAdmin) {
 		return (
 			<div className="min-h-screen bg-background flex items-center justify-center">
@@ -256,7 +238,6 @@ function MunicipalitiesContent() {
 			</div>
 		);
 	}
-
 	// Filter municipalities
 	const filteredMunicipalities = municipalities?.filter((m) => {
 		const matchesSearch =
@@ -280,13 +261,11 @@ function MunicipalitiesContent() {
 			matchesSearch && matchesPlatform && matchesStatus && matchesScrapeStatus
 		);
 	});
-
 	const handleCreate = async () => {
 		if (!formData.name || !formData.state) {
 			toast.error("Name and state are required");
 			return;
 		}
-
 		setIsSubmitting(true);
 		try {
 			await createMunicipality({
@@ -320,13 +299,11 @@ function MunicipalitiesContent() {
 			setIsSubmitting(false);
 		}
 	};
-
 	const handleUpdate = async () => {
 		if (!editingId || !formData.name || !formData.state) {
 			toast.error("Name and state are required");
 			return;
 		}
-
 		setIsSubmitting(true);
 		try {
 			await updateMunicipality({
@@ -361,10 +338,8 @@ function MunicipalitiesContent() {
 			setIsSubmitting(false);
 		}
 	};
-
 	const handleDelete = async () => {
 		if (!deleteConfirmId) return;
-
 		setIsSubmitting(true);
 		try {
 			await deleteMunicipality({
@@ -380,7 +355,6 @@ function MunicipalitiesContent() {
 			setIsSubmitting(false);
 		}
 	};
-
 	const handleToggleActive = async (id: Id<"municipalities">) => {
 		try {
 			await toggleActive({ id });
@@ -391,7 +365,6 @@ function MunicipalitiesContent() {
 			toast.error(message);
 		}
 	};
-
 	const handleToggleVerified = async (
 		id: Id<"municipalities">,
 		verified: boolean,
@@ -408,7 +381,6 @@ function MunicipalitiesContent() {
 			toast.error(message);
 		}
 	};
-
 	const openEdit = (muni: NonNullable<typeof municipalities>[0]) => {
 		setFormData({
 			name: muni.name,
@@ -425,7 +397,6 @@ function MunicipalitiesContent() {
 		});
 		setEditingId(muni._id);
 	};
-
 	return (
 		<div className="min-h-screen bg-background">
 			<div className="container mx-auto px-4 py-8">
@@ -940,7 +911,6 @@ function MunicipalitiesContent() {
 		</div>
 	);
 }
-
 function ScrapeStatusBadge({ status }: { status: string }) {
 	const variants: Record<
 		string,
@@ -950,18 +920,15 @@ function ScrapeStatusBadge({ status }: { status: string }) {
 		failed: "destructive",
 		partial: "warning",
 	};
-
 	return (
 		<Badge variant={variants[status] ?? "secondary"} className="text-xs w-fit">
 			{status}
 		</Badge>
 	);
 }
-
 function formatRelativeTime(timestamp: number): string {
 	const now = Date.now();
 	const diff = now - timestamp;
-
 	if (diff < 60000) return "just now";
 	if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
 	if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;

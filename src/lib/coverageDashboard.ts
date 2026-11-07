@@ -1,5 +1,4 @@
 import type { PublicCoverageBadge } from "@/lib/publicCoverageBadge";
-
 export type CoverageHealthState =
 	| "live"
 	| "stale"
@@ -7,7 +6,6 @@ export type CoverageHealthState =
 	| "unsupported"
 	| "pending"
 	| "never-probed";
-
 export type CoverageDashboardRow = {
 	municipality: {
 		id: string;
@@ -62,7 +60,6 @@ export type CoverageDashboardRow = {
 		} | null;
 	};
 };
-
 export type CoverageAlert = {
 	id: string;
 	kind: "repeated-failure" | "stale";
@@ -74,7 +71,6 @@ export type CoverageAlert = {
 	lastSuccessAt: number | null;
 	suggestedAction: string;
 };
-
 export type CoverageDashboardFilters = {
 	search?: string;
 	state?: string;
@@ -92,7 +88,6 @@ export type CoverageDashboardFilters = {
 		| "needs-documents"
 		| "needs-summaries";
 };
-
 export type CoverageDashboardSort = {
 	key:
 		| "name"
@@ -108,12 +103,10 @@ export type CoverageDashboardSort = {
 		| "failure";
 	direction: "asc" | "desc";
 };
-
 const DEFAULT_SORT: CoverageDashboardSort = {
 	key: "health",
 	direction: "asc",
 };
-
 const HEALTH_RANK: Record<CoverageHealthState, number> = {
 	failing: 0,
 	stale: 1,
@@ -122,7 +115,6 @@ const HEALTH_RANK: Record<CoverageHealthState, number> = {
 	unsupported: 4,
 	live: 5,
 };
-
 const REPEATED_FAILURE_THRESHOLD = 2;
 const PLATFORM_ORDER: CoverageDashboardRow["municipality"]["platform"][] = [
 	"granicus",
@@ -130,7 +122,6 @@ const PLATFORM_ORDER: CoverageDashboardRow["municipality"]["platform"][] = [
 	"generic",
 	"manual",
 ];
-
 export function getCoverageDashboardRows(
 	rows: CoverageDashboardRow[],
 	filters: CoverageDashboardFilters = {},
@@ -140,7 +131,6 @@ export function getCoverageDashboardRows(
 		.filter((row) => matchesFilters(row, filters))
 		.sort((a, b) => compareRows(a, b, sort));
 }
-
 export function getCoverageDashboardStats(rows: CoverageDashboardRow[]) {
 	return {
 		total: rows.length,
@@ -160,13 +150,11 @@ export function getCoverageDashboardStats(rows: CoverageDashboardRow[]) {
 		coverageAttention: rows.filter(needsCoverageAttention).length,
 	};
 }
-
 export function getCoveragePlatformStats(rows: CoverageDashboardRow[]) {
 	return PLATFORM_ORDER.map((platform) => {
 		const platformRows = rows.filter(
 			(row) => row.municipality.platform === platform,
 		);
-
 		return {
 			platform,
 			total: platformRows.length,
@@ -185,26 +173,22 @@ export function getCoveragePlatformStats(rows: CoverageDashboardRow[]) {
 		};
 	});
 }
-
 export function getCoverageAlerts(
 	rows: CoverageDashboardRow[],
 ): CoverageAlert[] {
 	const byId = new Map<string, CoverageAlert>();
-
 	for (const row of rows) {
 		const alert = coverageAlert(row);
 		if (alert && !byId.has(alert.id)) {
 			byId.set(alert.id, alert);
 		}
 	}
-
 	return [...byId.values()].sort((a, b) => {
 		const severity = severityRank(a.severity) - severityRank(b.severity);
 		if (severity !== 0) return severity;
 		return a.municipalityName.localeCompare(b.municipalityName);
 	});
 }
-
 function matchesFilters(
 	row: CoverageDashboardRow,
 	filters: CoverageDashboardFilters,
@@ -221,25 +205,21 @@ function matchesFilters(
 	) {
 		return false;
 	}
-
 	if (filters.state?.trim() && filters.state !== "all") {
 		if (row.municipality.state !== filters.state) return false;
 	}
-
 	if (filters.activity === "active" && !row.municipality.isActive) {
 		return false;
 	}
 	if (filters.activity === "inactive" && row.municipality.isActive) {
 		return false;
 	}
-
 	if (filters.verification === "verified" && !row.municipality.isVerified) {
 		return false;
 	}
 	if (filters.verification === "unverified" && row.municipality.isVerified) {
 		return false;
 	}
-
 	if (
 		filters.healthState &&
 		filters.healthState !== "all" &&
@@ -247,7 +227,6 @@ function matchesFilters(
 	) {
 		return false;
 	}
-
 	if (
 		filters.platform &&
 		filters.platform !== "all" &&
@@ -255,7 +234,6 @@ function matchesFilters(
 	) {
 		return false;
 	}
-
 	if (filters.freshness && filters.freshness !== "all") {
 		if (filters.freshness === "never" && row.health.freshness.lastScrapedAt) {
 			return false;
@@ -270,17 +248,14 @@ function matchesFilters(
 			return false;
 		}
 	}
-
 	if (filters.failure === "has-failure" && !hasFailure(row)) {
 		return false;
 	}
 	if (filters.failure === "none" && hasFailure(row)) {
 		return false;
 	}
-
 	return matchesCoverageFilter(row, filters.coverage ?? "all");
 }
-
 function matchesCoverageFilter(
 	row: CoverageDashboardRow,
 	coverage: NonNullable<CoverageDashboardFilters["coverage"]>,
@@ -303,10 +278,8 @@ function matchesCoverageFilter(
 			row.health.summaryStatus.summaryCoveragePct < 100
 		);
 	}
-
 	return true;
 }
-
 function compareRows(
 	a: CoverageDashboardRow,
 	b: CoverageDashboardRow,
@@ -317,12 +290,9 @@ function compareRows(
 		sortValue(a, sort.key),
 		sortValue(b, sort.key),
 	);
-
 	if (result !== 0) return result * direction;
-
 	return a.municipality.name.localeCompare(b.municipality.name);
 }
-
 function sortValue(
 	row: CoverageDashboardRow,
 	key: CoverageDashboardSort["key"],
@@ -352,7 +322,6 @@ function sortValue(
 			return row.health.lastFailure?.at ?? null;
 	}
 }
-
 function compareSortValues(
 	a: string | number | null,
 	b: string | number | null,
@@ -364,11 +333,9 @@ function compareSortValues(
 	const right = typeof b === "number" ? b : Number.NEGATIVE_INFINITY;
 	return left - right;
 }
-
 function hasFailure(row: CoverageDashboardRow) {
 	return row.health.state === "failing" || row.health.lastFailure !== null;
 }
-
 function isCoverageComplete(row: CoverageDashboardRow) {
 	return (
 		row.health.summaryStatus.totalMeetings > 0 &&
@@ -376,7 +343,6 @@ function isCoverageComplete(row: CoverageDashboardRow) {
 		row.health.summaryStatus.summaryCoveragePct === 100
 	);
 }
-
 function needsCoverageAttention(row: CoverageDashboardRow) {
 	return (
 		row.health.summaryStatus.totalMeetings === 0 ||
@@ -384,7 +350,6 @@ function needsCoverageAttention(row: CoverageDashboardRow) {
 		row.health.summaryStatus.summaryCoveragePct < 100
 	);
 }
-
 function coverageRank(row: CoverageDashboardRow) {
 	if (row.health.summaryStatus.totalMeetings === 0) return 0;
 	if (
@@ -397,7 +362,6 @@ function coverageRank(row: CoverageDashboardRow) {
 	if (row.health.summaryStatus.summaryCoveragePct < 100) return 3;
 	return 4;
 }
-
 function coverageAlert(row: CoverageDashboardRow): CoverageAlert | null {
 	if (isRepeatedFailure(row)) {
 		return {
@@ -413,7 +377,6 @@ function coverageAlert(row: CoverageDashboardRow): CoverageAlert | null {
 				"Inspect scraper logs, confirm the agenda URL still works, then retry the scraper.",
 		};
 	}
-
 	if (row.health.state === "stale") {
 		return {
 			id: `${row.municipality.id}:stale`,
@@ -430,17 +393,14 @@ function coverageAlert(row: CoverageDashboardRow): CoverageAlert | null {
 				"Run a manual scrape or check whether the meeting source changed.",
 		};
 	}
-
 	return null;
 }
-
 function isRepeatedFailure(row: CoverageDashboardRow) {
 	return (
 		row.health.state === "failing" &&
 		row.health.scrapeJobSample.failed >= REPEATED_FAILURE_THRESHOLD
 	);
 }
-
 function severityRank(severity: CoverageAlert["severity"]) {
 	return severity === "critical" ? 0 : 1;
 }

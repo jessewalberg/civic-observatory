@@ -4,7 +4,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 interface StatsCardSkeletonProps {
 	count?: number;
 }
-
 export function StatsCardSkeleton({ count = 1 }: StatsCardSkeletonProps) {
 	return (
 		<>

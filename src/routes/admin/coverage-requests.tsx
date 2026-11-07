@@ -1,5 +1,4 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMutation, useQuery } from "convex/react";
 import {
 	ArrowUpRight,
 	CheckCircle2,
@@ -29,15 +28,15 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
+import { useCommand, useRead } from "@/lib/data";
 import { requireAuth } from "@/lib/serverAuth";
 import { cn } from "@/lib/utils";
-import { api } from "../../../convex/_generated/api";
-import type { Doc, Id } from "../../../convex/_generated/dataModel";
+import { api } from "../../../server/api";
+import type { Doc, Id } from "../../../server/model";
 
 type CoverageRequest = Doc<"coverageRequests">;
 type CoverageRequestStatus = CoverageRequest["status"];
 type CoverageRequestPriority = CoverageRequest["priority"];
-
 const STATUS_OPTIONS: Array<{
 	value: CoverageRequestStatus | "all";
 	label: string;
@@ -49,7 +48,6 @@ const STATUS_OPTIONS: Array<{
 	{ value: "active", label: "Active" },
 	{ value: "rejected", label: "Rejected" },
 ];
-
 const PRIORITY_OPTIONS: Array<{
 	value: CoverageRequestPriority | "all";
 	label: string;
@@ -59,7 +57,6 @@ const PRIORITY_OPTIONS: Array<{
 	{ value: "medium", label: "Medium" },
 	{ value: "low", label: "Low" },
 ];
-
 export const Route = createFileRoute("/admin/coverage-requests")({
 	beforeLoad: async () => {
 		await requireAuth();
@@ -76,7 +73,6 @@ export const Route = createFileRoute("/admin/coverage-requests")({
 	}),
 	component: CoverageRequestsAdminPage,
 });
-
 function CoverageRequestsAdminPage() {
 	const [statusFilter, setStatusFilter] = useState<
 		CoverageRequestStatus | "all"
@@ -85,8 +81,7 @@ function CoverageRequestsAdminPage() {
 		CoverageRequestPriority | "all"
 	>("all");
 	const [updatingIds, setUpdatingIds] = useState<Set<string>>(() => new Set());
-
-	const requests = useQuery(
+	const requests = useRead(
 		api.functions.coverageRequests.queries.listForAdmin,
 		{
 			status: statusFilter === "all" ? undefined : statusFilter,
@@ -94,13 +89,12 @@ function CoverageRequestsAdminPage() {
 			limit: 100,
 		},
 	) as CoverageRequest[] | null | undefined;
-	const updateStatus = useMutation(
+	const updateStatus = useCommand(
 		api.functions.coverageRequests.mutations.updateStatus,
 	);
-	const seedMunicipality = useMutation(
+	const seedMunicipality = useCommand(
 		api.functions.coverageRequests.mutations.seedMunicipality,
 	);
-
 	const markUpdating = (id: string, isUpdating: boolean) => {
 		setUpdatingIds((current) => {
 			const next = new Set(current);
@@ -112,7 +106,6 @@ function CoverageRequestsAdminPage() {
 			return next;
 		});
 	};
-
 	const handleStatusChange = async (
 		request: CoverageRequest,
 		status: CoverageRequestStatus,
@@ -124,7 +117,6 @@ function CoverageRequestsAdminPage() {
 			request.statusReason ?? "",
 		);
 		if (statusReason === null) return;
-
 		markUpdating(request._id, true);
 		try {
 			await updateStatus({
@@ -141,7 +133,6 @@ function CoverageRequestsAdminPage() {
 			markUpdating(request._id, false);
 		}
 	};
-
 	const handlePriorityChange = async (
 		request: CoverageRequest,
 		priority: CoverageRequestPriority,
@@ -162,7 +153,6 @@ function CoverageRequestsAdminPage() {
 			markUpdating(request._id, false);
 		}
 	};
-
 	const handleSeed = async (request: CoverageRequest) => {
 		markUpdating(request._id, true);
 		try {
@@ -179,7 +169,6 @@ function CoverageRequestsAdminPage() {
 			markUpdating(request._id, false);
 		}
 	};
-
 	if (requests === undefined) {
 		return (
 			<div className="flex min-h-screen items-center justify-center bg-background">
@@ -190,7 +179,6 @@ function CoverageRequestsAdminPage() {
 			</div>
 		);
 	}
-
 	if (requests === null) {
 		return (
 			<div className="flex min-h-screen items-center justify-center bg-background">
@@ -215,9 +203,7 @@ function CoverageRequestsAdminPage() {
 			</div>
 		);
 	}
-
 	const stats = getRequestStats(requests);
-
 	return (
 		<div className="min-h-screen bg-background">
 			<div className="container mx-auto px-4 py-8">
@@ -459,19 +445,19 @@ function CoverageRequestsAdminPage() {
 		</div>
 	);
 }
-
 function SourceLinks({ request }: { request: CoverageRequest }) {
 	const links = [
 		request.websiteUrl ? { label: "Website", href: request.websiteUrl } : null,
 		request.meetingsPageUrl
 			? { label: "Meetings", href: request.meetingsPageUrl }
 			: null,
-	].filter(Boolean) as Array<{ label: string; href: string }>;
-
+	].filter(Boolean) as Array<{
+		label: string;
+		href: string;
+	}>;
 	if (links.length === 0) {
 		return <span className="text-muted-foreground">None</span>;
 	}
-
 	return (
 		<div className="flex flex-col gap-1">
 			{links.map((link) => (
@@ -489,12 +475,10 @@ function SourceLinks({ request }: { request: CoverageRequest }) {
 		</div>
 	);
 }
-
 function NotificationBadge({ request }: { request: CoverageRequest }) {
 	if (!request.notificationStatus) {
 		return <Badge variant="outline">Not queued</Badge>;
 	}
-
 	const variant = {
 		queued: "info",
 		sent: "success",
@@ -505,7 +489,6 @@ function NotificationBadge({ request }: { request: CoverageRequest }) {
 		| "success"
 		| "destructive"
 		| "secondary";
-
 	return (
 		<div className="flex flex-col gap-1">
 			<Badge variant={variant} className="capitalize">
@@ -519,7 +502,6 @@ function NotificationBadge({ request }: { request: CoverageRequest }) {
 		</div>
 	);
 }
-
 function StatCard({
 	label,
 	value,
@@ -547,7 +529,6 @@ function StatCard({
 		</Card>
 	);
 }
-
 function getRequestStats(requests: CoverageRequest[]) {
 	return {
 		total: requests.length,
@@ -559,7 +540,6 @@ function getRequestStats(requests: CoverageRequest[]) {
 		active: requests.filter((request) => request.status === "active").length,
 	};
 }
-
 function formatDate(value: number) {
 	return new Date(value).toLocaleDateString(undefined, {
 		month: "short",

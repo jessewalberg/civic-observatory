@@ -27,7 +27,6 @@ interface ShareButtonProps {
 	variant?: "default" | "outline" | "ghost";
 	size?: "default" | "sm" | "lg" | "icon";
 }
-
 export function ShareButton({
 	title,
 	description,
@@ -38,11 +37,9 @@ export function ShareButton({
 }: ShareButtonProps) {
 	const [copied, setCopied] = useState(false);
 	const [open, setOpen] = useState(false);
-
 	const shareUrl =
 		url || (typeof window !== "undefined" ? window.location.href : "");
 	const shareText = description || title;
-
 	const handleNativeShare = async () => {
 		if (navigator.share) {
 			try {
@@ -62,13 +59,11 @@ export function ShareButton({
 			setOpen(true);
 		}
 	};
-
 	const handleCopyLink = async () => {
 		await copyTextToClipboard(shareUrl);
 		setCopied(true);
 		setTimeout(() => setCopied(false), 2000);
 	};
-
 	const shareLinks = [
 		{
 			name: "Twitter",
@@ -95,7 +90,6 @@ export function ShareButton({
 			color: "hover:bg-primary/10 hover:text-primary",
 		},
 	];
-
 	return (
 		<Dialog open={open} onOpenChange={setOpen}>
 			<Button

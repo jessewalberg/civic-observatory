@@ -1,54 +1,34 @@
 {
 	"$schema": "https://biomejs.dev/schemas/2.2.4/schema.json",
-	"vcs": {
-		"enabled": true,
-		"clientKind": "git",
-		"useIgnoreFile": true
-	},
+	"vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
 	"files": {
 		"ignoreUnknown": false,
 		"includes": [
-			"**/src/**/*",
-			"**/convex/**/*",
-			"**/.vscode/**/*",
-			"**/index.html",
-			"**/scripts/auth-surface-audit.mjs",
-			"**/scripts/auth-surface-audit.test.mjs",
-			"**/vite.config.ts",
-			"!**/src/routeTree.gen.ts",
-			"!**/src/styles.css",
-			"!**/convex/_generated/**/*"
+			"src/**/*",
+			"server/**/*",
+			"scripts/**/*",
+			"alchemy.run.ts",
+			"vite.config.ts",
+			"!src/routeTree.gen.ts",
+			"!src/styles.css",
+			"!server/api.ts",
+			"!server/registry.ts"
 		]
 	},
-	"formatter": {
-		"enabled": true,
-		"indentStyle": "tab"
-	},
+	"formatter": { "enabled": true, "indentStyle": "tab" },
 	"assist": { "actions": { "source": { "organizeImports": "on" } } },
 	"linter": {
 		"enabled": true,
 		"rules": {
 			"recommended": true,
-			"suspicious": {
-				"noArrayIndexKey": "warn"
-			}
+			"suspicious": { "noArrayIndexKey": "warn" }
 		}
 	},
 	"overrides": [
 		{
 			"includes": ["**/skeletons/**/*"],
-			"linter": {
-				"rules": {
-					"suspicious": {
-						"noArrayIndexKey": "off"
-					}
-				}
-			}
+			"linter": { "rules": { "suspicious": { "noArrayIndexKey": "off" } } }
 		}
 	],
-	"javascript": {
-		"formatter": {
-			"quoteStyle": "double"
-		}
-	}
+	"javascript": { "formatter": { "quoteStyle": "double" } }
 }

@@ -8,7 +8,6 @@ interface ServerErrorProps {
 	message?: string;
 	onRetry?: () => void;
 }
-
 export function ServerError({
 	title = "Server Error",
 	message = "We're experiencing technical difficulties. Please try again later.",

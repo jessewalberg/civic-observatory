@@ -1,5 +1,4 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "convex/react";
 import { ArrowLeft } from "lucide-react";
 import { useMemo } from "react";
 import {
@@ -9,11 +8,11 @@ import {
 import { TopicBadge } from "@/components/TopicBadge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useRead } from "@/lib/data";
 import { usePublicAuthState } from "@/lib/publicAuth";
 import { canonicalLink, NOINDEX_ROBOTS } from "@/lib/seo";
 import { getPublicTopicFeed, PUBLIC_TOPIC_FEEDS } from "@/lib/topicFeeds";
-import { api } from "../../../convex/_generated/api";
-
+import { api } from "../../../server/api";
 export const Route = createFileRoute("/topics/$topic")({
 	head: ({ params }) => {
 		const feed = getPublicTopicFeed(params.topic);
@@ -25,7 +24,6 @@ export const Route = createFileRoute("/topics/$topic")({
 				],
 			};
 		}
-
 		const title = `${feed.label} Meeting Summaries | Civic Observatory`;
 		return {
 			meta: [
@@ -41,7 +39,6 @@ export const Route = createFileRoute("/topics/$topic")({
 	},
 	component: TopicFeedPage,
 });
-
 function TopicFeedPage() {
 	const { topic } = Route.useParams();
 	const feed = getPublicTopicFeed(topic);
@@ -50,11 +47,10 @@ function TopicFeedPage() {
 		() => (feed ? [feed.subscriptionLabel] : []),
 		[feed],
 	);
-	const results = useQuery(
+	const results = useRead(
 		api.functions.summaries.queries.listPublicTopicFeed,
 		feed ? { topic: feed.slug, limit: 30 } : "skip",
 	) as PublicSummaryResult[] | undefined;
-
 	if (!feed) {
 		return (
 			<div className="min-h-screen bg-background">
@@ -78,7 +74,6 @@ function TopicFeedPage() {
 			</div>
 		);
 	}
-
 	return (
 		<div className="min-h-screen bg-background">
 			<section className="border-b border-border bg-surface/50">
@@ -156,7 +151,6 @@ function TopicFeedPage() {
 		</div>
 	);
 }
-
 function TopicResultSkeleton() {
 	return (
 		<div className="rounded-lg border border-border p-5">

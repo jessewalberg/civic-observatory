@@ -11,7 +11,6 @@ import type { PublicCoverageBadge } from "@/lib/publicCoverageBadge";
 import { cn } from "@/lib/utils";
 
 export type { PublicCoverageBadge } from "@/lib/publicCoverageBadge";
-
 export function CoverageReliabilityBadge({
 	badge,
 	className,
@@ -22,10 +21,7 @@ export function CoverageReliabilityBadge({
 	showLastChecked?: boolean;
 }) {
 	const Icon = badgeIcon(badge.kind);
-	const title = `${badge.description} Latest health: ${healthLabel(
-		badge.latestHealth,
-	)}. Last checked: ${formatLastChecked(badge.lastCheckedAt)}.`;
-
+	const title = `${badge.description} Latest health: ${healthLabel(badge.latestHealth)}. Last checked: ${formatLastChecked(badge.lastCheckedAt)}.`;
 	return (
 		<span
 			className={cn("inline-flex flex-wrap items-center gap-1.5", className)}
@@ -43,7 +39,6 @@ export function CoverageReliabilityBadge({
 		</span>
 	);
 }
-
 function badgeIcon(kind: PublicCoverageBadge["kind"]) {
 	const icons = {
 		verified: ShieldCheck,
@@ -55,7 +50,6 @@ function badgeIcon(kind: PublicCoverageBadge["kind"]) {
 	};
 	return icons[kind];
 }
-
 function healthLabel(health: PublicCoverageBadge["latestHealth"]) {
 	const labels: Record<PublicCoverageBadge["latestHealth"], string> = {
 		fresh: "fresh",
@@ -67,12 +61,11 @@ function healthLabel(health: PublicCoverageBadge["latestHealth"]) {
 	};
 	return labels[health];
 }
-
 function formatLastChecked(timestamp: number | null) {
 	if (!timestamp) return "not yet";
 	const diff = Math.max(0, Date.now() - timestamp);
-	if (diff < 60_000) return "just now";
-	if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-	if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-	return `${Math.floor(diff / 86_400_000)}d ago`;
+	if (diff < 60000) return "just now";
+	if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+	if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+	return `${Math.floor(diff / 86400000)}d ago`;
 }

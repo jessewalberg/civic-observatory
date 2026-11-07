@@ -7,7 +7,6 @@ interface FormSkeletonProps {
 	hasCard?: boolean;
 	className?: string;
 }
-
 export function FormSkeleton({
 	fields = 4,
 	hasCard = true,
@@ -24,10 +23,8 @@ export function FormSkeleton({
 			<Skeleton className="h-10 w-full" />
 		</div>
 	);
-
 	if (hasCard) {
 		return <Card className="p-6">{content}</Card>;
 	}
-
 	return content;
 }

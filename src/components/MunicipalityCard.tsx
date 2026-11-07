@@ -10,7 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { publicIdentifier } from "@/lib/publicUrls";
 import { cn } from "@/lib/utils";
-import type { Id } from "../../convex/_generated/dataModel";
+import type { Id } from "../../server/model";
 
 interface MunicipalityCardProps {
 	id: Id<"municipalities">;
@@ -24,7 +24,6 @@ interface MunicipalityCardProps {
 	coverageBadge?: PublicCoverageBadge;
 	className?: string;
 }
-
 export function MunicipalityCard({
 	id,
 	slug,
@@ -108,17 +107,15 @@ export function MunicipalityCard({
 		</Link>
 	);
 }
-
 function formatPopulation(pop: number): string {
-	if (pop >= 1_000_000) {
-		return `${(pop / 1_000_000).toFixed(1)}M`;
+	if (pop >= 1000000) {
+		return `${(pop / 1000000).toFixed(1)}M`;
 	}
-	if (pop >= 1_000) {
-		return `${(pop / 1_000).toFixed(0)}K`;
+	if (pop >= 1000) {
+		return `${(pop / 1000).toFixed(0)}K`;
 	}
 	return pop.toString();
 }
-
 export function MunicipalityCardSkeleton() {
 	return (
 		<Card className="h-full">

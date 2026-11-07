@@ -9,5 +9,4 @@ function Skeleton({ className, ...props }: React.ComponentProps<"div">) {
 		/>
 	);
 }
-
 export { Skeleton };

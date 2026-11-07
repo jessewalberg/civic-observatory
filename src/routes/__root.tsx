@@ -3,21 +3,14 @@ import {
 	HeadContent,
 	Outlet,
 	Scripts,
-	useLocation,
 	useRouter,
 } from "@tanstack/react-router";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense } from "react";
 import { Toaster } from "sonner";
-
-import { AppConvexProvider } from "@/components/AppConvexProvider";
+import { AppDataProvider } from "@/components/AppDataProvider";
 import { ErrorBoundary, RootErrorFallback } from "@/components/error";
 import { Header } from "@/components/Header";
 import { RouteLoadingFallback } from "@/components/SuspenseFallback";
-import {
-	getAppProviderMode,
-	hasClerkSessionCookie,
-	showsAuthenticatedHeaderControls,
-} from "@/lib/authRoutes";
 import { DEFAULT_SOCIAL_IMAGE } from "@/lib/seo";
 import appCss from "@/styles.css?url";
 
@@ -28,7 +21,6 @@ const RouterDevtools = import.meta.env.DEV
 			})),
 		)
 	: null;
-
 export const Route = createRootRoute({
 	head: () => ({
 		meta: [
@@ -98,7 +90,6 @@ export const Route = createRootRoute({
 	errorComponent: RootErrorComponent,
 	notFoundComponent: NotFoundComponent,
 });
-
 function RootErrorComponent({ error }: { error: Error }) {
 	const router = useRouter();
 	return (
@@ -107,7 +98,6 @@ function RootErrorComponent({ error }: { error: Error }) {
 		</RootDocument>
 	);
 }
-
 function NotFoundComponent() {
 	return (
 		<RootDocument>
@@ -115,7 +105,6 @@ function NotFoundComponent() {
 		</RootDocument>
 	);
 }
-
 function NotFoundPage() {
 	return (
 		<div className="min-h-screen bg-background flex items-center justify-center p-4">
@@ -139,25 +128,12 @@ function NotFoundPage() {
 		</div>
 	);
 }
-
 function RootComponent() {
-	const location = useLocation();
-	const [hasClerkSession, setHasClerkSession] = useState(false);
-	const providerMode = getAppProviderMode(location.pathname, hasClerkSession);
-	const showSignedInHeaderControls = showsAuthenticatedHeaderControls(
-		location.pathname,
-		hasClerkSession,
-	);
-
-	useEffect(() => {
-		setHasClerkSession(readBrowserClerkSessionForPath(location.pathname));
-	}, [location.pathname]);
-
 	return (
 		<RootDocument>
 			<ErrorBoundary>
-				<AppConvexProvider mode={providerMode}>
-					<Header showSignedInControls={showSignedInHeaderControls} />
+				<AppDataProvider>
+					<Header />
 					<Suspense fallback={<RouteLoadingFallback />}>
 						<Outlet />
 					</Suspense>
@@ -167,18 +143,11 @@ function RootComponent() {
 						</Suspense>
 					) : null}
 					<Toaster richColors position="top-center" />
-				</AppConvexProvider>
+				</AppDataProvider>
 			</ErrorBoundary>
 		</RootDocument>
 	);
 }
-
-function readBrowserClerkSessionForPath(pathname: string): boolean {
-	if (!pathname) return false;
-
-	return hasClerkSessionCookie(document.cookie);
-}
-
 function RootDocument({ children }: { children: React.ReactNode }) {
 	return (
 		<html lang="en" className="dark">

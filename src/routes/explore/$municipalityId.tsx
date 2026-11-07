@@ -4,8 +4,6 @@ import {
 	notFound,
 	redirect,
 } from "@tanstack/react-router";
-import { ConvexHttpClient } from "convex/browser";
-import { useQuery } from "convex/react";
 import {
 	ArrowLeft,
 	Bell,
@@ -36,24 +34,23 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { apiClient } from "@/lib/apiClient";
+import { useRead } from "@/lib/data";
 import { formatMeetingDate } from "@/lib/meetingDates";
 import { usePublicAuthState } from "@/lib/publicAuth";
-import { failConvexLoader, requireConvexUrl } from "@/lib/publicConvexLoader";
+import { failDataLoader } from "@/lib/publicDataLoader";
 import { municipalityPath, publicIdentifier } from "@/lib/publicUrls";
 import {
 	canonicalLink,
 	generateMunicipalityJsonLd,
 	NOINDEX_ROBOTS,
 } from "@/lib/seo";
-import { api } from "../../../convex/_generated/api";
-
+import { api } from "../../../server/api";
 export const Route = createFileRoute("/explore/$municipalityId")({
 	component: MunicipalityDetailPage,
 	loader: async ({ params }) => {
-		const convexUrl = requireConvexUrl();
 		try {
-			const convex = new ConvexHttpClient(convexUrl);
-			const municipality = await convex.query(
+			const municipality = await apiClient.request(
 				api.functions.municipalities.queries.getByIdentifier,
 				{
 					identifier: params.municipalityId,
@@ -73,9 +70,8 @@ export const Route = createFileRoute("/explore/$municipalityId")({
 			if (!municipality) {
 				throw notFound();
 			}
-
 			const recentSummaries = (
-				await convex.query(
+				await apiClient.request(
 					api.functions.meetings.queries.listRecentSummariesByMunicipality,
 					{ municipalityId: municipality._id },
 				)
@@ -85,10 +81,9 @@ export const Route = createFileRoute("/explore/$municipalityId")({
 				title: meeting.title,
 				meetingDate: meeting.meetingDate,
 			}));
-
 			return { municipality, recentSummaries };
 		} catch (error) {
-			failConvexLoader(error);
+			failDataLoader(error);
 		}
 	},
 	notFoundComponent: MunicipalityNotFoundPage,
@@ -102,19 +97,14 @@ export const Route = createFileRoute("/explore/$municipalityId")({
 				],
 			};
 		}
-
 		const location = municipality.county
 			? `${municipality.county}, ${municipality.state}`
 			: municipality.state;
-
 		const populationText = municipality.population
 			? ` with ${municipality.population.toLocaleString()} residents`
 			: "";
-
 		const description = `Browse municipal meeting summaries from ${municipality.name}, ${location}${populationText}. Stay informed about local government decisions.`;
-
 		const title = `${municipality.name}, ${municipality.state} | Civic Observatory`;
-
 		return {
 			meta: [
 				{ title },
@@ -155,7 +145,6 @@ export const Route = createFileRoute("/explore/$municipalityId")({
 		};
 	},
 });
-
 type MeetingType =
 	| "city_council"
 	| "school_board"
@@ -163,7 +152,6 @@ type MeetingType =
 	| "zoning_board"
 	| "budget_committee"
 	| "other";
-
 const meetingTypeLabels: Record<MeetingType, string> = {
 	city_council: "City Council",
 	school_board: "School Board",
@@ -172,7 +160,6 @@ const meetingTypeLabels: Record<MeetingType, string> = {
 	budget_committee: "Budget Committee",
 	other: "Other",
 };
-
 const MEETING_SKELETON_KEYS = [
 	"meeting-skeleton-1",
 	"meeting-skeleton-2",
@@ -180,7 +167,6 @@ const MEETING_SKELETON_KEYS = [
 	"meeting-skeleton-4",
 	"meeting-skeleton-5",
 ];
-
 function MunicipalityDetailPage() {
 	const { municipalityId } = Route.useParams();
 	const loaderData = Route.useLoaderData();
@@ -191,9 +177,8 @@ function MunicipalityDetailPage() {
 	const [cursor, setCursor] = useState<string | null>(null);
 	const [showSubscribeModal, setShowSubscribeModal] = useState(false);
 	const recentSummariesHeadingId = useId();
-
 	// Fetch municipality details
-	const queriedMunicipality = useQuery(
+	const queriedMunicipality = useRead(
 		api.functions.municipalities.queries.getByIdentifier,
 		{ identifier: municipalityId },
 	);
@@ -202,11 +187,9 @@ function MunicipalityDetailPage() {
 			? loaderData.municipality
 			: queriedMunicipality;
 	const resolvedMunicipalityId = municipality?._id;
-
 	const user = publicAuth.user;
-
 	// Check if user is subscribed to this municipality
-	const existingSubscription = useQuery(
+	const existingSubscription = useRead(
 		api.functions.subscriptions.queries.getForMunicipality,
 		user && resolvedMunicipalityId
 			? {
@@ -214,29 +197,25 @@ function MunicipalityDetailPage() {
 				}
 			: "skip",
 	);
-
 	// Get subscription count for limit checking
-	const subscriptionCount = useQuery(
+	const subscriptionCount = useRead(
 		api.functions.subscriptions.queries.countByUser,
 		user ? {} : "skip",
 	);
-
 	// Subscription limits by tier
 	const subscriptionLimit = user?.tier === "pro" ? Infinity : 5;
 	const canSubscribe =
 		!existingSubscription &&
 		(subscriptionCount?.total ?? 0) < subscriptionLimit;
-
 	// Fetch meeting types available for this municipality
-	const meetingTypes = useQuery(
+	const meetingTypes = useRead(
 		api.functions.meetings.queries.getMeetingTypes,
 		resolvedMunicipalityId
 			? { municipalityId: resolvedMunicipalityId }
 			: "skip",
 	);
-
 	// Fetch meetings with filters and pagination
-	const meetingsData = useQuery(
+	const meetingsData = useRead(
 		api.functions.meetings.queries.listByMunicipality,
 		resolvedMunicipalityId
 			? {
@@ -250,45 +229,37 @@ function MunicipalityDetailPage() {
 				}
 			: "skip",
 	);
-
 	// Fetch meeting count
-	const meetingCount = useQuery(
+	const meetingCount = useRead(
 		api.functions.meetings.queries.countByMunicipality,
 		resolvedMunicipalityId
 			? { municipalityId: resolvedMunicipalityId }
 			: "skip",
 	);
-
 	const isLoading = municipality === undefined;
 	const hasActiveFilters = meetingType && meetingType !== "all";
 	const municipalityCoverageBadge =
 		meetingsData?.municipalityCoverageBadge ?? municipality?.coverageBadge;
-
 	const clearFilters = () => {
 		setMeetingType("");
 		setCursor(null);
 	};
-
 	const loadMore = () => {
 		if (meetingsData?.nextCursor) {
 			setCursor(meetingsData.nextCursor);
 		}
 	};
-
 	// Handle filter change - reset cursor
 	const handleTypeChange = (value: string) => {
 		setMeetingType(value);
 		setCursor(null);
 	};
-
 	if (isLoading) {
 		return <MunicipalityDetailSkeleton />;
 	}
-
 	if (municipality === null) {
 		return <MunicipalityNotFoundPage />;
 	}
-
 	return (
 		<div className="min-h-screen bg-background">
 			{/* Header */}
@@ -608,7 +579,6 @@ function MunicipalityDetailPage() {
 		</div>
 	);
 }
-
 function MunicipalityNotFoundPage() {
 	return (
 		<div className="min-h-screen bg-background flex items-center justify-center">
@@ -636,7 +606,6 @@ function MunicipalityNotFoundPage() {
 		</div>
 	);
 }
-
 function MunicipalityDetailSkeleton() {
 	return (
 		<div className="min-h-screen bg-background">

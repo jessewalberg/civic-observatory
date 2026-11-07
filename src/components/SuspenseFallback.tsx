@@ -7,7 +7,6 @@ interface SuspenseBoundaryProps {
 	variant?: "page" | "section" | "inline";
 	message?: string;
 }
-
 export function SuspenseBoundary({
 	children,
 	fallback,
@@ -24,10 +23,8 @@ export function SuspenseBoundary({
 				return <CenteredSpinner message={message ?? "Loading..."} />;
 		}
 	})();
-
 	return <Suspense fallback={fallback ?? defaultFallback}>{children}</Suspense>;
 }
-
 /**
  * Higher-order component to wrap a component with Suspense
  */
@@ -43,7 +40,6 @@ export function withSuspense<P extends object>(
 		);
 	};
 }
-
 /**
  * A loading state specifically for route transitions
  */
@@ -54,7 +50,6 @@ export function RouteLoadingFallback() {
 		</div>
 	);
 }
-
 /**
  * A loading state for data fetching within a page
  */
