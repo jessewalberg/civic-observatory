@@ -1,11 +1,10 @@
-import { UserButton } from "@clerk/tanstack-react-start";
 import { Link } from "@tanstack/react-router";
-import { useQuery } from "convex/react";
 import { Bell, Shield } from "lucide-react";
-import { useConvexUser } from "@/lib/auth";
-import { api } from "../../convex/_generated/api";
+import { useAppUser } from "@/lib/auth";
+import { useRead } from "@/lib/data";
+import { api } from "../../server/api";
+import { AccountButton } from "./AccountButton";
 import { Button } from "./ui/button";
-
 export function SignedInHeaderControls() {
 	return (
 		<>
@@ -17,18 +16,15 @@ export function SignedInHeaderControls() {
 			</Link>
 			<AdminLink />
 			<NotificationBadge />
-			<UserButton />
+			<AccountButton />
 		</>
 	);
 }
-
 function AdminLink() {
-	const user = useConvexUser();
-
+	const user = useAppUser();
 	if (!user?.isAdmin) {
 		return null;
 	}
-
 	return (
 		<Link to="/admin">
 			<Button variant="ghost" size="sm" className="gap-2">
@@ -38,15 +34,12 @@ function AdminLink() {
 		</Link>
 	);
 }
-
 function NotificationBadge() {
-	const convexUser = useConvexUser();
-
-	const unreadCount = useQuery(
+	const appUser = useAppUser();
+	const unreadCount = useRead(
 		api.functions.alerts.queries.getUnreadCount,
-		convexUser ? {} : "skip",
+		appUser ? {} : "skip",
 	);
-
 	return (
 		<Link to="/dashboard">
 			<Button variant="ghost" size="icon" className="relative">

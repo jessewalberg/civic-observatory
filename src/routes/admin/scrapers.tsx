@@ -1,5 +1,4 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useAction, useQuery } from "convex/react";
 import {
 	Activity,
 	AlertCircle,
@@ -39,11 +38,11 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
+import { useCommand, useRead } from "@/lib/data";
 import { requireAuth } from "@/lib/serverAuth";
 import { cn } from "@/lib/utils";
-import { api } from "../../../convex/_generated/api";
-import type { Id } from "../../../convex/_generated/dataModel";
-
+import { api } from "../../../server/api";
+import type { Id } from "../../../server/model";
 export const Route = createFileRoute("/admin/scrapers")({
 	beforeLoad: async () => {
 		await requireAuth();
@@ -57,7 +56,6 @@ export const Route = createFileRoute("/admin/scrapers")({
 	}),
 	component: ScrapersAdminPage,
 });
-
 type ValidationDisplayRun = {
 	status: string;
 	sourceUrl: string;
@@ -66,7 +64,10 @@ type ValidationDisplayRun = {
 		name: string;
 		status: string;
 		message: string;
-		details?: Array<{ label: string; value: string }>;
+		details?: Array<{
+			label: string;
+			value: string;
+		}>;
 	}>;
 	stats: {
 		meetingsFound: number;
@@ -84,13 +85,15 @@ type ValidationDisplayRun = {
 		summaryReady: boolean;
 		duplicate: boolean;
 	}>;
-	errors: Array<{ message: string; url?: string; code?: string }>;
+	errors: Array<{
+		message: string;
+		url?: string;
+		code?: string;
+	}>;
 };
-
 function ScrapersAdminPage() {
 	return <ScrapersContent />;
 }
-
 function ScrapersContent() {
 	const [expandedId, setExpandedId] = useState<string | null>(null);
 	const [scrapingIds, setScrapingIds] = useState<Set<string>>(new Set());
@@ -107,41 +110,37 @@ function ScrapersContent() {
 	const [isValidating, setIsValidating] = useState(false);
 	const [validationResult, setValidationResult] =
 		useState<ValidationDisplayRun | null>(null);
-
 	// Queries
-	const isAdmin = useQuery(api.functions.users.queries.isAdmin, {});
-	const stats = useQuery(api.functions.scrapeJobs.queries.getStats, {});
-	const recentJobs = useQuery(api.functions.scrapeJobs.queries.getRecent, {
+	const isAdmin = useRead(api.functions.users.queries.isAdmin, {});
+	const stats = useRead(api.functions.scrapeJobs.queries.getStats, {});
+	const recentJobs = useRead(api.functions.scrapeJobs.queries.getRecent, {
 		limit: 20,
 	});
-	const runningJobs = useQuery(api.functions.scrapeJobs.queries.getRunning, {});
-	const failedJobs = useQuery(api.functions.scrapeJobs.queries.getFailed, {
+	const runningJobs = useRead(api.functions.scrapeJobs.queries.getRunning, {});
+	const failedJobs = useRead(api.functions.scrapeJobs.queries.getFailed, {
 		limit: 10,
 	});
-	const validationRuns = useQuery(
+	const validationRuns = useRead(
 		api.functions.scrapers.queries.listValidationRuns,
 		{
 			limit: 5,
 		},
 	);
-	const municipalities = useQuery(
-		api.functions.municipalities.queries.list,
-		{},
-	);
-
+	const municipalities = useRead(api.functions.municipalities.queries.list, {});
 	// Actions
-	const triggerScrape = useAction(
+	const triggerScrape = useCommand(
 		api.functions.scrapeJobs.mutations.triggerScrape,
 	);
-	const batchRescrape = useAction(api.functions.scrapers.actions.batchRescrape);
-	const triggerScrapeAllDue = useAction(
+	const batchRescrape = useCommand(
+		api.functions.scrapers.actions.batchRescrape,
+	);
+	const triggerScrapeAllDue = useCommand(
 		api.functions.scrapers.actions.triggerScrapeAllDue,
 	);
-	const validateScraper = useAction(
+	const validateScraper = useCommand(
 		api.functions.scrapers.actions.validateScraper,
 	);
-	const retryJob = useAction(api.functions.scrapeJobs.mutations.retry);
-
+	const retryJob = useCommand(api.functions.scrapeJobs.mutations.retry);
 	const handleScrapeNow = async (
 		municipalityId: Id<"municipalities">,
 		municipalityName: string,
@@ -162,7 +161,6 @@ function ScrapersContent() {
 			});
 		}
 	};
-
 	const handleBatchRescrape = async (
 		label: string,
 		opts: {
@@ -191,7 +189,6 @@ function ScrapersContent() {
 			setBatchRunning(null);
 		}
 	};
-
 	const handleScrapeAllDue = async () => {
 		setBatchRunning("all-due");
 		try {
@@ -213,7 +210,6 @@ function ScrapersContent() {
 			setBatchRunning(null);
 		}
 	};
-
 	const handleRetryJob = async (jobId: Id<"scrapeJobs">, muniName: string) => {
 		setRetryingIds((prev) => new Set(prev).add(jobId));
 		try {
@@ -235,16 +231,13 @@ function ScrapersContent() {
 			});
 		}
 	};
-
 	const handleValidationMunicipalityChange = (value: string) => {
 		setValidationMunicipalityId(value);
 		setValidationPlatform("auto");
 		if (value === "source-url") return;
-
 		const selected = municipalities?.find((muni) => muni._id === value);
 		setValidationSourceUrl(selected?.meetingsPageUrl ?? "");
 	};
-
 	const handleValidateScraper = async () => {
 		const sourceUrl = validationSourceUrl.trim();
 		const municipalityId =
@@ -259,7 +252,6 @@ function ScrapersContent() {
 						| "civicplus"
 						| "generic"
 						| "manual");
-
 		setIsValidating(true);
 		try {
 			const result = await validateScraper({
@@ -283,12 +275,10 @@ function ScrapersContent() {
 			setIsValidating(false);
 		}
 	};
-
 	const isLoading =
 		isAdmin === undefined ||
 		stats === undefined ||
 		municipalities === undefined;
-
 	if (isLoading) {
 		return (
 			<div className="min-h-screen bg-background flex items-center justify-center">
@@ -296,7 +286,6 @@ function ScrapersContent() {
 			</div>
 		);
 	}
-
 	if (!isAdmin) {
 		return (
 			<div className="min-h-screen bg-background flex items-center justify-center">
@@ -321,7 +310,6 @@ function ScrapersContent() {
 			</div>
 		);
 	}
-
 	// Filter municipalities for table
 	const filteredMunicipalities = municipalities?.filter((m) => {
 		const matchesSearch =
@@ -338,7 +326,6 @@ function ScrapersContent() {
 			(tableScrapeStatus === "never" && !m.lastScrapedAt);
 		return matchesSearch && matchesPlatform && matchesScrapeStatus;
 	});
-
 	// Calculate derived stats
 	const totalMunicipalities = municipalities?.length ?? 0;
 	const activeMunicipalities =
@@ -351,7 +338,6 @@ function ScrapersContent() {
 	const canRunValidation =
 		validationMunicipalityId !== "source-url" ||
 		validationSourceUrl.trim().length > 0;
-
 	return (
 		<div className="min-h-screen bg-background">
 			<div className="container mx-auto px-4 py-8">
@@ -804,7 +790,6 @@ function ScrapersContent() {
 													muni.isActive && !isManual && muni.meetingsPageUrl;
 												const isExpanded = expandedId === muni._id;
 												const isScraping = scrapingIds.has(muni._id);
-
 												return (
 													<Fragment key={muni._id}>
 														<TableRow
@@ -1138,7 +1123,6 @@ function ScrapersContent() {
 		</div>
 	);
 }
-
 // ═══════════════════════════════════════════════════════════════
 // Stat Card Component
 // ═══════════════════════════════════════════════════════════════
@@ -1150,7 +1134,9 @@ function StatCard({
 }: {
 	label: string;
 	value: string | number;
-	icon: React.ComponentType<{ className?: string }>;
+	icon: React.ComponentType<{
+		className?: string;
+	}>;
 	variant?: "default" | "success" | "destructive" | "warning" | "info";
 }) {
 	const iconColors = {
@@ -1160,7 +1146,6 @@ function StatCard({
 		warning: "text-amber-400",
 		info: "text-blue-400",
 	};
-
 	return (
 		<Card className="p-4">
 			<div className="flex items-center gap-3">
@@ -1173,7 +1158,6 @@ function StatCard({
 		</Card>
 	);
 }
-
 function MiniStat({ label, value }: { label: string; value: string | number }) {
 	return (
 		<div className="rounded-md border border-border p-3">
@@ -1182,7 +1166,6 @@ function MiniStat({ label, value }: { label: string; value: string | number }) {
 		</div>
 	);
 }
-
 // ═══════════════════════════════════════════════════════════════
 // Status Badge Component
 // ═══════════════════════════════════════════════════════════════
@@ -1199,14 +1182,12 @@ function StatusBadge({ status }: { status: string }) {
 		running: "info",
 		pending: "secondary",
 	};
-
 	return (
 		<Badge variant={variants[status] ?? "secondary"} className="text-xs">
 			{status}
 		</Badge>
 	);
 }
-
 function ValidationCheckBadge({ status }: { status: string }) {
 	const variants: Record<
 		string,
@@ -1217,14 +1198,12 @@ function ValidationCheckBadge({ status }: { status: string }) {
 		fail: "destructive",
 		not_applicable: "secondary",
 	};
-
 	return (
 		<Badge variant={variants[status] ?? "secondary"} className="text-xs">
 			{formatValidationCheckStatus(status)}
 		</Badge>
 	);
 }
-
 // ═══════════════════════════════════════════════════════════════
 // Utility Functions
 // ═══════════════════════════════════════════════════════════════
@@ -1234,22 +1213,18 @@ function formatValidationCheckName(name: string): string {
 		.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
 		.join(" ");
 }
-
 function formatValidationCheckStatus(status: string): string {
 	if (status === "not_applicable") return "N/A";
 	return status.charAt(0).toUpperCase() + status.slice(1);
 }
-
 function formatRelativeTime(timestamp: number): string {
 	const now = Date.now();
 	const diff = now - timestamp;
-
 	if (diff < 60000) return "just now";
 	if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
 	if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
 	return `${Math.floor(diff / 86400000)}d ago`;
 }
-
 function formatDuration(ms: number): string {
 	if (ms < 1000) return `${ms}ms`;
 	if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;

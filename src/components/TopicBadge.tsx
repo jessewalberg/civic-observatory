@@ -1,6 +1,5 @@
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-
 export type Topic =
 	| "budget"
 	| "zoning"
@@ -11,8 +10,13 @@ export type Topic =
 	| "housing"
 	| "transportation"
 	| "other";
-
-const topicConfig: Record<Topic, { label: string; className: string }> = {
+const topicConfig: Record<
+	Topic,
+	{
+		label: string;
+		className: string;
+	}
+> = {
 	budget: {
 		label: "Budget & Finance",
 		className: "bg-topic-budget/20 text-topic-budget border-topic-budget/30",
@@ -54,7 +58,6 @@ const topicConfig: Record<Topic, { label: string; className: string }> = {
 		className: "bg-topic-other/20 text-topic-other border-topic-other/30",
 	},
 };
-
 // Map freeform AI-generated topic names to our canonical set
 const TOPIC_ALIASES: Record<string, Topic> = {
 	public_safety: "safety",
@@ -94,9 +97,7 @@ const TOPIC_ALIASES: Record<string, Topic> = {
 	meeting_administration: "other",
 	administration: "other",
 };
-
 const VALID_TOPICS = new Set<string>(Object.keys(topicConfig));
-
 /**
  * Normalize a single raw topic string to a canonical Topic.
  */
@@ -106,7 +107,6 @@ export function normalizeTopic(raw: string): Topic {
 	if (TOPIC_ALIASES[lower]) return TOPIC_ALIASES[lower];
 	return "other";
 }
-
 /**
  * Normalize an array of raw topic strings: map aliases, deduplicate,
  * and suppress "other" when real topics exist.
@@ -120,15 +120,12 @@ export function normalizeTopics(raw: string[]): Topic[] {
 	}
 	return unique;
 }
-
 interface TopicBadgeProps {
 	topic: Topic;
 	className?: string;
 }
-
 export function TopicBadge({ topic, className }: TopicBadgeProps) {
 	const config = topicConfig[topic] ?? topicConfig.other;
-
 	return (
 		<Badge
 			variant="outline"
@@ -138,9 +135,7 @@ export function TopicBadge({ topic, className }: TopicBadgeProps) {
 		</Badge>
 	);
 }
-
 export function getTopicLabel(topic: Topic): string {
 	return (topicConfig[topic] ?? topicConfig.other).label;
 }
-
 export const TOPICS = Object.keys(topicConfig) as Topic[];

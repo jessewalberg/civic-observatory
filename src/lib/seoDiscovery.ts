@@ -1,7 +1,6 @@
-import { ConvexHttpClient } from "convex/browser";
-import { api } from "../../convex/_generated/api";
+import { apiClient } from "@/lib/apiClient";
+import { api } from "../../server/api";
 import { meetingPath, municipalityPath } from "./publicUrls";
-
 export interface SitemapMunicipality {
 	_id: string;
 	slug?: string;
@@ -10,7 +9,6 @@ export interface SitemapMunicipality {
 	/** @deprecated Legacy sitemap rows */
 	_creationTime?: number;
 }
-
 export interface SitemapMeeting {
 	_id: string;
 	slug?: string;
@@ -20,21 +18,18 @@ export interface SitemapMeeting {
 	meetingDate?: number;
 	status?: string;
 }
-
 export interface SitemapDataSource {
 	getSitemapRecords(): Promise<{
 		municipalities: SitemapMunicipality[];
 		meetings: SitemapMeeting[];
 	}>;
 }
-
 interface SitemapUrl {
 	loc: string;
 	changefreq: "daily" | "weekly";
 	priority: string;
 	lastmod: string;
 }
-
 export function createRobotsResponse(request: Request): Response {
 	return new Response(generateRobotsTxt(getBaseUrl(request)), {
 		headers: {
@@ -43,16 +38,14 @@ export function createRobotsResponse(request: Request): Response {
 		},
 	});
 }
-
 export async function createSitemapResponse(
 	request: Request,
-	source = createConvexSitemapSource(process.env.VITE_CONVEX_URL),
+	source = createSitemapSource(),
 ): Promise<Response> {
 	const baseUrl = getBaseUrl(request);
 	let municipalities: SitemapMunicipality[] = [];
 	let meetings: SitemapMeeting[] = [];
 	let sitemapSource = "static-fallback";
-
 	if (source) {
 		try {
 			const records = await source.getSitemapRecords();
@@ -66,7 +59,6 @@ export async function createSitemapResponse(
 			console.error("Sitemap generation error:", error);
 		}
 	}
-
 	return new Response(generateSitemapXml(baseUrl, municipalities, meetings), {
 		headers: {
 			"Content-Type": "application/xml; charset=utf-8",
@@ -75,7 +67,6 @@ export async function createSitemapResponse(
 		},
 	});
 }
-
 export function createDiscoveryRedirectResponse(
 	request: Request,
 	canonicalPath: "/robots.txt" | "/sitemap.xml",
@@ -91,7 +82,6 @@ export function createDiscoveryRedirectResponse(
 		},
 	});
 }
-
 export function generateRobotsTxt(baseUrl: string): string {
 	return `# Civic Observatory robots.txt
 # https://civicobservatory.com
@@ -114,7 +104,6 @@ Crawl-delay: 1
 Sitemap: ${baseUrl}/sitemap.xml
 `;
 }
-
 export function generateSitemapXml(
 	baseUrl: string,
 	municipalities: SitemapMunicipality[],
@@ -126,14 +115,12 @@ export function generateSitemapXml(
 		{ loc: "/explore", changefreq: "daily", priority: "0.9", lastmod: today },
 		{ loc: "/pricing", changefreq: "weekly", priority: "0.8", lastmod: today },
 	];
-
 	const municipalityUrls: SitemapUrl[] = municipalities.map((municipality) => ({
 		loc: municipalityPath(municipality),
 		changefreq: "daily",
 		priority: "0.8",
 		lastmod: resolveSitemapLastmod(municipality),
 	}));
-
 	const meetingUrls: SitemapUrl[] = meetings
 		.filter((meeting) => !meeting.status || meeting.status === "summarized")
 		.map((meeting) => ({
@@ -142,7 +129,6 @@ export function generateSitemapXml(
 			priority: "0.7",
 			lastmod: resolveSitemapLastmod(meeting),
 		}));
-
 	const urlElements = [...staticUrls, ...municipalityUrls, ...meetingUrls]
 		.map(
 			(url) => `  <url>
@@ -153,44 +139,27 @@ export function generateSitemapXml(
   </url>`,
 		)
 		.join("\n");
-
 	return `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${urlElements}
 </urlset>`;
 }
-
-export function createConvexSitemapSource(
-	convexUrl: string | undefined,
-): SitemapDataSource | null {
-	if (!convexUrl) {
-		return null;
-	}
-
+export function createSitemapSource(): SitemapDataSource {
 	return {
-		async getSitemapRecords() {
-			const convex = new ConvexHttpClient(convexUrl);
-			return await convex.query(
-				api.functions.meetings.queries.listSitemapEntries,
-				{},
-			);
-		},
+		getSitemapRecords: () =>
+			apiClient.request(api.functions.meetings.queries.listSitemapEntries, {}),
 	};
 }
-
 function getBaseUrl(request: Request): string {
 	const url = new URL(request.url);
 	return `${url.protocol}//${url.host}`;
 }
-
 function toAbsoluteUrl(baseUrl: string, path: string): string {
 	return `${baseUrl}${path}`;
 }
-
 function toDateOnly(timestamp: number): string {
 	return new Date(timestamp).toISOString().split("T")[0];
 }
-
 function resolveSitemapLastmod(entry: {
 	lastmod?: number;
 	meetingDate?: number;
@@ -200,7 +169,6 @@ function resolveSitemapLastmod(entry: {
 		entry.lastmod ?? entry.meetingDate ?? entry._creationTime ?? Date.now();
 	return toDateOnly(timestamp);
 }
-
 function escapeXml(value: string): string {
 	return value
 		.replaceAll("&", "&amp;")

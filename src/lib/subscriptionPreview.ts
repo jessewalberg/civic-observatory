@@ -4,7 +4,6 @@ import {
 	type MeetingTypeValue,
 	type UserTier,
 } from "./subscriptionOptions";
-
 export type SubscriptionPreviewInput = {
 	municipalityName: string;
 	selectedTopics: string[];
@@ -14,7 +13,6 @@ export type SubscriptionPreviewInput = {
 	agendaAlertsEnabled?: boolean;
 	userTier?: UserTier;
 };
-
 export type SubscriptionPreview = {
 	title: string;
 	body: string;
@@ -22,19 +20,16 @@ export type SubscriptionPreview = {
 	agendaNotice: string;
 	proNotice: string | null;
 };
-
 const FREQUENCY_LABELS: Record<AlertFrequency, string> = {
 	immediate: "Immediate alert",
 	daily: "Daily digest",
 	weekly: "Weekly digest",
 };
-
 const FREQUENCY_BODY_LABELS: Record<AlertFrequency, string> = {
 	immediate: "an immediate alert",
 	daily: "a daily digest",
 	weekly: "a weekly digest",
 };
-
 export function buildSubscriptionPreview({
 	municipalityName,
 	selectedTopics,
@@ -55,7 +50,6 @@ export function buildSubscriptionPreview({
 		topicText,
 		municipalityName,
 	});
-
 	return {
 		title: `${FREQUENCY_LABELS[alertFrequency]} preview`,
 		body: `You will get ${FREQUENCY_BODY_LABELS[alertFrequency]} when ${filterText}.`,
@@ -71,11 +65,9 @@ export function buildSubscriptionPreview({
 				: null,
 	};
 }
-
 function isMeetingType(value: string): value is MeetingTypeValue {
 	return value in MEETING_TYPE_LABELS;
 }
-
 function buildFilterText({
 	meetingTypeText,
 	topicText,
@@ -96,7 +88,6 @@ function buildFilterText({
 	}
 	return `any meeting summary is ready for ${municipalityName}`;
 }
-
 function formatList(values: string[]): string | null {
 	if (values.length === 0) return null;
 	if (values.length === 1) return values[0] ?? null;

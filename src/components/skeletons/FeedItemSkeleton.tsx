@@ -3,7 +3,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 interface FeedItemSkeletonProps {
 	count?: number;
 }
-
 export function FeedItemSkeleton({ count = 1 }: FeedItemSkeletonProps) {
 	return (
 		<>

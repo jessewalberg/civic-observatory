@@ -1,10 +1,10 @@
-import { useQuery } from "convex/react";
 import { Bell, BellOff, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useRead } from "@/lib/data";
 import { cn } from "@/lib/utils";
-import { api } from "../../convex/_generated/api";
-import type { Id } from "../../convex/_generated/dataModel";
+import { api } from "../../server/api";
+import type { Id } from "../../server/model";
 import { SubscriptionModal } from "./SubscriptionModal";
 
 interface SubscribeButtonProps {
@@ -16,7 +16,6 @@ interface SubscribeButtonProps {
 	className?: string;
 	defaultTopicFilters?: string[];
 }
-
 export function SubscribeButton({
 	municipalityId,
 	municipalityName,
@@ -27,15 +26,12 @@ export function SubscribeButton({
 	defaultTopicFilters,
 }: SubscribeButtonProps) {
 	const [isModalOpen, setIsModalOpen] = useState(false);
-
 	// Check if user is subscribed
-	const subscription = useQuery(
+	const subscription = useRead(
 		api.functions.subscriptions.queries.getForMunicipality,
 		userId ? { municipalityId } : "skip",
 	);
-
 	const isSubscribed = subscription !== null && subscription !== undefined;
-
 	// If not logged in, redirect to sign in
 	if (!userId) {
 		return (
@@ -47,7 +43,6 @@ export function SubscribeButton({
 			</a>
 		);
 	}
-
 	// Loading state
 	if (subscription === undefined) {
 		return (
@@ -57,7 +52,6 @@ export function SubscribeButton({
 			</Button>
 		);
 	}
-
 	return (
 		<>
 			<Button

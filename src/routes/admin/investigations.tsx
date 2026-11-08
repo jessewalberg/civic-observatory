@@ -1,5 +1,4 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMutation, useQuery } from "convex/react";
 import {
 	AlertTriangle,
 	CheckCircle2,
@@ -33,10 +32,10 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
+import { useCommand, useRead } from "@/lib/data";
 import { requireAuth } from "@/lib/serverAuth";
-import { api } from "../../../convex/_generated/api";
-import type { Id } from "../../../convex/_generated/dataModel";
-
+import { api } from "../../../server/api";
+import type { Id } from "../../../server/model";
 export const Route = createFileRoute("/admin/investigations")({
 	beforeLoad: async () => {
 		await requireAuth();
@@ -54,11 +53,9 @@ export const Route = createFileRoute("/admin/investigations")({
 	}),
 	component: InvestigationsPage,
 });
-
 function InvestigationsPage() {
 	return <InvestigationContent />;
 }
-
 function InvestigationContent() {
 	const [selectedMunicipalityId, setSelectedMunicipalityId] = useState("");
 	const [isBulkRequeueing, setIsBulkRequeueing] = useState(false);
@@ -73,12 +70,11 @@ function InvestigationContent() {
 			"Pick a municipality and run a requeue action to start processing.",
 		timestamp: Date.now(),
 	});
-
-	const isAdmin = useQuery(api.functions.users.queries.isAdmin, {});
-	const municipalities = useQuery(api.functions.municipalities.queries.list, {
+	const isAdmin = useRead(api.functions.users.queries.isAdmin, {});
+	const municipalities = useRead(api.functions.municipalities.queries.list, {
 		activeOnly: true,
 	});
-	const audit = useQuery(
+	const audit = useRead(
 		api.functions.meetings.queries.adminInvestigateMunicipality,
 		selectedMunicipalityId
 			? {
@@ -88,17 +84,15 @@ function InvestigationContent() {
 				}
 			: "skip",
 	);
-
-	const requeueMeeting = useMutation(
+	const requeueMeeting = useCommand(
 		api.functions.meetings.mutations.adminRequeueMeeting,
 	);
-	const requeueMunicipality = useMutation(
+	const requeueMunicipality = useCommand(
 		api.functions.meetings.mutations.adminRequeueMunicipalityCandidates,
 	);
-	const unstickProcessing = useMutation(
+	const unstickProcessing = useCommand(
 		api.functions.meetings.mutations.adminUnstickMunicipalityProcessing,
 	);
-
 	useEffect(() => {
 		if (
 			!selectedMunicipalityId &&
@@ -108,7 +102,6 @@ function InvestigationContent() {
 			setSelectedMunicipalityId(municipalities[0]._id);
 		}
 	}, [municipalities, selectedMunicipalityId]);
-
 	const municipalityOptions = useMemo(
 		() =>
 			(municipalities ?? [])
@@ -118,12 +111,10 @@ function InvestigationContent() {
 				),
 		[municipalities],
 	);
-
 	const isLoading =
 		isAdmin === undefined ||
 		municipalities === undefined ||
 		(selectedMunicipalityId ? audit === undefined : false);
-
 	if (isLoading) {
 		return (
 			<div className="min-h-screen bg-background flex items-center justify-center">
@@ -131,7 +122,6 @@ function InvestigationContent() {
 			</div>
 		);
 	}
-
 	if (!isAdmin) {
 		return (
 			<div className="min-h-screen bg-background flex items-center justify-center">
@@ -156,7 +146,6 @@ function InvestigationContent() {
 			</div>
 		);
 	}
-
 	const handleBulkRequeue = async () => {
 		if (!selectedMunicipalityId) return;
 		setIsBulkRequeueing(true);
@@ -200,7 +189,6 @@ function InvestigationContent() {
 			setIsBulkRequeueing(false);
 		}
 	};
-
 	const handleRequeueSingle = async (meetingId: Id<"meetings">) => {
 		setBusyMeetingIds((prev) => new Set(prev).add(meetingId));
 		setActionState({
@@ -235,7 +223,6 @@ function InvestigationContent() {
 			});
 		}
 	};
-
 	const handleUnstickProcessing = async () => {
 		if (!selectedMunicipalityId) return;
 		setActionState({
@@ -277,7 +264,6 @@ function InvestigationContent() {
 			toast.error(message);
 		}
 	};
-
 	return (
 		<div className="min-h-screen bg-background">
 			<div className="container mx-auto px-4 py-8">
@@ -551,7 +537,6 @@ function InvestigationContent() {
 		</div>
 	);
 }
-
 function MetricCard({
 	label,
 	value,
@@ -566,7 +551,6 @@ function MetricCard({
 		</Card>
 	);
 }
-
 interface DiagnosisInfo {
 	code: string;
 	label: string;
@@ -574,9 +558,11 @@ interface DiagnosisInfo {
 	featureNeeded: string | null;
 	description: string;
 	investigationSteps: string[];
-	investigationUrls: Array<{ label: string; url: string }>;
+	investigationUrls: Array<{
+		label: string;
+		url: string;
+	}>;
 }
-
 interface MeetingRow {
 	id: Id<"meetings">;
 	title: string;
@@ -589,10 +575,13 @@ interface MeetingRow {
 	isStaleProcessing?: boolean;
 	diagnosis?: DiagnosisInfo | null;
 }
-
 const SEVERITY_STYLES: Record<
 	string,
-	{ badge: string; border: string; icon: string }
+	{
+		badge: string;
+		border: string;
+		icon: string;
+	}
 > = {
 	requeue: {
 		badge: "border-emerald-500/40 text-emerald-400 bg-emerald-500/10",
@@ -610,7 +599,6 @@ const SEVERITY_STYLES: Record<
 		icon: "text-violet-400",
 	},
 };
-
 function MeetingTable({
 	rows,
 	onRequeue,
@@ -621,7 +609,6 @@ function MeetingTable({
 	busyMeetingIds?: Set<string>;
 }) {
 	const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-
 	const toggleExpand = (id: string) => {
 		setExpandedIds((prev) => {
 			const next = new Set(prev);
@@ -630,7 +617,6 @@ function MeetingTable({
 			return next;
 		});
 	};
-
 	return (
 		<div className="max-h-[600px] overflow-auto">
 			<Table>
@@ -664,7 +650,6 @@ function MeetingTable({
 								? (SEVERITY_STYLES[diag.severity] ??
 									SEVERITY_STYLES.investigate)
 								: null;
-
 							return (
 								<Fragment key={row.id}>
 									<TableRow
@@ -817,7 +802,6 @@ function MeetingTable({
 		</div>
 	);
 }
-
 function formatDate(timestamp: number): string {
 	const date = new Date(timestamp);
 	if (Number.isNaN(date.getTime())) return "Unknown";
@@ -827,7 +811,6 @@ function formatDate(timestamp: number): string {
 		day: "numeric",
 	});
 }
-
 function formatDateTime(timestamp: number | null): string {
 	if (!timestamp) return "Never";
 	const date = new Date(timestamp);

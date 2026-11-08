@@ -5,7 +5,6 @@ interface TableSkeletonProps {
 	columns?: number;
 	hasHeader?: boolean;
 }
-
 export function TableSkeleton({
 	rows = 5,
 	columns = 4,

@@ -14,7 +14,7 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { meetingPath } from "@/lib/publicUrls";
 import { cn } from "@/lib/utils";
-import type { Id } from "../../convex/_generated/dataModel";
+import type { Id } from "../../server/model";
 
 type MeetingType =
 	| "city_council"
@@ -23,14 +23,12 @@ type MeetingType =
 	| "zoning_board"
 	| "budget_committee"
 	| "other";
-
 type MeetingStatus =
 	| "pending"
 	| "processing"
 	| "summarized"
 	| "failed"
 	| "skipped";
-
 const meetingTypeLabels: Record<MeetingType, string> = {
 	city_council: "City Council",
 	school_board: "School Board",
@@ -39,10 +37,12 @@ const meetingTypeLabels: Record<MeetingType, string> = {
 	budget_committee: "Budget Committee",
 	other: "Other",
 };
-
 const statusConfig: Record<
 	MeetingStatus,
-	{ label: string; className: string }
+	{
+		label: string;
+		className: string;
+	}
 > = {
 	pending: {
 		label: "Pending",
@@ -65,7 +65,6 @@ const statusConfig: Record<
 		className: "bg-muted text-muted-foreground border-muted",
 	},
 };
-
 interface MeetingCardProps {
 	id: Id<"meetings">;
 	slug?: string;
@@ -78,7 +77,6 @@ interface MeetingCardProps {
 	coverageBadge?: PublicCoverageBadge;
 	className?: string;
 }
-
 export function MeetingCard({
 	id,
 	slug,
@@ -94,19 +92,16 @@ export function MeetingCard({
 	const typeLabel = meetingTypeLabels[meetingType];
 	const date = new Date(meetingDate);
 	const isFutureMeeting = meetingDate > Date.now();
-
 	const statusInfo = isFutureMeeting
 		? {
 				label: "Upcoming",
 				className: "bg-blue-500/10 text-blue-400 border-blue-500/30",
 			}
 		: statusConfig[status];
-
 	// Normalize and deduplicate topics, then show first 3
 	const normalized = normalizeTopics(topics);
 	const displayTopics = normalized.slice(0, 3);
 	const hasMoreTopics = normalized.length > 3;
-
 	return (
 		<a href={meetingPath({ _id: id, slug })} className="block">
 			<motion.div
@@ -199,7 +194,6 @@ export function MeetingCard({
 		</a>
 	);
 }
-
 export function MeetingCardSkeleton() {
 	return (
 		<Card>
@@ -230,7 +224,6 @@ export function MeetingCardSkeleton() {
 		</Card>
 	);
 }
-
 // Compact version for lists
 interface CompactMeetingCardProps {
 	id: Id<"meetings">;
@@ -240,7 +233,6 @@ interface CompactMeetingCardProps {
 	meetingType: MeetingType;
 	municipalityName?: string;
 }
-
 export function CompactMeetingCard({
 	id,
 	slug,
@@ -251,7 +243,6 @@ export function CompactMeetingCard({
 }: CompactMeetingCardProps) {
 	const typeLabel = meetingTypeLabels[meetingType];
 	const date = new Date(meetingDate);
-
 	return (
 		<a href={meetingPath({ _id: id, slug })} className="block">
 			<div className="group flex items-center gap-3 p-3 rounded-lg hover:bg-surface/80 transition-colors cursor-pointer">

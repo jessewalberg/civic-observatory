@@ -1,19 +1,17 @@
 import { Link } from "@tanstack/react-router";
-import { useQuery } from "convex/react";
 import { Sparkles, TrendingUp } from "lucide-react";
 import { UsageProgressBar } from "@/components/UsageProgressBar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { api } from "../../convex/_generated/api";
+import { useRead } from "@/lib/data";
+import { api } from "../../server/api";
 
 interface UsageWidgetProps {
 	variant?: "card" | "compact";
 }
-
 export function UsageWidget({ variant = "card" }: UsageWidgetProps) {
-	const usageStats = useQuery(api.functions.usage.queries.getUsageStats, {});
-
+	const usageStats = useRead(api.functions.usage.queries.getUsageStats, {});
 	if (usageStats === undefined || usageStats === null) {
 		return variant === "card" ? (
 			<UsageWidgetSkeleton />
@@ -21,14 +19,11 @@ export function UsageWidget({ variant = "card" }: UsageWidgetProps) {
 			<UsageCompactSkeleton />
 		);
 	}
-
 	if (variant === "compact") {
 		return <UsageCompactView stats={usageStats} />;
 	}
-
 	return <UsageCardView stats={usageStats} />;
 }
-
 interface UsageStats {
 	tier: string;
 	summary_view: {
@@ -46,10 +41,8 @@ interface UsageStats {
 		resetsAt?: number;
 	};
 }
-
 function UsageCardView({ stats }: { stats: UsageStats }) {
 	const isPro = stats.tier === "pro";
-
 	return (
 		<Card className="p-5">
 			<div className="flex items-center justify-between mb-4">
@@ -95,18 +88,15 @@ function UsageCardView({ stats }: { stats: UsageStats }) {
 		</Card>
 	);
 }
-
 function UsageCompactView({ stats }: { stats: UsageStats }) {
 	const viewsRemaining =
 		stats.summary_view.limit === Infinity
 			? "Unlimited"
 			: `${stats.summary_view.remaining} left`;
-
 	const uploadsRemaining =
 		stats.meeting_upload.limit === Infinity
 			? "Unlimited"
 			: `${stats.meeting_upload.remaining} left`;
-
 	const getColor = (current: number, limit: number) => {
 		if (limit === Infinity) return "text-muted-foreground";
 		const percentage = (current / limit) * 100;
@@ -114,7 +104,6 @@ function UsageCompactView({ stats }: { stats: UsageStats }) {
 		if (percentage >= 80) return "text-amber-500";
 		return "text-muted-foreground";
 	};
-
 	return (
 		<div className="py-2 px-3 space-y-1 border-t border-border">
 			<div className="flex items-center justify-between">
@@ -138,7 +127,6 @@ function UsageCompactView({ stats }: { stats: UsageStats }) {
 		</div>
 	);
 }
-
 function UsageWidgetSkeleton() {
 	return (
 		<Card className="p-5">
@@ -165,7 +153,6 @@ function UsageWidgetSkeleton() {
 		</Card>
 	);
 }
-
 function UsageCompactSkeleton() {
 	return (
 		<div className="py-2 px-3 space-y-1 border-t border-border">
@@ -180,17 +167,14 @@ function UsageCompactSkeleton() {
 		</div>
 	);
 }
-
 function formatResetTime(timestamp: number): string {
 	const now = Date.now();
 	const diffMs = timestamp - now;
 	const diffHours = Math.ceil(diffMs / (1000 * 60 * 60));
 	const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-
 	if (diffHours < 1) return "soon";
 	if (diffHours < 24)
 		return `in ${diffHours} hour${diffHours !== 1 ? "s" : ""}`;
 	if (diffDays < 7) return `in ${diffDays} day${diffDays !== 1 ? "s" : ""}`;
-
 	return `on ${new Date(timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
 }

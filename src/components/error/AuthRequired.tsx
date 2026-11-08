@@ -8,7 +8,6 @@ interface AuthRequiredProps {
 	signInUrl: string;
 	showBackButton?: boolean;
 }
-
 export function AuthRequired({
 	title = "Sign In Required",
 	message = "You need to sign in to access this page.",

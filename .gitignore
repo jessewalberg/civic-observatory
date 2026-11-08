@@ -25,17 +25,15 @@ dist/
 npm-debug.log*
 pnpm-debug.log*
 
-# Testing
-coverage/
-
-# Convex
-.convex/
-
 # Generated files
 src/routeTree.gen.ts
 
-# Wrangler
+# Infrastructure state and private migration inputs
 .wrangler/
+.alchemy/
+migration-private/
+exported_users.csv
+snapshot.zip
 
 # Documentation (local only)
 docs/

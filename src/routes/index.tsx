@@ -1,5 +1,4 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "convex/react";
 import {
 	ArrowRight,
 	Bell,
@@ -19,6 +18,7 @@ import { motion } from "motion/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useRead } from "@/lib/data";
 import { getLandingSetupCta } from "@/lib/landingConversion";
 import { usePublicAuthState } from "@/lib/publicAuth";
 import { canonicalLink, generateHomeJsonLd } from "@/lib/seo";
@@ -27,15 +27,13 @@ import {
 	SOURCE_PROOF_FALLBACK_COPY,
 } from "@/lib/sourceProof";
 import { formatDate } from "@/lib/utils";
-import { api } from "../../convex/_generated/api";
-
+import { api } from "../../server/api";
 export const Route = createFileRoute("/")({
 	component: LandingPage,
 	head: () => {
 		const title = "Civic Observatory - Municipal Meeting Summarizer";
 		const description =
 			"AI-powered summaries of local government meetings. Stay informed about city councils, school boards, and planning commissions in your community.";
-
 		return {
 			meta: [
 				{ title },
@@ -63,7 +61,6 @@ export const Route = createFileRoute("/")({
 		};
 	},
 });
-
 const audiences = [
 	{
 		icon: Newspaper,
@@ -93,11 +90,10 @@ const audiences = [
 		color: "text-purple-400",
 	},
 ];
-
 function LandingPage() {
 	const { isAuthenticated } = usePublicAuthState();
 	const primarySetupCta = getLandingSetupCta(isAuthenticated);
-	const recentSummaries = useQuery(
+	const recentSummaries = useRead(
 		api.functions.summaries.queries.getRecentSummaries,
 		{
 			limit: 6,
@@ -105,7 +101,6 @@ function LandingPage() {
 	);
 	const sourceProofExamples = buildSourceProofExamples(recentSummaries ?? []);
 	const isLoadingSourceProof = recentSummaries === undefined;
-
 	return (
 		<div className="min-h-screen bg-background text-foreground overflow-hidden">
 			{/* Animated background */}

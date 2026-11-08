@@ -1,36 +1,17 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "civic-observatory",
-  "main": "@tanstack/react-start/server-entry",
-  "compatibility_date": "2025-09-02",
+  "name": "civic-observatory-stack-local",
+  "main": "src/server.ts",
+  "compatibility_date": "2026-11-07",
   "compatibility_flags": ["nodejs_compat"],
-  "observability": {
-    "enabled": true
+  "workers_dev": false,
+  "observability": { "enabled": true },
+  "vars": {
+    "APP_URL": "http://localhost:3000",
+    "OUTBOUND_ENABLED": "false",
+    "SCHEDULED_ENABLED": "true"
   },
-  // Public (non-secret) vars live here / in .env.<mode>. Secrets are set on the
-  // Convex deployment (CLERK_JWT_ISSUER_DOMAIN, OPENROUTER_API_KEY, STRIPE_*,
-  // CLOUDFLARE_* for email) and as a Worker secret for SSR:
-  //   pnpm exec wrangler secret put CLERK_SECRET_KEY --env production
-  "vars": {},
-  "env": {
-    "production": {
-      "name": "civic-observatory",
-      "workers_dev": false,
-      "routes": [
-        {
-          "pattern": "civicobservatory.com",
-          "custom_domain": true
-        }
-      ],
-      "observability": {
-        "enabled": true
-      },
-      "vars": {
-        "VITE_CONVEX_URL": "https://abundant-starling-365.convex.cloud",
-        "VITE_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuY2l2aWNvYnNlcnZhdG9yeS5jb20k",
-        "CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuY2l2aWNvYnNlcnZhdG9yeS5jb20k",
-        "VITE_APP_URL": "https://civicobservatory.com"
-      }
-    }
-  }
+  "d1_databases": [{ "binding": "DB", "database_name": "civic-observatory-stack-local", "database_id": "00000000-0000-0000-0000-000000000001", "migrations_dir": "migrations" }],
+  "r2_buckets": [{ "binding": "DOCUMENTS", "bucket_name": "civic-observatory-stack-local-documents" }],
+  "triggers": { "crons": ["* * * * *", "*/5 * * * *", "0 7 * * *", "0 8 * * *", "0 8 * * 1"] }
 }

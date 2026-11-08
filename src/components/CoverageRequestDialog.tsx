@@ -1,11 +1,11 @@
-import { useMutation } from "convex/react";
 import { Check, Loader2 } from "lucide-react";
 import { type FormEvent, useEffect, useId, useState } from "react";
 import { toast } from "sonner";
+import { useCommand } from "@/lib/data";
 import { TOPIC_OPTIONS } from "@/lib/subscriptionOptions";
 import { US_STATES } from "@/lib/usStates";
 import { cn } from "@/lib/utils";
-import { api } from "../../convex/_generated/api";
+import { api } from "../../server/api";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import {
@@ -39,7 +39,6 @@ type CoverageRequestDialogProps = {
 		isLoading: boolean;
 	};
 };
-
 export function CoverageRequestDialog({
 	open,
 	onOpenChange,
@@ -52,7 +51,7 @@ export function CoverageRequestDialog({
 	const isAuthenticated = auth?.isAuthenticated ?? false;
 	const isUserLoading = auth?.isLoading ?? false;
 	const userEmail = auth?.userEmail;
-	const createCoverageRequest = useMutation(
+	const createCoverageRequest = useCommand(
 		api.functions.coverageRequests.mutations.create,
 	);
 	const [municipalityName, setMunicipalityName] = useState("");
@@ -63,7 +62,6 @@ export function CoverageRequestDialog({
 	const [topicInterests, setTopicInterests] = useState<string[]>([]);
 	const [notes, setNotes] = useState("");
 	const [isSubmitting, setIsSubmitting] = useState(false);
-
 	useEffect(() => {
 		if (!open) return;
 		setMunicipalityName(defaultMunicipalityName?.trim() ?? "");
@@ -74,12 +72,10 @@ export function CoverageRequestDialog({
 		setMeetingsPageUrl("");
 		setNotes("");
 	}, [defaultMunicipalityName, defaultState, defaultTopicInterests, open]);
-
 	useEffect(() => {
 		if (!open || !userEmail) return;
 		setRequesterEmail((current) => current || userEmail);
 	}, [open, userEmail]);
-
 	const toggleTopic = (topic: string) => {
 		setTopicInterests((current) =>
 			current.includes(topic)
@@ -87,13 +83,11 @@ export function CoverageRequestDialog({
 				: [...current, topic],
 		);
 	};
-
 	const handleSubmit = async (event: FormEvent) => {
 		event.preventDefault();
 		const normalizedMunicipality = municipalityName.trim();
 		const normalizedState = state.trim();
 		const normalizedEmail = requesterEmail.trim();
-
 		if (!normalizedMunicipality) {
 			toast.error("Municipality name is required");
 			return;
@@ -106,7 +100,6 @@ export function CoverageRequestDialog({
 			toast.error("Email is required for coverage notifications");
 			return;
 		}
-
 		setIsSubmitting(true);
 		try {
 			await createCoverageRequest({
@@ -128,7 +121,6 @@ export function CoverageRequestDialog({
 			setIsSubmitting(false);
 		}
 	};
-
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">

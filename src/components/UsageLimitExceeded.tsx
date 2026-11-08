@@ -14,19 +14,16 @@ interface UsageLimitExceededProps {
 	action: "summary_view" | "meeting_upload" | "api_request";
 	signInUrl?: string;
 }
-
 const actionLabels: Record<string, string> = {
 	summary_view: "summary views",
 	meeting_upload: "meeting uploads",
 	api_request: "API requests",
 };
-
 const tierLabels: Record<string, string> = {
 	anonymous: "Anonymous",
 	free: "Free",
 	pro: "Pro",
 };
-
 export function UsageLimitExceeded({
 	title,
 	description,
@@ -40,14 +37,12 @@ export function UsageLimitExceeded({
 	const actionLabel = actionLabels[action] || action;
 	const isAnonymous = tier === "anonymous";
 	const isFree = tier === "free";
-
 	const formatResetTime = (timestamp: number) => {
 		const date = new Date(timestamp);
 		const now = new Date();
 		const diffMs = timestamp - now.getTime();
 		const diffHours = Math.ceil(diffMs / (1000 * 60 * 60));
 		const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-
 		if (diffHours < 24) {
 			return `in ${diffHours} hour${diffHours !== 1 ? "s" : ""}`;
 		}
@@ -56,7 +51,6 @@ export function UsageLimitExceeded({
 		}
 		return `on ${date.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
 	};
-
 	return (
 		<div className="min-h-screen bg-background flex items-center justify-center p-4">
 			<motion.div

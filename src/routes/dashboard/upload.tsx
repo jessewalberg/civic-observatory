@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMutation, useQuery } from "convex/react";
 import {
 	Building2,
 	Calendar,
@@ -27,12 +26,12 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { useCommand, useRead } from "@/lib/data";
 import { NOINDEX_ROBOTS } from "@/lib/seo";
 import { requireAuth } from "@/lib/serverAuth";
 import { cn } from "@/lib/utils";
-import { api } from "../../../convex/_generated/api";
-import type { Id } from "../../../convex/_generated/dataModel";
-
+import { api } from "../../../server/api";
+import type { Id } from "../../../server/model";
 export const Route = createFileRoute("/dashboard/upload")({
 	beforeLoad: async () => {
 		await requireAuth();
@@ -49,7 +48,6 @@ export const Route = createFileRoute("/dashboard/upload")({
 	}),
 	component: UploadPage,
 });
-
 const meetingTypes = [
 	{ value: "city_council", label: "City Council" },
 	{ value: "school_board", label: "School Board" },
@@ -58,12 +56,9 @@ const meetingTypes = [
 	{ value: "budget_committee", label: "Budget Committee" },
 	{ value: "other", label: "Other" },
 ] as const;
-
 type MeetingType = (typeof meetingTypes)[number]["value"];
-
 function UploadPage() {
 	const formId = useId();
-
 	// Form state
 	const [municipalityId, setMunicipalityId] = useState<string>("");
 	const [title, setTitle] = useState("");
@@ -78,22 +73,16 @@ function UploadPage() {
 		"idle" | "uploading" | "processing" | "complete"
 	>("idle");
 	const fileInputRef = useRef<HTMLInputElement>(null);
-
 	// Queries
-	const municipalities = useQuery(api.functions.municipalities.queries.list, {
+	const municipalities = useRead(api.functions.municipalities.queries.list, {
 		activeOnly: true,
 	});
-
-	const usageCheck = useQuery(api.functions.usage.queries.checkLimit, {
+	const usageCheck = useRead(api.functions.usage.queries.checkLimit, {
 		action: "meeting_upload",
 	});
-
 	// Mutations
-	const createMeeting = useMutation(api.functions.meetings.mutations.create);
-	const generateUploadUrl = useMutation(
-		api.functions.storage.mutations.generateUploadUrl,
-	);
-
+	const createMeeting = useCommand(api.functions.meetings.mutations.create);
+	const getUploadUrl = useCommand(api.functions.storage.mutations.uploadUrl);
 	// Usage limit check
 	if (usageCheck && !usageCheck.allowed) {
 		return (
@@ -109,37 +98,30 @@ function UploadPage() {
 			/>
 		);
 	}
-
 	// File handling - validation only, extraction happens server-side
 	const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 		const selectedFile = e.target.files?.[0];
 		if (!selectedFile) return;
-
 		// Validate file type
 		const validTypes = [
 			"application/pdf",
 			"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 			"text/plain",
 		];
-
 		if (!validTypes.includes(selectedFile.type)) {
 			toast.error("Invalid file type. Please upload PDF, DOCX, or TXT files.");
 			return;
 		}
-
 		// Validate file size (10MB max)
 		if (selectedFile.size > 10 * 1024 * 1024) {
 			toast.error("File too large. Maximum size is 10MB.");
 			return;
 		}
-
 		setFile(selectedFile);
 	};
-
 	const handleDrop = (e: React.DragEvent) => {
 		e.preventDefault();
 		if (isSubmitting) return;
-
 		const droppedFile = e.dataTransfer.files[0];
 		if (droppedFile) {
 			const input = fileInputRef.current;
@@ -153,15 +135,12 @@ function UploadPage() {
 			}
 		}
 	};
-
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
-
 		if (!municipalityId || !title || !meetingType || !meetingDate) {
 			toast.error("Please fill in all required fields");
 			return;
 		}
-
 		// For paste mode, we need content; for file mode, we need a file
 		if (uploadMode === "paste") {
 			if (!content) {
@@ -180,27 +159,19 @@ function UploadPage() {
 			toast.error("Please select a file to upload");
 			return;
 		}
-
 		setIsSubmitting(true);
 		setUploadProgress(0);
 		setUploadStatus("idle");
-
 		try {
-			let documentStorageId: Id<"_storage"> | undefined;
-
-			// If we have a file, upload it to Convex storage
+			let documentId: Id<"_storage"> | undefined;
 			if (file && uploadMode === "file") {
 				setUploadStatus("uploading");
-
-				// Step 1: Get upload URL from Convex
-				const uploadUrl = await generateUploadUrl();
-
+				const uploadUrl = await getUploadUrl({});
 				// Step 2: Upload file with progress tracking
-				documentStorageId = await uploadFileWithProgress(file, uploadUrl);
+				documentId = await uploadFileWithProgress(file, uploadUrl);
 				setUploadProgress(100);
 				setUploadStatus("processing");
 			}
-
 			// Step 3: Create the meeting record
 			const meetingId = await createMeeting({
 				municipalityId: municipalityId as Id<"municipalities">,
@@ -209,9 +180,8 @@ function UploadPage() {
 				meetingDate: new Date(meetingDate).getTime(),
 				// Use rawContent for paste mode, documentStorageId for file mode
 				rawContent: uploadMode === "paste" ? content : undefined,
-				documentStorageId,
+				documentId,
 			});
-
 			setUploadStatus("complete");
 			toast.success("Meeting uploaded! AI summarization started.");
 			// Use window.location for navigation until route tree is regenerated
@@ -225,15 +195,12 @@ function UploadPage() {
 			setIsSubmitting(false);
 		}
 	};
-
-	// Upload file to Convex storage with progress tracking
 	const uploadFileWithProgress = (
 		file: File,
 		uploadUrl: string,
 	): Promise<Id<"_storage">> => {
 		return new Promise((resolve, reject) => {
 			const xhr = new XMLHttpRequest();
-
 			xhr.upload.addEventListener("progress", (event) => {
 				if (event.lengthComputable) {
 					const percentComplete = Math.round(
@@ -242,12 +209,11 @@ function UploadPage() {
 					setUploadProgress(percentComplete);
 				}
 			});
-
 			xhr.addEventListener("load", () => {
 				if (xhr.status >= 200 && xhr.status < 300) {
 					try {
 						const response = JSON.parse(xhr.responseText);
-						resolve(response.storageId as Id<"_storage">);
+						resolve(response.documentId as Id<"_storage">);
 					} catch {
 						reject(new Error("Invalid response from storage"));
 					}
@@ -255,20 +221,16 @@ function UploadPage() {
 					reject(new Error(`Upload failed with status ${xhr.status}`));
 				}
 			});
-
 			xhr.addEventListener("error", () => {
 				reject(new Error("Upload failed"));
 			});
-
 			xhr.addEventListener("abort", () => {
 				reject(new Error("Upload cancelled"));
 			});
-
 			xhr.open("POST", uploadUrl);
 			xhr.send(file);
 		});
 	};
-
 	const clearFile = () => {
 		setFile(null);
 		setContent("");
@@ -276,7 +238,6 @@ function UploadPage() {
 			fileInputRef.current.value = "";
 		}
 	};
-
 	return (
 		<div className="min-h-screen bg-background">
 			<div className="container mx-auto px-4 py-8 max-w-2xl">
@@ -578,7 +539,6 @@ function UploadPage() {
 		</div>
 	);
 }
-
 // ═══════════════════════════════════════════════════════════════
 // Utility functions
 // ═══════════════════════════════════════════════════════════════

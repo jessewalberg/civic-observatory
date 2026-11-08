@@ -9,7 +9,6 @@ interface RateLimitErrorProps {
 	resetsAt?: number;
 	showUpgrade?: boolean;
 }
-
 export function RateLimitError({
 	title = "Rate Limit Reached",
 	message = "You've reached your usage limit for this action.",
@@ -21,16 +20,13 @@ export function RateLimitError({
 		const diffMs = timestamp - now;
 		const diffMinutes = Math.ceil(diffMs / (1000 * 60));
 		const diffHours = Math.ceil(diffMs / (1000 * 60 * 60));
-
 		if (diffMinutes < 1) return "shortly";
 		if (diffMinutes < 60)
 			return `in ${diffMinutes} minute${diffMinutes !== 1 ? "s" : ""}`;
 		if (diffHours < 24)
 			return `in ${diffHours} hour${diffHours !== 1 ? "s" : ""}`;
-
 		return `at ${new Date(timestamp).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
 	};
-
 	return (
 		<div className="min-h-[60vh] flex items-center justify-center p-4">
 			<Card className="p-8 max-w-md w-full">

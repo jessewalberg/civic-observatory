@@ -1,6 +1,5 @@
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-
 export function DashboardSkeleton() {
 	return (
 		<div className="min-h-screen bg-background">
@@ -50,7 +49,6 @@ export function DashboardSkeleton() {
 		</div>
 	);
 }
-
 function FeedItemSkeleton() {
 	return (
 		<div className="p-4">

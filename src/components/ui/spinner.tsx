@@ -5,13 +5,11 @@ interface SpinnerProps {
 	size?: "sm" | "default" | "lg";
 	className?: string;
 }
-
 const sizeClasses = {
 	sm: "h-4 w-4",
 	default: "h-6 w-6",
 	lg: "h-8 w-8",
 };
-
 export function Spinner({ size = "default", className }: SpinnerProps) {
 	return (
 		<Loader2
@@ -19,11 +17,9 @@ export function Spinner({ size = "default", className }: SpinnerProps) {
 		/>
 	);
 }
-
 interface FullPageSpinnerProps {
 	message?: string;
 }
-
 export function FullPageSpinner({ message }: FullPageSpinnerProps) {
 	return (
 		<div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4">
@@ -32,12 +28,10 @@ export function FullPageSpinner({ message }: FullPageSpinnerProps) {
 		</div>
 	);
 }
-
 interface InlineSpinnerProps {
 	message?: string;
 	className?: string;
 }
-
 export function InlineSpinner({ message, className }: InlineSpinnerProps) {
 	return (
 		<div className={cn("flex items-center gap-2", className)}>
@@ -48,12 +42,10 @@ export function InlineSpinner({ message, className }: InlineSpinnerProps) {
 		</div>
 	);
 }
-
 interface CenteredSpinnerProps {
 	message?: string;
 	className?: string;
 }
-
 export function CenteredSpinner({ message, className }: CenteredSpinnerProps) {
 	return (
 		<div

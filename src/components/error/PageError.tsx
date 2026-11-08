@@ -10,7 +10,6 @@ interface PageErrorProps {
 	showBackButton?: boolean;
 	onRetry?: () => void;
 }
-
 export function PageError({
 	title = "Page Error",
 	message = "Something went wrong while loading this page.",

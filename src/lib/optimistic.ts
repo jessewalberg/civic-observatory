@@ -1,12 +1,4 @@
 /**
- * Helper types and utilities for optimistic UI updates.
- *
- * Convex handles optimistic updates through its real-time sync system.
- * This file provides patterns for implementing client-side optimistic UI
- * that works in conjunction with Convex's automatic data synchronization.
- */
-
-/**
  * Create an optimistic state manager for a specific action.
  * Use this when you want to show immediate feedback before mutation completes.
  *
@@ -24,7 +16,6 @@
  */
 export function createOptimisticHandler<T>(initialValue: T | null = null) {
 	let value = initialValue;
-
 	return {
 		get: () => value,
 		set: (newValue: T) => {
@@ -36,7 +27,6 @@ export function createOptimisticHandler<T>(initialValue: T | null = null) {
 		isOptimistic: () => value !== null,
 	};
 }
-
 /**
  * Type for optimistic update configuration
  */
@@ -48,7 +38,6 @@ export interface OptimisticUpdateConfig<TData, TOptimistic> {
 	/** Whether to prefer the optimistic value over real data */
 	preferOptimistic: boolean;
 }
-
 /**
  * Get the display value, preferring optimistic data when available
  */

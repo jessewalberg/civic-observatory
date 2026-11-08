@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useAction, useMutation, useQuery } from "convex/react";
 import {
 	Bell,
 	Building2,
@@ -18,13 +17,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { LoadingButton } from "@/components/ui/loading-button";
+import { useCommand, useRead } from "@/lib/data";
 import { meetingPath } from "@/lib/publicUrls";
 import { NOINDEX_ROBOTS } from "@/lib/seo";
 import { requireAuth } from "@/lib/serverAuth";
 import { cn } from "@/lib/utils";
-import { api } from "../../../convex/_generated/api";
-import type { Id } from "../../../convex/_generated/dataModel";
-
+import { api } from "../../../server/api";
+import type { Id } from "../../../server/model";
 export const Route = createFileRoute("/dashboard/")({
 	beforeLoad: async () => {
 		await requireAuth();
@@ -42,55 +41,45 @@ export const Route = createFileRoute("/dashboard/")({
 	component: DashboardPage,
 	pendingComponent: DashboardSkeleton,
 });
-
 function DashboardPage() {
 	return <DashboardContent />;
 }
-
 function DashboardContent() {
 	// Get user
-	const user = useQuery(api.functions.users.queries.current, {});
-
+	const user = useRead(api.functions.users.queries.current, {});
 	// Get feed
-	const feed = useQuery(
+	const feed = useRead(
 		api.functions.alerts.queries.getFeed,
 		user ? { limit: 20 } : "skip",
 	);
-
 	// Get alert counts
-	const alertCounts = useQuery(
+	const alertCounts = useRead(
 		api.functions.alerts.queries.countByUser,
 		user ? {} : "skip",
 	);
-
 	// Get subscription count
-	const subscriptionCount = useQuery(
+	const subscriptionCount = useRead(
 		api.functions.subscriptions.queries.countByUser,
 		user ? {} : "skip",
 	);
-
 	// Mutations
-	const markAsRead = useMutation(api.functions.alerts.mutations.markAsRead);
-	const markAllAsRead = useMutation(
+	const markAsRead = useCommand(api.functions.alerts.mutations.markAsRead);
+	const markAllAsRead = useCommand(
 		api.functions.alerts.mutations.markAllAsRead,
 	);
-
 	// Loading/action states
 	const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
 	const [optimisticUnreadCount, setOptimisticUnreadCount] = useState<
 		number | null
 	>(null);
-
 	// Loading state
 	if (!user || feed === undefined) {
 		return <DashboardSkeleton />;
 	}
-
 	const handleMarkAllAsRead = async () => {
 		// Optimistic update - immediately show 0 unread
 		setIsMarkingAllRead(true);
 		setOptimisticUnreadCount(0);
-
 		try {
 			await markAllAsRead({});
 		} catch {
@@ -102,10 +91,8 @@ function DashboardContent() {
 			setTimeout(() => setOptimisticUnreadCount(null), 500);
 		}
 	};
-
 	// Use optimistic count if available, otherwise real count
 	const displayUnreadCount = optimisticUnreadCount ?? alertCounts?.unread ?? 0;
-
 	return (
 		<div className="min-h-screen bg-background">
 			<div className="container mx-auto px-4 py-8 max-w-4xl pt-24">
@@ -205,7 +192,6 @@ function DashboardContent() {
 		</div>
 	);
 }
-
 function EmptyFeed() {
 	return (
 		<div className="p-8 text-center">
@@ -227,7 +213,6 @@ function EmptyFeed() {
 		</div>
 	);
 }
-
 interface FeedItemType {
 	_id: Id<"alerts">;
 	kind: "summary" | "agenda_preview";
@@ -254,13 +239,12 @@ interface FeedItemType {
 		state: string;
 	} | null;
 }
-
 function FeedItem({
 	item,
 	onMarkRead,
 }: {
 	item: FeedItemType;
-	onMarkRead: (args: { alertId: Id<"alerts"> }) => Promise<undefined | null>;
+	onMarkRead: (args: { alertId: Id<"alerts"> }) => Promise<void>;
 }) {
 	// Mark as read when item becomes visible
 	useEffect(() => {
@@ -271,11 +255,9 @@ function FeedItem({
 			return () => clearTimeout(timer);
 		}
 	}, [item._id, item.isNew, onMarkRead]);
-
 	if (!item.meeting || !item.municipality) {
 		return null;
 	}
-
 	const meetingTypeLabels: Record<string, string> = {
 		city_council: "City Council",
 		school_board: "School Board",
@@ -284,10 +266,8 @@ function FeedItem({
 		budget_committee: "Budget Committee",
 		other: "Meeting",
 	};
-
 	const timeAgo = getTimeAgo(item.sentAt ?? item.createdAt);
 	const isAgendaPreview = item.kind === "agenda_preview";
-
 	return (
 		<a
 			href={meetingPath(item.meeting)}
@@ -363,13 +343,11 @@ function FeedItem({
 		</a>
 	);
 }
-
 function BillingCard({ tier }: { tier: string }) {
 	const [isLoading, setIsLoading] = useState(false);
-	const createPortalSession = useAction(
+	const createPortalSession = useCommand(
 		api.functions.stripe.actions.createPortalSession,
 	);
-
 	const handleManageBilling = async () => {
 		setIsLoading(true);
 		try {
@@ -383,7 +361,6 @@ function BillingCard({ tier }: { tier: string }) {
 			setIsLoading(false);
 		}
 	};
-
 	if (tier === "pro") {
 		return (
 			<Card className="p-4 mb-8 bg-primary/5 border-primary/20">
@@ -419,7 +396,6 @@ function BillingCard({ tier }: { tier: string }) {
 			</Card>
 		);
 	}
-
 	// Free tier - show upgrade prompt
 	return (
 		<Card className="p-4 mb-8 border-dashed">
@@ -447,21 +423,17 @@ function BillingCard({ tier }: { tier: string }) {
 		</Card>
 	);
 }
-
 function getTimeAgo(timestamp: number): string {
 	const now = Date.now();
 	const diff = now - timestamp;
-
 	const minutes = Math.floor(diff / (1000 * 60));
 	const hours = Math.floor(diff / (1000 * 60 * 60));
 	const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-
 	if (minutes < 1) return "Just now";
 	if (minutes < 60) return `${minutes}m ago`;
 	if (hours < 24) return `${hours}h ago`;
 	if (days === 1) return "Yesterday";
 	if (days < 7) return `${days}d ago`;
-
 	return new Date(timestamp).toLocaleDateString("en-US", {
 		month: "short",
 		day: "numeric",

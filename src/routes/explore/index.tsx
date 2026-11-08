@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "convex/react";
 import { Building2, MapPin, Search, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useMemo, useState } from "react";
@@ -18,11 +17,11 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { useRead } from "@/lib/data";
 import { usePublicAuthState } from "@/lib/publicAuth";
 import { canonicalLink } from "@/lib/seo";
 import { US_STATES } from "@/lib/usStates";
-import { api } from "../../../convex/_generated/api";
-
+import { api } from "../../../server/api";
 export const Route = createFileRoute("/explore/")({
 	component: ExplorePage,
 	pendingComponent: ExploreSkeleton,
@@ -58,7 +57,6 @@ export const Route = createFileRoute("/explore/")({
 		links: [canonicalLink("/explore")],
 	}),
 });
-
 const MUNICIPALITY_SKELETON_KEYS = [
 	"municipality-skeleton-1",
 	"municipality-skeleton-2",
@@ -69,32 +67,27 @@ const MUNICIPALITY_SKELETON_KEYS = [
 	"municipality-skeleton-7",
 	"municipality-skeleton-8",
 ];
-
 function ExplorePage() {
 	const [searchQuery, setSearchQuery] = useState("");
 	const [selectedState, setSelectedState] = useState<string>("");
 	const [isCoverageRequestOpen, setIsCoverageRequestOpen] = useState(false);
 	const publicAuth = usePublicAuthState();
-
 	// Fetch municipalities - use search if query exists, otherwise list
-	const searchResults = useQuery(
+	const searchResults = useRead(
 		api.functions.municipalities.queries.search,
 		searchQuery.trim() ? { query: searchQuery, limit: 50 } : "skip",
 	);
-
-	const listResults = useQuery(
+	const listResults = useRead(
 		api.functions.municipalities.queries.list,
 		!searchQuery.trim()
 			? { state: selectedState || undefined, activeOnly: true }
 			: "skip",
 	);
-
 	// Fetch meeting counts for each municipality
-	const municipalitiesWithStats = useQuery(
+	const municipalitiesWithStats = useRead(
 		api.functions.municipalities.queries.listByState,
 		{ activeOnly: true },
 	);
-
 	// Create a map of municipality ID to meeting count
 	const meetingCounts = useMemo(() => {
 		const counts: Record<string, number> = {};
@@ -102,11 +95,9 @@ function ExplorePage() {
 		// In a real app, you'd batch this or include in the list query
 		return counts;
 	}, []);
-
 	// Determine which results to show
 	const municipalities = searchQuery.trim() ? searchResults : listResults;
 	const isLoading = municipalities === undefined;
-
 	// Filter search results by state if both search and state filter active
 	const filteredMunicipalities = useMemo(() => {
 		if (!municipalities) return [];
@@ -115,20 +106,16 @@ function ExplorePage() {
 		}
 		return municipalities;
 	}, [municipalities, searchQuery, selectedState]);
-
 	// Get unique states from results for showing active filters
 	const availableStates = useMemo(() => {
 		if (!municipalitiesWithStats) return [];
 		return municipalitiesWithStats.map((group) => group.state).sort();
 	}, [municipalitiesWithStats]);
-
 	const clearFilters = () => {
 		setSearchQuery("");
 		setSelectedState("");
 	};
-
 	const hasActiveFilters = searchQuery.trim() || selectedState;
-
 	return (
 		<div className="min-h-screen bg-background">
 			{/* Header */}

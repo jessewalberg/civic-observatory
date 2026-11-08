@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 type EmptyStateType = "default" | "search" | "data" | "notifications";
-
 interface EmptyStateProps {
 	type?: EmptyStateType;
 	title?: string;
@@ -16,10 +15,13 @@ interface EmptyStateProps {
 	};
 	className?: string;
 }
-
 const defaultProps: Record<
 	EmptyStateType,
-	{ icon: ReactNode; title: string; message: string }
+	{
+		icon: ReactNode;
+		title: string;
+		message: string;
+	}
 > = {
 	default: {
 		icon: <Inbox className="h-8 w-8" />,
@@ -42,7 +44,6 @@ const defaultProps: Record<
 		message: "You're all caught up!",
 	},
 };
-
 export function EmptyState({
 	type = "default",
 	title,
@@ -52,7 +53,6 @@ export function EmptyState({
 	className,
 }: EmptyStateProps) {
 	const defaults = defaultProps[type];
-
 	return (
 		<div
 			className={cn(

@@ -1,6 +1,5 @@
 import { MunicipalityCardSkeleton } from "@/components/MunicipalityCard";
 import { Skeleton } from "@/components/ui/skeleton";
-
 export function ExploreSkeleton() {
 	return (
 		<div className="min-h-screen bg-background">

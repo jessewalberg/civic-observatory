@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMutation, useQuery } from "convex/react";
 import {
 	Bell,
 	BellOff,
@@ -26,13 +25,13 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
+import { useCommand, useRead } from "@/lib/data";
 import { municipalityPath } from "@/lib/publicUrls";
 import { NOINDEX_ROBOTS } from "@/lib/seo";
 import { requireAuth } from "@/lib/serverAuth";
-import { api } from "../../../convex/_generated/api";
-import type { Id } from "../../../convex/_generated/dataModel";
+import { api } from "../../../server/api";
+import type { Id } from "../../../server/model";
 // cn utility not currently used
-
 export const Route = createFileRoute("/dashboard/subscriptions")({
 	beforeLoad: async () => {
 		await requireAuth();
@@ -49,38 +48,31 @@ export const Route = createFileRoute("/dashboard/subscriptions")({
 	}),
 	component: SubscriptionsPage,
 });
-
 function SubscriptionsPage() {
 	return <SubscriptionsContent />;
 }
-
 function SubscriptionsContent() {
 	const [editingSubscription, setEditingSubscription] =
 		useState<Subscription | null>(null);
-
 	// Get user
-	const user = useQuery(api.functions.users.queries.current, {});
-
+	const user = useRead(api.functions.users.queries.current, {});
 	// Get subscriptions
-	const subscriptions = useQuery(
+	const subscriptions = useRead(
 		api.functions.subscriptions.queries.listByUser,
 		user ? {} : "skip",
 	);
-
 	// Get subscription count
-	const subscriptionCount = useQuery(
+	const subscriptionCount = useRead(
 		api.functions.subscriptions.queries.countByUser,
 		user ? {} : "skip",
 	);
-
 	// Mutations
-	const toggleActive = useMutation(
+	const toggleActive = useCommand(
 		api.functions.subscriptions.mutations.toggleActive,
 	);
-	const removeSubscription = useMutation(
+	const removeSubscription = useCommand(
 		api.functions.subscriptions.mutations.remove,
 	);
-
 	// Loading state
 	if (!user || subscriptions === undefined) {
 		return (
@@ -89,7 +81,6 @@ function SubscriptionsContent() {
 			</div>
 		);
 	}
-
 	const handleToggleActive = async (subscription: Subscription) => {
 		try {
 			const result = await toggleActive({
@@ -102,7 +93,6 @@ function SubscriptionsContent() {
 			toast.error("Failed to update subscription");
 		}
 	};
-
 	const handleDelete = async (subscription: Subscription) => {
 		if (
 			!confirm(
@@ -111,7 +101,6 @@ function SubscriptionsContent() {
 		) {
 			return;
 		}
-
 		try {
 			await removeSubscription({
 				subscriptionId: subscription._id,
@@ -121,7 +110,6 @@ function SubscriptionsContent() {
 			toast.error("Failed to unsubscribe");
 		}
 	};
-
 	return (
 		<div className="min-h-screen bg-background">
 			<div className="container mx-auto px-4 py-8 max-w-4xl">
@@ -369,7 +357,6 @@ function SubscriptionsContent() {
 		</div>
 	);
 }
-
 // Type for subscription with municipality info
 interface Subscription {
 	_id: Id<"subscriptions">;

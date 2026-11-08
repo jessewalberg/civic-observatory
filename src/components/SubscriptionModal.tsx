@@ -1,4 +1,3 @@
-import { useMutation, useQuery } from "convex/react";
 import { Loader2, Trash2 } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { toast } from "sonner";
@@ -21,6 +20,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { useCommand, useRead } from "@/lib/data";
 import {
 	ALERT_FREQUENCY_OPTIONS,
 	MEETING_TYPE_OPTIONS,
@@ -28,11 +28,10 @@ import {
 	type UserTier,
 } from "@/lib/subscriptionOptions";
 import { buildSubscriptionPreview } from "@/lib/subscriptionPreview";
-import { api } from "../../convex/_generated/api";
-import type { Id } from "../../convex/_generated/dataModel";
+import { api } from "../../server/api";
+import type { Id } from "../../server/model";
 
 const EMPTY_FILTERS: string[] = [];
-
 interface Subscription {
 	_id: Id<"subscriptions">;
 	userId: Id<"users">;
@@ -46,7 +45,6 @@ interface Subscription {
 	agendaAlertsEnabled?: boolean;
 	isActive: boolean;
 }
-
 interface SubscriptionModalProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
@@ -57,7 +55,6 @@ interface SubscriptionModalProps {
 	defaultMeetingTypes?: string[];
 	userTier?: UserTier;
 }
-
 export function SubscriptionModal({
 	open,
 	onOpenChange,
@@ -70,7 +67,6 @@ export function SubscriptionModal({
 }: SubscriptionModalProps) {
 	// Generate unique IDs for form elements
 	const baseId = useId();
-
 	// Form state
 	const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
 	const [selectedMeetingTypes, setSelectedMeetingTypes] = useState<string[]>(
@@ -87,26 +83,23 @@ export function SubscriptionModal({
 	const [isDeleting, setIsDeleting] = useState(false);
 	const defaultTopicFilterKey = defaultTopicFilters.join("|");
 	const defaultMeetingTypeKey = defaultMeetingTypes.join("|");
-
 	// Get user tier to check for immediate alerts when a parent cannot pass it.
-	const queriedUser = useQuery(
+	const queriedUser = useRead(
 		api.functions.users.queries.current,
 		userTier ? "skip" : {},
 	);
 	const resolvedUserTier = userTier ?? queriedUser?.tier;
 	const canUseImmediate = resolvedUserTier === "pro";
-
 	// Mutations
-	const createSubscription = useMutation(
+	const createSubscription = useCommand(
 		api.functions.subscriptions.mutations.create,
 	);
-	const updateSubscription = useMutation(
+	const updateSubscription = useCommand(
 		api.functions.subscriptions.mutations.update,
 	);
-	const removeSubscription = useMutation(
+	const removeSubscription = useCommand(
 		api.functions.subscriptions.mutations.remove,
 	);
-
 	// Initialize form with existing subscription data
 	useEffect(() => {
 		if (existingSubscription) {
@@ -138,7 +131,6 @@ export function SubscriptionModal({
 		defaultMeetingTypeKey,
 		defaultMeetingTypes,
 	]);
-
 	const preview = buildSubscriptionPreview({
 		municipalityName,
 		selectedTopics,
@@ -148,19 +140,16 @@ export function SubscriptionModal({
 		agendaAlertsEnabled,
 		userTier: resolvedUserTier,
 	});
-
 	const handleTopicToggle = (topic: string) => {
 		setSelectedTopics((prev) =>
 			prev.includes(topic) ? prev.filter((t) => t !== topic) : [...prev, topic],
 		);
 	};
-
 	const handleMeetingTypeToggle = (type: string) => {
 		setSelectedMeetingTypes((prev) =>
 			prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type],
 		);
 	};
-
 	// Parse comma-separated keywords into array
 	const parseKeywords = (input: string): string[] => {
 		return input
@@ -168,13 +157,11 @@ export function SubscriptionModal({
 			.map((k) => k.trim())
 			.filter((k) => k.length > 0);
 	};
-
 	const handleSave = async () => {
 		setIsSubmitting(true);
 		try {
 			const parsedInclude = parseKeywords(keywordsInclude);
 			const parsedExclude = parseKeywords(keywordsExclude);
-
 			if (existingSubscription) {
 				await updateSubscription({
 					subscriptionId: existingSubscription._id,
@@ -211,10 +198,8 @@ export function SubscriptionModal({
 			setIsSubmitting(false);
 		}
 	};
-
 	const handleDelete = async () => {
 		if (!existingSubscription) return;
-
 		setIsDeleting(true);
 		try {
 			await removeSubscription({
@@ -230,7 +215,6 @@ export function SubscriptionModal({
 			setIsDeleting(false);
 		}
 	};
-
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">

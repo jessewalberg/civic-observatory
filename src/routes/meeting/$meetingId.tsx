@@ -4,8 +4,6 @@ import {
 	notFound,
 	redirect,
 } from "@tanstack/react-router";
-import { ConvexHttpClient } from "convex/browser";
-import { useMutation, useQuery } from "convex/react";
 import {
 	AlertCircle,
 	Calendar,
@@ -51,7 +49,9 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { VoteDisplay } from "@/components/VoteDisplay";
+import { apiClient } from "@/lib/apiClient";
 import { copyTextToClipboard } from "@/lib/clipboard";
+import { useCommand, useRead } from "@/lib/data";
 import {
 	formatMeetingDate,
 	formatMeetingScheduleDate,
@@ -59,7 +59,7 @@ import {
 import { isMeetingIndexable } from "@/lib/meetingIndexability";
 import { getMeetingSourceTrust } from "@/lib/meetingTrust";
 import { usePublicAuthState } from "@/lib/publicAuth";
-import { failConvexLoader, requireConvexUrl } from "@/lib/publicConvexLoader";
+import { failDataLoader } from "@/lib/publicDataLoader";
 import {
 	meetingPath,
 	municipalityPath,
@@ -78,17 +78,14 @@ import {
 	NOINDEX_ROBOTS,
 } from "@/lib/seo";
 import { cn, formatDate } from "@/lib/utils";
-import { api } from "../../../convex/_generated/api";
-import type { Id } from "../../../convex/_generated/dataModel";
-
+import { api } from "../../../server/api";
+import type { Id } from "../../../server/model";
 export const Route = createFileRoute("/meeting/$meetingId")({
 	component: MeetingDetailPage,
 	pendingComponent: MeetingDetailSkeleton,
 	loader: async ({ params }) => {
-		const convexUrl = requireConvexUrl();
 		try {
-			const convex = new ConvexHttpClient(convexUrl);
-			const meeting = await convex.query(
+			const meeting = await apiClient.request(
 				api.functions.meetings.queries.getWithSummaryByIdentifier,
 				{
 					identifier: params.meetingId,
@@ -105,10 +102,9 @@ export const Route = createFileRoute("/meeting/$meetingId")({
 			if (!meeting) {
 				throw notFound();
 			}
-
 			return { meeting };
 		} catch (error) {
-			failConvexLoader(error);
+			failDataLoader(error);
 		}
 	},
 	head: ({ loaderData }) => {
@@ -121,20 +117,16 @@ export const Route = createFileRoute("/meeting/$meetingId")({
 				],
 			};
 		}
-
 		const typeLabel =
 			meetingTypeLabels[meeting.meetingType] ?? meeting.meetingType;
 		const date = new Date(meeting.meetingDate);
 		const formattedDate = formatMeetingDate(meeting.meetingDate);
-
 		const description = meeting.summary?.executiveSummary
 			? meeting.summary.executiveSummary.slice(0, 160) +
 				(meeting.summary.executiveSummary.length > 160 ? "..." : "")
 			: `${typeLabel} meeting from ${meeting.municipality?.name || "local government"} on ${formattedDate}`;
-
 		const title = `${meeting.title} | Civic Observatory`;
 		const municipalityName = meeting.municipality?.name || "Local Government";
-
 		const meetingUrl = canonicalUrl(meetingPath(meeting));
 		const sourceUrl = meeting.summary?.sourceUrl ?? meeting.sourceUrl;
 		const indexable = isMeetingIndexable(meeting);
@@ -148,7 +140,6 @@ export const Route = createFileRoute("/meeting/$meetingId")({
 					{ name: meeting.title, url: meetingUrl },
 				])
 			: null;
-
 		return {
 			meta: [
 				{ title },
@@ -204,7 +195,6 @@ export const Route = createFileRoute("/meeting/$meetingId")({
 	},
 	notFoundComponent: MeetingNotFoundPage,
 });
-
 const meetingTypeLabels: Record<string, string> = {
 	city_council: "City Council",
 	school_board: "School Board",
@@ -213,8 +203,13 @@ const meetingTypeLabels: Record<string, string> = {
 	budget_committee: "Budget Committee",
 	other: "Other",
 };
-
-const sentimentConfig: Record<string, { label: string; className: string }> = {
+const sentimentConfig: Record<
+	string,
+	{
+		label: string;
+		className: string;
+	}
+> = {
 	routine: {
 		label: "Routine",
 		className: "bg-muted text-muted-foreground",
@@ -232,7 +227,6 @@ const sentimentConfig: Record<string, { label: string; className: string }> = {
 		className: "bg-red-500/10 text-red-500",
 	},
 };
-
 // Type for meeting data from the query
 interface MeetingData {
 	_id: Id<"meetings">;
@@ -275,7 +269,10 @@ interface MeetingData {
 			themes: string[];
 			sentiment?: "positive" | "negative" | "mixed" | "neutral";
 		};
-		upcomingItems: Array<{ title: string; expectedDate?: string }>;
+		upcomingItems: Array<{
+			title: string;
+			expectedDate?: string;
+		}>;
 		topics: string[];
 		sentiment?: "routine" | "contentious" | "celebratory" | "urgent";
 		modelUsed?: string;
@@ -297,7 +294,6 @@ interface MeetingData {
 		coverageBadge?: PublicCoverageBadge;
 	} | null;
 }
-
 function MeetingDetailPage() {
 	const { meetingId } = Route.useParams();
 	const loaderData = Route.useLoaderData();
@@ -306,25 +302,22 @@ function MeetingDetailPage() {
 	const [isRetrying, setIsRetrying] = useState(false);
 	const [retryError, setRetryError] = useState<string | null>(null);
 	const hasTrackedView = useRef(false);
-
 	// Real-time updates via useQuery
-	const queriedMeeting = useQuery(
+	const queriedMeeting = useRead(
 		api.functions.meetings.queries.getWithSummaryByIdentifier,
 		{ identifier: meetingId },
 	);
 	const meeting =
 		queriedMeeting === undefined ? loaderData.meeting : queriedMeeting;
-	const retryProcessing = useMutation(
+	const retryProcessing = useCommand(
 		api.functions.meetings.mutations.retryProcessing,
 	);
-	const recordUsage = useMutation(api.functions.usage.mutations.recordUsage);
-
+	const recordUsage = useCommand(api.functions.usage.mutations.recordUsage);
 	// Check usage limit for summary views
-	const usageCheck = useQuery(
+	const usageCheck = useRead(
 		api.functions.usage.queries.checkLimit,
 		isAuthenticated ? { action: "summary_view" } : "skip",
 	);
-
 	// Track summary view for authenticated users (only if within limit)
 	useEffect(() => {
 		if (
@@ -343,15 +336,12 @@ function MeetingDetailPage() {
 			});
 		}
 	}, [isAuthenticated, meeting, recordUsage, usageCheck]);
-
 	if (meeting === undefined) {
 		return <MeetingDetailSkeleton />;
 	}
-
 	if (meeting === null) {
 		return <MeetingNotFoundPage />;
 	}
-
 	// Show rate limit exceeded for summarized meetings with summary content
 	if (
 		meeting.status === "summarized" &&
@@ -372,12 +362,10 @@ function MeetingDetailPage() {
 			/>
 		);
 	}
-
 	const typeLabel =
 		meetingTypeLabels[meeting.meetingType] ?? meeting.meetingType;
 	const canRetry = isAuthenticated;
 	const sourceUrl = meeting.summary?.sourceUrl ?? meeting.sourceUrl;
-
 	const handleRetry = async () => {
 		if (!isAuthenticated || isRetrying) return;
 		setIsRetrying(true);
@@ -394,7 +382,6 @@ function MeetingDetailPage() {
 			setIsRetrying(false);
 		}
 	};
-
 	// Show processing state
 	if (meeting.status === "processing") {
 		return (
@@ -442,7 +429,6 @@ function MeetingDetailPage() {
 			</div>
 		);
 	}
-
 	// Show pending state
 	if (meeting.status === "pending") {
 		const isFuture = meeting.meetingDate > Date.now();
@@ -519,7 +505,6 @@ function MeetingDetailPage() {
 			</div>
 		);
 	}
-
 	// Show failed state
 	if (meeting.status === "failed") {
 		return (
@@ -577,7 +562,6 @@ function MeetingDetailPage() {
 			</div>
 		);
 	}
-
 	// Main summarized view
 	return (
 		<div className="min-h-screen bg-background">
@@ -732,7 +716,6 @@ function MeetingDetailPage() {
 		</div>
 	);
 }
-
 function MeetingNotFoundPage() {
 	return (
 		<div className="min-h-screen bg-background flex items-center justify-center">
@@ -757,7 +740,6 @@ function MeetingNotFoundPage() {
 		</div>
 	);
 }
-
 // Breadcrumb component
 function Breadcrumb({ meeting }: { meeting: MeetingData }) {
 	return (
@@ -786,24 +768,20 @@ function Breadcrumb({ meeting }: { meeting: MeetingData }) {
 		</nav>
 	);
 }
-
 // Meeting header component
 interface MeetingHeaderProps {
 	meeting: MeetingData;
 	typeLabel: string;
 }
-
 function MeetingHeader({ meeting, typeLabel }: MeetingHeaderProps) {
 	const sentiment = meeting.summary?.sentiment;
 	const sentimentInfo = sentiment ? sentimentConfig[sentiment] : null;
 	const isFutureMeeting = meeting.meetingDate > Date.now();
 	const sourceTrust = getMeetingSourceTrust(meeting);
 	const [showReporterExport, setShowReporterExport] = useState(false);
-
 	const shareDescription = meeting.summary?.executiveSummary
 		? `${meeting.summary.executiveSummary.slice(0, 150)}...`
 		: `${typeLabel} meeting from ${meeting.municipality?.name || "local government"}`;
-
 	return (
 		<header className="mb-8">
 			{/* Title */}
@@ -895,7 +873,6 @@ function MeetingHeader({ meeting, typeLabel }: MeetingHeaderProps) {
 		</header>
 	);
 }
-
 export function ReporterExportDialog({
 	meeting,
 	open,
@@ -916,7 +893,6 @@ export function ReporterExportDialog({
 		[format, meeting],
 	);
 	const extension = format === "markdown" ? "md" : "csv";
-
 	useEffect(() => {
 		return () => {
 			if (resetCopiedTimeout.current) {
@@ -924,7 +900,6 @@ export function ReporterExportDialog({
 			}
 		};
 	}, []);
-
 	const copyExport = async () => {
 		await copyTextToClipboard(exportText);
 		if (resetCopiedTimeout.current) {
@@ -936,7 +911,6 @@ export function ReporterExportDialog({
 			resetCopiedTimeout.current = null;
 		}, 2000);
 	};
-
 	const downloadExport = () => {
 		const blob = new Blob([exportText], {
 			type: format === "markdown" ? "text/markdown" : "text/csv",
@@ -950,7 +924,6 @@ export function ReporterExportDialog({
 		document.body.removeChild(link);
 		setTimeout(() => URL.revokeObjectURL(url), 1000);
 	};
-
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="sm:max-w-3xl">
@@ -1019,7 +992,6 @@ export function ReporterExportDialog({
 		</Dialog>
 	);
 }
-
 type SummaryMetadataMeeting = {
 	status: "pending" | "processing" | "summarized" | "failed" | "skipped";
 	sourceUrl?: string | null;
@@ -1042,14 +1014,12 @@ type SummaryMetadataMeeting = {
 		error?: string | null;
 	} | null;
 };
-
 export function SummaryMetadataPanel({
 	meeting,
 }: {
 	meeting: SummaryMetadataMeeting;
 }) {
 	if (!meeting.summary) return null;
-
 	const trust = getMeetingSourceTrust(meeting);
 	const reviewStatus = aiReviewStatusLabel(meeting.summary.status);
 	const lastCheckedAt = meeting.municipality?.lastScrapedAt ?? null;
@@ -1081,10 +1051,14 @@ export function SummaryMetadataPanel({
 					? formatDate(checkedOrUpdatedAt)
 					: null,
 		},
-	].filter((row): row is { label: string; value: string } =>
-		Boolean(row.value),
+	].filter(
+		(
+			row,
+		): row is {
+			label: string;
+			value: string;
+		} => Boolean(row.value),
 	);
-
 	return (
 		<Card className="border-border/50 bg-card/70">
 			<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -1117,7 +1091,6 @@ export function SummaryMetadataPanel({
 		</Card>
 	);
 }
-
 function aiReviewStatusLabel(
 	status: "summarized" | "failed" | "skipped" | null | undefined,
 ): string {
@@ -1125,25 +1098,20 @@ function aiReviewStatusLabel(
 	if (status === "skipped") return "AI generation skipped";
 	return "AI-generated, unreviewed";
 }
-
 function formatProcessingTime(milliseconds: number): string {
 	if (milliseconds < 1000) return `${milliseconds}ms`;
-
 	const seconds = milliseconds / 1000;
 	if (seconds < 60) {
 		return `${Number(seconds.toFixed(1))}s`;
 	}
-
 	const minutes = Math.floor(seconds / 60);
 	const remainingSeconds = Math.round(seconds % 60);
 	return remainingSeconds > 0
 		? `${minutes}m ${remainingSeconds}s`
 		: `${minutes}m`;
 }
-
 function SectionSourceReference({ sourceUrl }: { sourceUrl?: string | null }) {
 	if (!sourceUrl) return null;
-
 	return (
 		<p className="mb-4 text-sm text-muted-foreground">
 			Source context:{" "}
@@ -1159,11 +1127,9 @@ function SectionSourceReference({ sourceUrl }: { sourceUrl?: string | null }) {
 		</p>
 	);
 }
-
 function SummaryTrustPanel({ meeting }: { meeting: MeetingData }) {
 	const trust = getMeetingSourceTrust(meeting);
 	const tone = trustTone[trust.state];
-
 	return (
 		<Card className={cn("mb-8 border p-4", tone.className)}>
 			<div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -1222,7 +1188,6 @@ function SummaryTrustPanel({ meeting }: { meeting: MeetingData }) {
 		</Card>
 	);
 }
-
 const trustTone = {
 	"source-backed": {
 		className: "border-emerald-500/20 bg-emerald-500/5",
@@ -1241,7 +1206,6 @@ const trustTone = {
 		iconClassName: "bg-red-500/10 text-red-500",
 	},
 } as const;
-
 // Decision card component
 interface DecisionCardProps {
 	decision: {
@@ -1257,14 +1221,12 @@ interface DecisionCardProps {
 		importance?: "high" | "medium" | "low";
 	};
 }
-
 function DecisionCard({ decision }: DecisionCardProps) {
 	const importanceStyles = {
 		high: "border-l-red-500",
 		medium: "border-l-amber-500",
 		low: "border-l-muted",
 	};
-
 	return (
 		<Card
 			className={cn(
@@ -1308,7 +1270,6 @@ function DecisionCard({ decision }: DecisionCardProps) {
 		</Card>
 	);
 }
-
 // Discussion topics grouped by category
 interface DiscussionTopicsProps {
 	topics: Array<{
@@ -1317,7 +1278,6 @@ interface DiscussionTopicsProps {
 		category: string;
 	}>;
 }
-
 function DiscussionTopics({ topics }: DiscussionTopicsProps) {
 	// Group by category
 	const grouped = topics.reduce(
@@ -1331,9 +1291,7 @@ function DiscussionTopics({ topics }: DiscussionTopicsProps) {
 		},
 		{} as Record<string, typeof topics>,
 	);
-
 	const categories = Object.keys(grouped).sort();
-
 	return (
 		<div className="space-y-6">
 			{categories.map((category) => (
@@ -1359,7 +1317,6 @@ function DiscussionTopics({ topics }: DiscussionTopicsProps) {
 		</div>
 	);
 }
-
 // Public comments card
 interface PublicCommentsCardProps {
 	comments: {
@@ -1369,7 +1326,6 @@ interface PublicCommentsCardProps {
 		sentiment?: "positive" | "negative" | "mixed" | "neutral";
 	};
 }
-
 function PublicCommentsCard({ comments }: PublicCommentsCardProps) {
 	const sentimentStyles = {
 		positive: "text-emerald-500",
@@ -1377,7 +1333,6 @@ function PublicCommentsCard({ comments }: PublicCommentsCardProps) {
 		mixed: "text-amber-500",
 		neutral: "text-muted-foreground",
 	};
-
 	return (
 		<Card>
 			<div className="space-y-4">

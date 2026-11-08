@@ -10,7 +10,6 @@ interface QueryErrorProps {
 	variant?: "default" | "compact" | "inline";
 	className?: string;
 }
-
 export function QueryError({
 	title = "Failed to load",
 	message = "Something went wrong while fetching data.",
@@ -22,9 +21,7 @@ export function QueryError({
 	const isNetworkError =
 		error?.message?.toLowerCase().includes("network") ||
 		error?.message?.toLowerCase().includes("fetch");
-
 	const Icon = isNetworkError ? WifiOff : AlertCircle;
-
 	if (variant === "inline") {
 		return (
 			<div
@@ -47,7 +44,6 @@ export function QueryError({
 			</div>
 		);
 	}
-
 	if (variant === "compact") {
 		return (
 			<div
@@ -69,7 +65,6 @@ export function QueryError({
 			</div>
 		);
 	}
-
 	return (
 		<div
 			className={cn(

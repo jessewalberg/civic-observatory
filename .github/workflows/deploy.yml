@@ -1,35 +1,25 @@
-# Continuous deployment for the secretkit pattern (Cloudflare host).
-#
-# INV-8 (gates run pre-merge): the `gate` job runs on every pull_request AND on
-# push to main — so the build gate must pass BEFORE a PR can merge, not only
-# after. The `deploy` job is push-only (`if: github.event_name == 'push'`) and
-# runs after the gate, so a red PR never reaches production.
-#
-# INV-7 (no secrets resolution in CI): this workflow carries ONLY the three
-# deploy bootstrap creds as GitHub *Environment* secrets (synced from 1Password
-# civic-observatory-ci): CONVEX_DEPLOY_KEY, CLOUDFLARE_API_TOKEN,
-# CLOUDFLARE_ACCOUNT_ID. There is no OP_SERVICE_ACCOUNT_TOKEN / op:// /
-# secretkit sync / op run / doppler run anywhere here. Runtime secrets
-# (CLERK_SECRET_KEY as a Worker secret; CLERK_JWT_ISSUER_DOMAIN, OPENROUTER_API_KEY,
-# STRIPE_* on the Convex deployment) are synced OUT-OF-BAND by the owner and
-# persist on the deployment — CI never resolves them. Public bundle vars come
-# from committed .env.production / wrangler.jsonc, not secrets.
-
-name: Deploy
+name: Native stack verification
 
 on:
   push:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 concurrency:
-  group: deploy-${{ github.ref }}
-  cancel-in-progress: false
+  group: civic-stack-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  gate:
-    name: Test & build gate
+  verify:
+    name: Build, lint, and local D1 end-to-end
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      WRANGLER_SEND_METRICS: "false"
+      SHARP_IGNORE_GLOBAL_LIBVIPS: "1"
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v6
@@ -37,36 +27,21 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
       - run: pnpm install --frozen-lockfile
-
-      # `pnpm build` intentionally stays keyless: vite build + tsc --noEmit
-      # against committed convex/_generated files. convex deploy regenerates
-      # those files on the deploy path where the deploy key exists.
-      - name: Build
+      - name: Generate local-only signing settings
+        run: node scripts/local-env.mjs
+      - name: Build and typecheck
         run: pnpm build
+      - name: Lint
+        run: pnpm lint
+      - name: Real local Worker, D1, and R2 workflow
+        run: pnpm smoke:local
+      - name: Offline export migration into local D1 and R2
+        run: pnpm smoke:migration
 
-  deploy:
-    name: Deploy production
-    needs: gate
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    environment: production
-    steps:
-      - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-
-      - name: Deploy
-        env:
-          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_ENV: production
-        run: |
-          pnpm exec convex deploy
-          pnpm build
-          pnpm exec wrangler deploy --env "$CLOUDFLARE_ENV"
+# Jesse, 2026-10-09: no unit tests, including gates and CI.
+# Jesse, 2026-11-07: Alchemy, Effect, Better Auth and D1; no cutover on this errand.
+# No credentials, remote migrations, infrastructure application, DNS, or deploy job.

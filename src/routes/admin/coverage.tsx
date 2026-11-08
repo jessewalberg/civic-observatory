@@ -1,5 +1,4 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMutation, useQuery } from "convex/react";
 import {
 	AlertCircle,
 	ArrowDown,
@@ -50,13 +49,13 @@ import {
 	getCoverageDashboardStats,
 	getCoveragePlatformStats,
 } from "@/lib/coverageDashboard";
+import { useCommand, useRead } from "@/lib/data";
 import { requireAuth } from "@/lib/serverAuth";
 import { cn } from "@/lib/utils";
-import { api } from "../../../convex/_generated/api";
-import type { Id } from "../../../convex/_generated/dataModel";
+import { api } from "../../../server/api";
+import type { Id } from "../../../server/model";
 
 type CoverageStatus = "published" | "unpublished" | "paused";
-
 type OnboardingChecklistRow = {
 	municipality: {
 		id: string;
@@ -87,7 +86,6 @@ type OnboardingChecklistRow = {
 		updatedAt: number | null;
 	}>;
 };
-
 export const Route = createFileRoute("/admin/coverage")({
 	beforeLoad: async () => {
 		await requireAuth();
@@ -104,21 +102,19 @@ export const Route = createFileRoute("/admin/coverage")({
 	}),
 	component: CoverageAdminPage,
 });
-
 function CoverageAdminPage() {
 	return <CoverageContent />;
 }
-
 function CoverageContent() {
-	const coverageRows = useQuery(
+	const coverageRows = useRead(
 		api.functions.municipalities.queries.listCoverageHealth,
 		{},
 	) as CoverageDashboardRow[] | null | undefined;
-	const onboardingChecklists = useQuery(
+	const onboardingChecklists = useRead(
 		api.functions.municipalities.queries.listOnboardingChecklists,
 		{},
 	) as OnboardingChecklistRow[] | null | undefined;
-	const setCoverageStatus = useMutation(
+	const setCoverageStatus = useCommand(
 		api.functions.municipalities.mutations.setCoverageStatus,
 	);
 	const [coverageUpdatingIds, setCoverageUpdatingIds] = useState<Set<string>>(
@@ -138,7 +134,6 @@ function CoverageContent() {
 		key: "health",
 		direction: "asc",
 	});
-
 	const rows = coverageRows ?? [];
 	const checklistRows = onboardingChecklists ?? [];
 	const nextChecklistRows = useMemo(
@@ -162,14 +157,12 @@ function CoverageContent() {
 			),
 		[rows],
 	);
-
 	const updateFilter = <K extends keyof CoverageDashboardFilters>(
 		key: K,
 		value: CoverageDashboardFilters[K],
 	) => {
 		setFilters((current) => ({ ...current, [key]: value }));
 	};
-
 	const updateSort = (key: CoverageDashboardSort["key"]) => {
 		setSort((current) => ({
 			key,
@@ -177,7 +170,6 @@ function CoverageContent() {
 				current.key === key && current.direction === "asc" ? "desc" : "asc",
 		}));
 	};
-
 	const handleCoverageStatusChange = async ({
 		municipalityId,
 		municipalityName,
@@ -193,11 +185,9 @@ function CoverageContent() {
 				: `Reason for ${status} coverage (optional)`,
 		);
 		if (reason === null) return;
-
 		const id = municipalityId as Id<"municipalities">;
 		const reasonText = reason.trim() || undefined;
 		setCoverageUpdatingIds((current) => new Set(current).add(municipalityId));
-
 		try {
 			try {
 				await setCoverageStatus({
@@ -211,14 +201,12 @@ function CoverageContent() {
 				if (status !== "published" || !/validation.*override/i.test(message)) {
 					throw error;
 				}
-
 				const overrideReason = window.prompt(
 					"Override reason required to publish without a passing validation",
 				);
 				if (!overrideReason?.trim()) {
 					throw error;
 				}
-
 				await setCoverageStatus({
 					id,
 					status,
@@ -226,7 +214,6 @@ function CoverageContent() {
 					overrideReason: overrideReason.trim(),
 				});
 			}
-
 			toast.success(`${municipalityName} coverage ${status}`);
 		} catch (error) {
 			const message =
@@ -240,7 +227,6 @@ function CoverageContent() {
 			});
 		}
 	};
-
 	if (coverageRows === undefined || onboardingChecklists === undefined) {
 		return (
 			<div className="min-h-screen bg-background flex items-center justify-center">
@@ -251,7 +237,6 @@ function CoverageContent() {
 			</div>
 		);
 	}
-
 	if (coverageRows === null || onboardingChecklists === null) {
 		return (
 			<div className="min-h-screen bg-background flex items-center justify-center">
@@ -276,7 +261,6 @@ function CoverageContent() {
 			</div>
 		);
 	}
-
 	return (
 		<div className="min-h-screen bg-background">
 			<div className="container mx-auto px-4 py-8">
@@ -1017,7 +1001,6 @@ function CoverageContent() {
 		</div>
 	);
 }
-
 function SortableHead({
 	label,
 	sortKey,
@@ -1040,7 +1023,6 @@ function SortableHead({
 			? "ascending"
 			: "descending"
 		: "none";
-
 	return (
 		<TableHead aria-sort={ariaSort}>
 			<button
@@ -1059,7 +1041,6 @@ function SortableHead({
 		</TableHead>
 	);
 }
-
 function StatCard({
 	label,
 	value,
@@ -1068,7 +1049,9 @@ function StatCard({
 }: {
 	label: string;
 	value: string | number;
-	icon: React.ComponentType<{ className?: string }>;
+	icon: React.ComponentType<{
+		className?: string;
+	}>;
 	variant?: "default" | "success" | "destructive" | "warning" | "info";
 }) {
 	const iconColors = {
@@ -1078,7 +1061,6 @@ function StatCard({
 		warning: "text-amber-400",
 		info: "text-blue-400",
 	};
-
 	return (
 		<Card className="p-4">
 			<div className="flex items-center gap-3">
@@ -1091,11 +1073,13 @@ function StatCard({
 		</Card>
 	);
 }
-
 function HealthBadge({ state }: { state: CoverageHealthState }) {
 	const config: Record<
 		CoverageHealthState,
-		{ label: string; variant: React.ComponentProps<typeof Badge>["variant"] }
+		{
+			label: string;
+			variant: React.ComponentProps<typeof Badge>["variant"];
+		}
 	> = {
 		live: { label: "Live", variant: "success" },
 		stale: { label: "Stale", variant: "warning" },
@@ -1104,14 +1088,12 @@ function HealthBadge({ state }: { state: CoverageHealthState }) {
 		pending: { label: "Pending", variant: "info" },
 		"never-probed": { label: "Never Probed", variant: "outline" },
 	};
-
 	return (
 		<Badge variant={config[state].variant} className="text-xs">
 			{config[state].label}
 		</Badge>
 	);
 }
-
 function healthStateLabel(state: CoverageHealthState) {
 	const labels: Record<CoverageHealthState, string> = {
 		live: "Live",
@@ -1123,7 +1105,6 @@ function healthStateLabel(state: CoverageHealthState) {
 	};
 	return labels[state];
 }
-
 function OnboardingStatusBadge({
 	status,
 	short = false,
@@ -1148,7 +1129,6 @@ function OnboardingStatusBadge({
 			variant: "warning",
 		},
 	};
-
 	return (
 		<Badge
 			variant={config[status].variant}
@@ -1158,17 +1138,18 @@ function OnboardingStatusBadge({
 		</Badge>
 	);
 }
-
 function CoverageStatusBadge({ status }: { status: CoverageStatus }) {
 	const config: Record<
 		CoverageStatus,
-		{ label: string; variant: React.ComponentProps<typeof Badge>["variant"] }
+		{
+			label: string;
+			variant: React.ComponentProps<typeof Badge>["variant"];
+		}
 	> = {
 		published: { label: "Published", variant: "success" },
 		unpublished: { label: "Unpublished", variant: "secondary" },
 		paused: { label: "Paused", variant: "warning" },
 	};
-
 	return (
 		<Badge
 			variant={config[status].variant}
@@ -1178,10 +1159,8 @@ function CoverageStatusBadge({ status }: { status: CoverageStatus }) {
 		</Badge>
 	);
 }
-
 function CoverageVisibilityCell({ row }: { row: CoverageDashboardRow }) {
 	const badge = row.municipality.coverageBadge;
-
 	return (
 		<div className="space-y-1">
 			<CoverageStatusBadge status={coverageStatusFor(row.municipality)} />
@@ -1196,7 +1175,6 @@ function CoverageVisibilityCell({ row }: { row: CoverageDashboardRow }) {
 		</div>
 	);
 }
-
 function CoverageStatusControls({
 	status,
 	disabled,
@@ -1209,13 +1187,14 @@ function CoverageStatusControls({
 	const actions: Array<{
 		status: CoverageStatus;
 		label: string;
-		icon: React.ComponentType<{ className?: string }>;
+		icon: React.ComponentType<{
+			className?: string;
+		}>;
 	}> = [
 		{ status: "published", label: "Publish", icon: Eye },
 		{ status: "paused", label: "Pause", icon: PauseCircle },
 		{ status: "unpublished", label: "Unpublish", icon: EyeOff },
 	];
-
 	return (
 		<div className="inline-flex items-center justify-end gap-1">
 			{actions.map((action) => {
@@ -1240,7 +1219,6 @@ function CoverageStatusControls({
 		</div>
 	);
 }
-
 function coverageStatusFor(municipality: {
 	coverageStatus?: CoverageStatus;
 	isActive: boolean;
@@ -1251,7 +1229,6 @@ function coverageStatusFor(municipality: {
 		? "published"
 		: "unpublished";
 }
-
 function MetricLine({ label, value }: { label: string; value: number }) {
 	return (
 		<div className="flex items-center justify-between gap-3 text-xs">
@@ -1271,7 +1248,6 @@ function MetricLine({ label, value }: { label: string; value: number }) {
 		</div>
 	);
 }
-
 function platformLabel(
 	platform: CoverageDashboardRow["municipality"]["platform"],
 ) {
@@ -1286,11 +1262,9 @@ function platformLabel(
 	};
 	return labels[platform];
 }
-
 function formatLatestScrape(row: CoverageDashboardRow) {
 	const latest = row.health.latestScrape;
 	if (!latest) return formatFreshness(row);
-
 	const parts = [
 		latest.status,
 		`${latest.meetingsFound} found`,
@@ -1300,31 +1274,25 @@ function formatLatestScrape(row: CoverageDashboardRow) {
 	if (latest.meetingsFailed > 0) {
 		parts.push(`${latest.meetingsFailed} failed`);
 	}
-
 	return parts.join(" · ");
 }
-
 function formatFreshness(row: CoverageDashboardRow) {
 	if (!row.health.freshness.lastScrapedAt) return "never scraped";
 	if (row.health.freshness.isStale) return "past freshness window";
 	return `every ${row.health.freshness.frequencyHours}h`;
 }
-
 function formatRelativeTime(timestamp: number | null) {
 	if (!timestamp) return "Never";
-
 	const diff = Math.max(0, Date.now() - timestamp);
-	if (diff < 60_000) return "just now";
-	if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-	if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-	return `${Math.floor(diff / 86_400_000)}d ago`;
+	if (diff < 60000) return "just now";
+	if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+	if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+	return `${Math.floor(diff / 86400000)}d ago`;
 }
-
 function formatDateTime(timestamp: number | null) {
 	if (!timestamp) return "No summary";
 	return new Date(timestamp).toLocaleString();
 }
-
 function formatPercent(value: number | null) {
 	if (value === null) return "No jobs";
 	return `${Math.round(value * 100)}%`;

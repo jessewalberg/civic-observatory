@@ -1,5 +1,4 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "convex/react";
 import {
 	AlertCircle,
 	ArrowLeft,
@@ -33,9 +32,10 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
+import { useRead } from "@/lib/data";
 import { requireAuth } from "@/lib/serverAuth";
 import { cn } from "@/lib/utils";
-import { api } from "../../../convex/_generated/api";
+import { api } from "../../../server/api";
 
 type DeliveryHealthFilter =
 	| "all"
@@ -44,9 +44,7 @@ type DeliveryHealthFilter =
 	| "stale_queued"
 	| "queued"
 	| "pending";
-
 type AlertStatus = "pending" | "queued" | "sent" | "failed" | "skipped";
-
 type DeliveryAlertRow = {
 	_id: string;
 	status: AlertStatus;
@@ -71,7 +69,6 @@ type DeliveryAlertRow = {
 	municipalityState: string;
 	alertFrequency: string | null;
 };
-
 export const Route = createFileRoute("/admin/alerts")({
 	beforeLoad: async () => {
 		await requireAuth();
@@ -88,22 +85,17 @@ export const Route = createFileRoute("/admin/alerts")({
 	}),
 	component: AlertDeliveryHealthPage,
 });
-
 function AlertDeliveryHealthPage() {
 	return <AlertDeliveryHealthContent />;
 }
-
 function AlertDeliveryHealthContent() {
 	const [filter, setFilter] = useState<DeliveryHealthFilter>("all");
-
-	const isAdmin = useQuery(api.functions.users.queries.isAdmin, {});
-	const health = useQuery(api.functions.alerts.queries.getDeliveryHealth, {
+	const isAdmin = useRead(api.functions.users.queries.isAdmin, {});
+	const health = useRead(api.functions.alerts.queries.getDeliveryHealth, {
 		filter,
 		limit: 100,
 	});
-
 	const isLoading = isAdmin === undefined || health === undefined;
-
 	if (isLoading) {
 		return (
 			<div className="min-h-screen bg-background flex items-center justify-center">
@@ -111,7 +103,6 @@ function AlertDeliveryHealthContent() {
 			</div>
 		);
 	}
-
 	if (!isAdmin || !health) {
 		return (
 			<div className="min-h-screen bg-background flex items-center justify-center">
@@ -136,10 +127,8 @@ function AlertDeliveryHealthContent() {
 			</div>
 		);
 	}
-
 	const filteredCount = health.alerts.length;
-	const scanWindowDays = Math.round(health.scanWindowMs / 86_400_000);
-
+	const scanWindowDays = Math.round(health.scanWindowMs / 86400000);
 	return (
 		<div className="min-h-screen bg-background">
 			<div className="container mx-auto px-4 py-8">
@@ -398,7 +387,6 @@ function AlertDeliveryHealthContent() {
 		</div>
 	);
 }
-
 function StatCard({
 	label,
 	value,
@@ -407,7 +395,9 @@ function StatCard({
 }: {
 	label: string;
 	value: string | number;
-	icon: ComponentType<{ className?: string }>;
+	icon: ComponentType<{
+		className?: string;
+	}>;
 	variant?: "default" | "success" | "destructive" | "warning" | "info";
 }) {
 	const iconColors = {
@@ -417,7 +407,6 @@ function StatCard({
 		warning: "text-amber-400",
 		info: "text-blue-400",
 	};
-
 	return (
 		<Card className="p-4">
 			<div className="flex items-center gap-3 min-w-0">
@@ -432,7 +421,6 @@ function StatCard({
 		</Card>
 	);
 }
-
 function DeliveryStatusBadge({ alert }: { alert: DeliveryAlertRow }) {
 	if (alert.isExhausted) {
 		return (
@@ -455,7 +443,6 @@ function DeliveryStatusBadge({ alert }: { alert: DeliveryAlertRow }) {
 			</Badge>
 		);
 	}
-
 	const variants: Record<
 		AlertStatus,
 		"success" | "destructive" | "warning" | "info" | "secondary"
@@ -466,14 +453,12 @@ function DeliveryStatusBadge({ alert }: { alert: DeliveryAlertRow }) {
 		failed: "destructive",
 		skipped: "secondary",
 	};
-
 	return (
 		<Badge variant={variants[alert.status]} className="w-fit text-xs">
 			{alert.status}
 		</Badge>
 	);
 }
-
 function TimeLine({ label, value }: { label: string; value?: number }) {
 	return (
 		<div className="grid grid-cols-[72px_1fr] gap-2 text-muted-foreground">
@@ -482,7 +467,6 @@ function TimeLine({ label, value }: { label: string; value?: number }) {
 		</div>
 	);
 }
-
 function formatTimestamp(timestamp?: number): string {
 	if (!timestamp) return "-";
 	return new Date(timestamp).toLocaleString(undefined, {
@@ -490,20 +474,16 @@ function formatTimestamp(timestamp?: number): string {
 		timeStyle: "short",
 	});
 }
-
 function formatRelativeTime(timestamp?: number): string {
 	if (!timestamp) return "-";
-
 	const diff = timestamp - Date.now();
 	const abs = Math.abs(diff);
 	const suffix = diff >= 0 ? "from now" : "ago";
-
-	if (abs < 60_000) return "now";
-	if (abs < 3_600_000) return `${Math.floor(abs / 60_000)}m ${suffix}`;
-	if (abs < 86_400_000) return `${Math.floor(abs / 3_600_000)}h ${suffix}`;
-	return `${Math.floor(abs / 86_400_000)}d ${suffix}`;
+	if (abs < 60000) return "now";
+	if (abs < 3600000) return `${Math.floor(abs / 60000)}m ${suffix}`;
+	if (abs < 86400000) return `${Math.floor(abs / 3600000)}h ${suffix}`;
+	return `${Math.floor(abs / 86400000)}d ${suffix}`;
 }
-
 function truncateMiddle(value: string, maxLength: number): string {
 	if (value.length <= maxLength) return value;
 	const keep = Math.max(Math.floor((maxLength - 3) / 2), 1);

@@ -10,7 +10,6 @@ interface VoteDisplayProps {
 	size?: "sm" | "md" | "lg";
 	className?: string;
 }
-
 export function VoteDisplay({
 	yea,
 	nay,
@@ -23,26 +22,21 @@ export function VoteDisplay({
 }: VoteDisplayProps) {
 	const total = yea + nay + abstain + absent;
 	if (total === 0) return null;
-
 	const yeaPercent = (yea / total) * 100;
 	const nayPercent = (nay / total) * 100;
 	const abstainPercent = (abstain / total) * 100;
 	const absentPercent = (absent / total) * 100;
-
 	const passed = yea > nay;
-
 	const heightClass = {
 		sm: "h-1.5",
 		md: "h-2.5",
 		lg: "h-4",
 	}[size];
-
 	const textClass = {
 		sm: "text-xs",
 		md: "text-sm",
 		lg: "text-base",
 	}[size];
-
 	return (
 		<div className={cn("space-y-2", className)}>
 			{showLabels && (
@@ -128,20 +122,17 @@ export function VoteDisplay({
 		</div>
 	);
 }
-
 interface CompactVoteDisplayProps {
 	yea: number;
 	nay: number;
 	className?: string;
 }
-
 export function CompactVoteDisplay({
 	yea,
 	nay,
 	className,
 }: CompactVoteDisplayProps) {
 	const passed = yea > nay;
-
 	return (
 		<div
 			className={cn(

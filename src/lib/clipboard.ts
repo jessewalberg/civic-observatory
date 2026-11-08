@@ -8,12 +8,10 @@ export async function copyTextToClipboard(text: string): Promise<void> {
 		copyTextWithFallback(text);
 	}
 }
-
 function copyTextWithFallback(text: string) {
 	if (typeof document === "undefined") {
 		throw new Error("Clipboard fallback unavailable");
 	}
-
 	const textarea = document.createElement("textarea");
 	textarea.value = text;
 	textarea.setAttribute("readonly", "");

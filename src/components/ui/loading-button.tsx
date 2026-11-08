@@ -11,7 +11,6 @@ interface LoadingButtonProps
 	loadingText?: string;
 	asChild?: boolean;
 }
-
 const LoadingButton = React.forwardRef<HTMLButtonElement, LoadingButtonProps>(
 	({ children, loading, loadingText, disabled, className, ...props }, ref) => {
 		return (
@@ -34,5 +33,4 @@ const LoadingButton = React.forwardRef<HTMLButtonElement, LoadingButtonProps>(
 	},
 );
 LoadingButton.displayName = "LoadingButton";
-
 export { LoadingButton };

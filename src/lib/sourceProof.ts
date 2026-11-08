@@ -1,11 +1,8 @@
 import { meetingPath } from "./publicUrls";
-
 export const SOURCE_PROOF_FALLBACK_COPY =
 	"No source-backed summaries are available yet. New verified summaries will appear here after supported meetings are summarized with public source links.";
-
 const DEFAULT_LIMIT = 3;
 const EXCERPT_MAX_LENGTH = 190;
-
 export type SourceProofSummaryRecord = {
 	_id: string;
 	executiveSummary?: string | null;
@@ -22,7 +19,6 @@ export type SourceProofSummaryRecord = {
 		state?: string | null;
 	} | null;
 };
-
 export type SourceProofExample = {
 	summaryId: string;
 	municipality: string;
@@ -32,21 +28,17 @@ export type SourceProofExample = {
 	sourceUrl: string;
 	summaryExcerpt: string;
 };
-
 export function buildSourceProofExamples(
 	records: SourceProofSummaryRecord[],
 	limit = DEFAULT_LIMIT,
 ): SourceProofExample[] {
 	const examples: SourceProofExample[] = [];
-
 	for (const record of records) {
 		if (examples.length >= limit) break;
-
 		const meeting = record.meeting;
 		const municipality = record.municipality;
 		const sourceUrl = firstNonEmpty(record.sourceUrl, meeting?.sourceUrl);
 		const executiveSummary = record.executiveSummary?.trim();
-
 		if (
 			!meeting?._id ||
 			!meeting.title?.trim() ||
@@ -58,7 +50,6 @@ export function buildSourceProofExamples(
 		) {
 			continue;
 		}
-
 		examples.push({
 			summaryId: record._id,
 			municipality: `${municipality.name.trim()}, ${municipality.state.trim()}`,
@@ -69,10 +60,8 @@ export function buildSourceProofExamples(
 			summaryExcerpt: excerpt(executiveSummary),
 		});
 	}
-
 	return examples;
 }
-
 function firstNonEmpty(
 	...values: Array<string | null | undefined>
 ): string | null {
@@ -82,7 +71,6 @@ function firstNonEmpty(
 	}
 	return null;
 }
-
 function excerpt(text: string): string {
 	if (text.length <= EXCERPT_MAX_LENGTH) return text;
 	return `${text.slice(0, EXCERPT_MAX_LENGTH - 1).trimEnd()}...`;

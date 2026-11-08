@@ -1,5 +1,4 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMutation, useQuery } from "convex/react";
 import {
 	Crown,
 	Loader2,
@@ -40,10 +39,10 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
+import { useCommand, useRead } from "@/lib/data";
 import { requireAuth } from "@/lib/serverAuth";
-import { api } from "../../../convex/_generated/api";
-import type { Id } from "../../../convex/_generated/dataModel";
-
+import { api } from "../../../server/api";
+import type { Id } from "../../../server/model";
 export const Route = createFileRoute("/admin/users")({
 	beforeLoad: async () => {
 		await requireAuth();
@@ -57,11 +56,9 @@ export const Route = createFileRoute("/admin/users")({
 	}),
 	component: UsersAdminPage,
 });
-
 function UsersAdminPage() {
 	return <UsersContent />;
 }
-
 function UsersContent() {
 	const formId = useId();
 	const [searchQuery, setSearchQuery] = useState("");
@@ -75,26 +72,21 @@ function UsersContent() {
 		isAdmin: boolean;
 	} | null>(null);
 	const [isSubmitting, setIsSubmitting] = useState(false);
-
 	// Queries
-	const isAdmin = useQuery(api.functions.users.queries.isAdmin, {});
-	const usersResult = useQuery(api.functions.users.queries.listAll, {
+	const isAdmin = useRead(api.functions.users.queries.isAdmin, {});
+	const usersResult = useRead(api.functions.users.queries.listAll, {
 		limit: 500,
 	});
-	const stats = useQuery(api.functions.users.queries.getAdminStats, {});
-
+	const stats = useRead(api.functions.users.queries.getAdminStats, {});
 	// Handle the paginated users result
 	const users = Array.isArray(usersResult)
 		? usersResult
 		: (usersResult?.users ?? []);
-
 	// Mutations
-	const adminUpdateUser = useMutation(
+	const adminUpdateUser = useCommand(
 		api.functions.users.mutations.adminUpdateUser,
 	);
-
 	const isLoading = isAdmin === undefined || usersResult === undefined;
-
 	if (isLoading) {
 		return (
 			<div className="min-h-screen bg-background flex items-center justify-center">
@@ -102,7 +94,6 @@ function UsersContent() {
 			</div>
 		);
 	}
-
 	if (!isAdmin) {
 		return (
 			<div className="min-h-screen bg-background flex items-center justify-center">
@@ -127,7 +118,6 @@ function UsersContent() {
 			</div>
 		);
 	}
-
 	// Filter users
 	const filteredUsers = users?.filter((u) => {
 		const matchesSearch =
@@ -141,10 +131,8 @@ function UsersContent() {
 			(filterRole === "user" && !u.isAdmin);
 		return matchesSearch && matchesTier && matchesRole;
 	});
-
 	const handleUpdateUser = async () => {
 		if (!editingUser) return;
-
 		setIsSubmitting(true);
 		try {
 			await adminUpdateUser({
@@ -162,7 +150,6 @@ function UsersContent() {
 			setIsSubmitting(false);
 		}
 	};
-
 	const quickSetTier = async (userId: Id<"users">, tier: "free" | "pro") => {
 		try {
 			await adminUpdateUser({
@@ -176,7 +163,6 @@ function UsersContent() {
 			toast.error(message);
 		}
 	};
-
 	const quickToggleAdmin = async (
 		userId: Id<"users">,
 		currentIsAdmin: boolean,
@@ -193,7 +179,6 @@ function UsersContent() {
 			toast.error(message);
 		}
 	};
-
 	return (
 		<div className="min-h-screen bg-background">
 			<div className="container mx-auto px-4 py-8">
@@ -498,7 +483,6 @@ function UsersContent() {
 		</div>
 	);
 }
-
 function formatDate(timestamp: number): string {
 	return new Date(timestamp).toLocaleDateString("en-US", {
 		month: "short",
@@ -506,11 +490,9 @@ function formatDate(timestamp: number): string {
 		year: "numeric",
 	});
 }
-
 function formatRelativeTime(timestamp: number): string {
 	const now = Date.now();
 	const diff = now - timestamp;
-
 	if (diff < 60000) return "just now";
 	if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
 	if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
