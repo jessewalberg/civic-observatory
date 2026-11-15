@@ -20,22 +20,22 @@ No production deployment, DNS route, remote data write, or provider deletion is 
 
 ## Local development
 
-Use Node 24+, pnpm 9.15.9 and Bun 1.4.4.
+Use Node 24+ and Bun 1.4.4 (the package manager; `packageManager` in `package.json`).
 
 ```sh
-SHARP_IGNORE_GLOBAL_LIBVIPS=1 pnpm install --frozen-lockfile
+bun install --frozen-lockfile
 node scripts/local-env.mjs
-pnpm db:local
-pnpm dev
+bun run db:local
+bun run dev
 ```
 
-The install flag selects prebuilt binaries for the retained offline brand-asset generator instead of compiling against host libvips; Worker PDF/OCR code does not use it. The setup helper creates ignored local signing settings, not provider credentials. `wrangler.jsonc` contains local D1/R2 bindings and no production routes. Never resolve production secret references for a local run.
+`trustedDependencies` lets only `esbuild` and `workerd` run install scripts. `sharp` is left out on purpose, so its install script never runs and the retained offline brand-asset generator loads sharp's prebuilt libvips instead of compiling against host libvips (Bun then reports one blocked postinstall; that is expected). Worker PDF/OCR code does not use sharp. The setup helper creates ignored local signing settings, not provider credentials. `wrangler.jsonc` contains local D1/R2 bindings and no production routes. Never resolve production secret references for a local run.
 
 ```sh
-pnpm build
-pnpm lint
-pnpm smoke:local
-pnpm smoke:migration
+bun run build
+bun run lint
+bun run smoke:local
+bun run smoke:migration
 ```
 
 `build` also typechecks. The bounded smoke starts the actual built Worker against fresh local D1/R2, exercises sign-up, sessions, recovery/verification, coverage, subscriptions, uploads, scraping, PDF extraction, scheduled processing, a killed/restarted Worker, stale-write rollback, concurrent public reads/webhooks and Stripe replay protection. Its network-boundary fixtures intercept public source/DNS and mail-provider traffic; unlisted requests fail closed. There is no production localhost bypass, model call or real message delivery. It removes its own state afterward. The migration smoke imports every entity type, `_tables` export metadata, Clerk and WorkOS-only identity cases, explicit activation maps and referenced/orphan blobs into real local D1/R2, checking ownership and checksums.
@@ -50,14 +50,14 @@ The compiler is offline and never fetches credentials or writes to any deploymen
 2. Unpack the snapshot, retaining each `<table>/documents.jsonl` and `_storage/` directory. Compile it:
 
    ```sh
-   pnpm import:export --snapshot migration-private/snapshot --clerk-users migration-private/clerk-users.json --output migration-private/compiled
+   bun run import:export --snapshot migration-private/snapshot --clerk-users migration-private/clerk-users.json --output migration-private/compiled
    ```
 
 3. Review the private `counts.json`, then apply the SQL only to a new, empty, isolated local database for rehearsal:
 
    ```sh
-   pnpm exec wrangler d1 migrations apply DB --local --persist-to .wrangler/import-state
-   pnpm exec wrangler d1 execute DB --local --persist-to .wrangler/import-state --file migration-private/compiled/data.sql
+   bunx wrangler d1 migrations apply DB --local --persist-to .wrangler/import-state
+   bunx wrangler d1 execute DB --local --persist-to .wrangler/import-state --file migration-private/compiled/data.sql
    node scripts/import-blobs.mjs --manifest migration-private/compiled/blobs.json --persist-to .wrangler/import-state --local
    ```
 
@@ -71,7 +71,7 @@ Existing sessions and password hashes are not copied. Imported accounts require 
 
 ## Live cutover needs a separate approval
 
-- Provision isolated resources with Alchemy only after approval; this errand does not run it. `pnpm infra:staging` enables only `civic-observatory-stack-staging.<account-subdomain>.workers.dev`, using [Alchemy's Worker URL setting](https://v1.alchemy.run/providers/cloudflare/worker). It rejects other stages, non-staging origins and live Stripe keys. There are no production DNS routes/domains; D1/R2 destruction is disabled.
+- Provision isolated resources with Alchemy only after approval; this errand does not run it. `bun run infra:staging` enables only `civic-observatory-stack-staging.<account-subdomain>.workers.dev`, using [Alchemy's Worker URL setting](https://v1.alchemy.run/providers/cloudflare/worker). It rejects other stages, non-staging origins and live Stripe keys. There are no production DNS routes/domains; D1/R2 destruction is disabled.
 - Supply `APP_URL` as that exact HTTPS staging origin, a fresh `BETTER_AUTH_SECRET` of at least 32 characters, dedicated least-privilege `EMAIL_API_TOKEN`, `EMAIL_ACCOUNT_ID`, verified `EMAIL_FROM_ADDRESS`, and Jesse-approved `STAGING_MAIL_TO`. Optional Stripe key/webhook/price settings must be test-mode. The test recipient is the staging administrator address; native verification still precedes admin bootstrap. Never use the infrastructure token for mail. Staging enables outbound transport for the recovery rehearsal but has no model key, rejects mail to every other recipient, and keeps all scheduled work disabled.
 - Rehearse the snapshot and blob migration on an empty staging target; production record counts, data sizes, source platform availability and runtime timings are **unmeasured** here.
 - On the approved isolated staging URL, request a reset for the approved test account, observe the provider's accepted delivery and inbox receipt, follow the link back to that exact staging origin, reset the password and sign in. Prove verification, required social/MFA paths and test checkout/portal too. Paid model/OCR verification needs separate approval and configuration; it is not enabled by staging setup. Local transport fixtures deliberately send no messages and are not evidence of remote delivery.

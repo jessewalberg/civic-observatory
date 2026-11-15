@@ -11,12 +11,12 @@ Read `README.md` and `ARCHITECTURE.md` before changing application behavior.
 
 ## Implementation contracts
 
-Use native Effect procedures under `server/functions/`, the D1 schema/model and existing domain helpers. Do not restore old provider APIs, aliases, token bridges, generated clients or compatibility routes. Generate typed references with `pnpm generate` after procedure changes.
+Use native Effect procedures under `server/functions/`, the D1 schema/model and existing domain helpers. Do not restore old provider APIs, aliases, token bridges, generated clients or compatibility routes. Generate typed references with `bun run generate` after procedure changes.
 
 Resolve the actor from the server session. Never accept a client-supplied identity, role or billing tier as authority. Keep internal handlers unreachable over HTTP, validate cross-entity IDs, and preserve publication visibility and account ownership. Never log export records, credentials, cookies, verification links or password-reset tokens.
 
 Maintain the guarded D1 batch/outbox boundary. A write must not leave partial records or jobs behind. External requests belong in tasks, not retryable write procedures. Keep long batch work split into bounded jobs and preserve delivery reservations.
 
-Use only local D1/R2 fixtures for routine validation. `pnpm build`, `pnpm lint`, `pnpm smoke:local` and `pnpm smoke:migration` are the intended checks. They do not require provider credentials, production access or unit suites. Record omitted browser, external-service and deployment checks as not run; request independent review through the pull request, without adding unit-test gates.
+Use only local D1/R2 fixtures for routine validation. `bun run build`, `bun run lint`, `bun run smoke:local` and `bun run smoke:migration` are the intended checks. They do not require provider credentials, production access or unit suites. Record omitted browser, external-service and deployment checks as not run; request independent review through the pull request, without adding unit-test gates.
 
 Do not run Alchemy application/destruction, remote Wrangler commands, source exports or secret resolution merely to inspect the code. Keep private exports and migration outputs in ignored directories. Use the offline compiler and local checksum rehearsal described in `README.md`; any live routing, scheduler, billing or authentication handoff needs a separate owner-approved plan.
