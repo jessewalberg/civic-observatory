@@ -19,28 +19,23 @@ jobs:
     timeout-minutes: 20
     env:
       WRANGLER_SEND_METRICS: "false"
-      SHARP_IGNORE_GLOBAL_LIBVIPS: "1"
     steps:
       - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v6 # scripts, vite, tsc and wrangler run on Node
         with:
           node-version: 24
-          cache: pnpm
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.4
-      - run: pnpm install --frozen-lockfile
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0, reads packageManager
+      - run: bun install --frozen-lockfile
       - name: Generate local-only signing settings
         run: node scripts/local-env.mjs
       - name: Build and typecheck
-        run: pnpm build
+        run: bun run build
       - name: Lint
-        run: pnpm lint
+        run: bun run lint
       - name: Real local Worker, D1, and R2 workflow
-        run: pnpm smoke:local
+        run: bun run smoke:local
       - name: Offline export migration into local D1 and R2
-        run: pnpm smoke:migration
+        run: bun run smoke:migration
 
 # Jesse, 2026-10-09: no unit tests, including gates and CI.
 # Jesse, 2026-11-07: Alchemy, Effect, Better Auth and D1; no cutover on this errand.
