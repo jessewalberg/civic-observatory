@@ -360,7 +360,7 @@ const NOT_THE_JOB: [string, Env, string][] = [
 		(name): [string, Env, string] => [
 			`an agent session (${name})`,
 			{ ...job, [name]: "1" },
-			"after a push to main (a coding-agent session).",
+			"a coding-agent session",
 		],
 	),
 ];
