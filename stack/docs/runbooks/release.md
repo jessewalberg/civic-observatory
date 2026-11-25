@@ -142,7 +142,7 @@ no public text says.
    | `bun run load <file> --stage preview` | `Release 1: …` with the file's counts; `/api/health` names release 1, its items and towns |
    | The same command again | `Release 1 is this file already (… items, … meetings, … towns, … boards); nothing was written.` |
    | A file with fewer than 80% of the items, without and then with `--shrink "<why>"` | Refused; then loaded, with the reason in `releases`. Load the real file again |
-   | Kill: start a load of a changed file and kill its process group 0.5, 1, 2, 3 and 5 seconds after `Loading …` (the commands are below) | After each, `/api/health` and `bun run report --stage preview` name the old release whole or the new one whole. Run the same command again: it loads, or says that it is there already |
+   | Kill: start a load of a changed file and kill its process group 0.05, 0.1, 0.2, 0.25, 0.3 and 0.5 seconds after `Loading …` (the commands are below; the batch is done within half a second, so a later kill shows nothing) | After each, `/api/health` and `bun run report --stage preview` name the old release whole or the new one whole. Run the same command again: it loads, or says that it is there already |
    | Two at once: two changed files, started together | One loads; the other fails whole (`UNIQUE constraint failed: releases.seq`), and says which release is there |
    | `bun run load <file> --stage production` with the preview file's token | Refused: no `--production-approved` |
    | `bun run load <file> --stage production --production-approved $(git rev-parse HEAD)`, before production exists | Refused: no such Worker |
@@ -189,8 +189,8 @@ no public text says.
 11. **The cost of reading.** Crawl every sitemap URL with the verifier's headers (at most four at a time; 0 errors), then read
     what it cost, per kind of page, and write it into the record. The read credential is another one: an account-owned token
     with **Account Analytics Read** and nothing else ([SQL API](https://developers.cloudflare.com/analytics/analytics-engine/sql-api/),
-    read 2026-11-25), in a shell of its own (`cf` and `ACCOUNT` as at the top). Neither the preview file's token nor the deploy
-    token can read it, and neither should. The same token reads the GraphQL numbers:
+    read 2026-11-25), in a shell of its own (`cf` and `ACCOUNT` as at the top). Neither the preview file's permissions nor the
+    deploy token's include it, and neither should. The same token reads the GraphQL numbers:
 
     ```sh
     cf "/accounts/$ACCOUNT/analytics_engine/sql" --data "SELECT blob3 AS route, sum(_sample_interval) AS n, quantileWeighted(0.5)(double4, _sample_interval) AS rows_p50, max(double4) AS rows_max, quantileWeighted(0.95)(double2, _sample_interval) AS ms_p95 FROM civic_docket_requests WHERE blob1 = 'preview' AND timestamp > NOW() - INTERVAL '1' HOUR GROUP BY route"
@@ -357,8 +357,8 @@ under 30 seconds.
 
 **Cloudflare Access.** If Access covers the whole account's `workers.dev` names, the pinned Wrangler cannot pass it without a
 person ([as documented](https://developers.cloudflare.com/workers/local-development/#connect-to-access-protected-workers)),
-and the session fails before anything is read or written. The rehearsal (section 2, step 6) shows which it is. Nothing is
-named `civic-docket-load` in the account: it is the name of the edge preview alone, and is never deployed.
+and the session fails before anything is read or written. The rehearsal (section 2, step 6) shows which it is;
+on 2026-11-25 it connected. Nothing is named `civic-docket-load` in the account: it is the name of the edge preview alone, and is never deployed.
 
 **Wrangler's version.** From 4.72.0 (2026-03-10) Wrangler takes the token that the API gives for a session when the session's
 exchange address does not answer
@@ -483,9 +483,9 @@ Fill one row per read. Times, counts and commits only.
 | Deploy token: groups, end date, what it cannot read | |
 | Reads of section 1, step 3 | |
 | Contact address: a message received | |
-| Preview: plan, deploy, the door before and after | |
-| Preview: load, refusals, kill, two at once | |
-| Preview: release check; sign-up; withdrawal; headers | |
-| Preview: rows read, ms and CPU per kind of page | |
+| Preview: plan, deploy, the door before and after | 2026-11-25, first deployed at 69c7bca, everything below at 245a3b0. 5 to create and nothing else, 20 s. A probe twice a second through the first deploy saw 404 and then Access, never the Worker. Ten requests on both forms of the address refused, before and after the temporary application went, with no token and with a wrong secret |
+| Preview: load, refusals, kill, two at once | At 69c7bca no session opened (Wrangler 4.59.2, section 6); at 245a3b0: three refused files, with the same words without a network. First load 363 items, 160 meetings, 13 towns, 64 boards, 2,037 rows, 6 s; a replacement 3,726 rows, 5 s; the same file again wrote nothing. 280 items refused, then loaded with a reason. Kills after 0.02, 0.05, 0.1, 0.15, 0.2 and 0.25 s left the old release whole, after 0.3 and 0.5 s the new one; after 1, 2, 3 and 5 s it was done. Two at once: one loaded, the other `UNIQUE constraint failed: releases.seq`. Production refused, without the approval and with no Worker there. Nothing named `civic-docket-load` |
+| Preview: release check; sign-up; withdrawal; headers | Green. Sign-up in Chromium: five stored, the sixth 429 (`Retry-After` 3598), intent once, removal, report without an address, 429 at call 63 of a function, closed 403; cleaned up. Two items: 200 twice, 410 at the next request on both forms of the address and in Chromium, none of their fields on the 410 page, 200 after the whole file. From one network only. Seven declared headers on three static files; the page `no-transform`, with this app's script alone |
+| Preview: rows read, ms and CPU per kind of page | 380 pages of the sitemap, four at a time, 6 s, 0 errors. Rows read: an item 2, a list at most 1,122, the sitemap 376, health 378. Worker ms p50 16, p95 32; CPU p50 5.3 ms, p99 25.5 ms. Log lines and records: none of the words, addresses or URLs that were sent |
 | Launch: run, commit, minutes, the load's line | |
 | After: holder, block, bindings, report, browser, log | |

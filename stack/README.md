@@ -182,9 +182,10 @@ words here.
 
 ## Not proven here
 
-Everything above runs locally; no cloud account was asked anything. Before the docket is public, these must be shown:
+Everything above runs locally. Before the docket is public, these must be shown:
 
-On the preview, by an operator, from the runbook (section 2):
+On the preview, by an operator, from the runbook (section 2). Shown on 2026-11-25 ([record](docs/runbooks/release.md#13-record)),
+from one network only; shown again when the launch's head differs in more than words:
 
 - **The stages themselves:** that Alchemy applies what is declared, that Access refuses everybody without the token, that the
   rate limit, the key and the records are bound.
