@@ -38,7 +38,11 @@
 			"formatter": { "enabled": false }
 		},
 		{
-			"includes": ["scripts/check-breaks.ts"],
+			"includes": [
+				"scripts/check-breaks.ts",
+				"scripts/check-breaks-release.ts",
+				"scripts/check-release.ts"
+			],
 			"linter": {
 				"rules": { "suspicious": { "noTemplateCurlyInString": "off" } }
 			}

@@ -12,17 +12,29 @@ import {
 	symlinkSync,
 	writeFileSync,
 } from "node:fs";
+import { RELEASE_BREAKS } from "./check-breaks-release";
 import { root } from "./harness";
 
-type Check = "docket" | "signup" | "pages" | "limits";
+type Check =
+	| "docket"
+	| "signup"
+	| "pages"
+	| "limits"
+	| "guard"
+	| "load"
+	| "release";
 interface Break {
 	what: string;
 	check: Check;
 	/** What the check must say when it fails. */
 	says: RegExp;
+	/** And what it must show of it. */
+	shows?: RegExp;
 	file: string;
 	from: string;
 	to: string;
+	/** The only cases the check runs. */
+	only?: string;
 }
 const breakIt = (
 	check: Check,
@@ -549,6 +561,7 @@ const BREAKS: Break[] = [
 		'url.protocol !== "http:"',
 		'url.protocol !== "ftp:"',
 	),
+	...RELEASE_BREAKS,
 ];
 
 const folder = `${root}.smoke/breaks-${process.pid}`;
@@ -565,8 +578,9 @@ const LEFT_OUT = [
 const RUNNERS = 3;
 
 function copyOf(one: Break, at: number): string {
-	const copy = `${folder}/${at}`;
+	const copy = `${folder}/${at}/stack`;
 	mkdirSync(copy, { recursive: true });
+	cpSync(`${root}../.github`, `${copy}/../.github`, { recursive: true });
 	for (const entry of readdirSync(root))
 		if (!LEFT_OUT.includes(entry))
 			cpSync(`${root}${entry}`, `${copy}/${entry}`, { recursive: true });
@@ -587,12 +601,17 @@ function copyOf(one: Break, at: number): string {
 function run(one: Break, copy: string, runner: number) {
 	return new Promise<{ code: number | null; said: string }>((resolve) => {
 		const port = String(4400 + runner * 10);
-		const child = spawn(process.execPath, [`scripts/check-${one.check}.ts`], {
+		const command = [process.execPath, `scripts/check-${one.check}.ts`];
+		// The guard's check refuses to run with a network.
+		if (one.check === "guard") command.unshift("unshare", "-rn");
+		const [program = "", ...args] = command;
+		const child = spawn(program, args, {
 			cwd: copy,
 			env: {
 				...process.env,
 				DOCKET_BUNDLE: "",
 				[`STACK_${one.check.toUpperCase()}_PORT`]: port,
+				[`STACK_${one.check.toUpperCase()}_CASE`]: one.only ?? "",
 			},
 		});
 		let said = "";
@@ -632,9 +651,13 @@ try {
 				const [at, one] = next;
 				const copy = copyOf(one, at);
 				const { code, said } = await run(one, copy, runner);
-				rmSync(copy, { recursive: true, force: true });
+				rmSync(`${folder}/${at}`, { recursive: true, force: true });
 				const failure = said.match(/check:\w+ failed: [^\n]*/)?.[0] ?? "";
-				if (code !== 0 && one.says.test(failure))
+				if (
+					code !== 0 &&
+					one.says.test(failure) &&
+					(one.shows?.test(said) ?? true)
+				)
 					console.log(
 						`caught - ${one.what}\n         ${failure.slice(0, 160)}`,
 					);
