@@ -267,8 +267,8 @@ the stage. Without `--stage` it is the local database.
 | D1's REST API | Its reference says nothing of a rollback | Nothing new | No |
 | `wrangler d1 execute --file` ([import](https://developers.cloudflare.com/d1/best-practices/import-export-data/)) | A file's statements, not this batch with its bound values and its two guards; what a failed import leaves is not what one transaction leaves | Nothing new | No |
 
-So run it on a machine nobody else uses at that moment. Reads and writes cost what D1 always costs; the load of 363 items is
-about 2,200 rows written. Limits that matter ([limits](https://developers.cloudflare.com/d1/platform/limits/), read
+So run it on a machine nobody else uses at that moment. Reads and writes cost what D1 always costs; the load says how many
+rows it wrote. Limits that matter ([limits](https://developers.cloudflare.com/d1/platform/limits/), read
 2026-11-25): a statement of the batch is under 100 KB and a bound value under 2 MB (pieces are 80 KB), and each statement
 under 30 seconds.
 

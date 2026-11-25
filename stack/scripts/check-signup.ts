@@ -907,7 +907,9 @@ async function report() {
 		),
 	);
 	const text = `${printed.stdout}${printed.stderr}`;
-	const report = JSON.parse(printed.stdout) as Record<string, unknown> & {
+	const [stage, ...counts] = printed.stdout.split("\n");
+	must(stage === "Stage: local", "the report says whose counts they are");
+	const report = JSON.parse(counts.join("\n")) as Record<string, unknown> & {
 		requests_by_day: Record<string, Record<string, number>>;
 	};
 	const kinds = Object.values(report.requests_by_day)[0] ?? {};

@@ -8,13 +8,20 @@ export interface Limit {
 	calls: number;
 	/** Seconds: Cloudflare offers 10 and 60 only. */
 	period: 10 | 60;
+	/** A counter of its own for each stage: bindings with one ID share theirs. */
+	namespace: { production: number; preview: number };
 }
 
 /**
  * Every server function call. A person makes three at most; many people can
  * share an address. The sign-up's own limits below are exact.
  */
-export const CALLS: Limit = { binding: "LIMIT_CALLS", calls: 60, period: 60 };
+export const CALLS: Limit = {
+	binding: "LIMIT_CALLS",
+	calls: 60,
+	period: 60,
+	namespace: { production: 860301, preview: 860311 },
+};
 
 /** A limit as its response header states it (RateLimit-Policy, IETF draft). */
 export const limitPolicy = `"calls";q=${CALLS.calls};w=${CALLS.period}`;

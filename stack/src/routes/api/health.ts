@@ -14,13 +14,22 @@ export const Route = createFileRoute("/api/health")({
 			GET: ({ request }) =>
 				serve(request, "health", () =>
 					attempt(readHealth).pipe(
-						Effect.map((state) => ({ ...state, status: 200 })),
+						Effect.map((state) => ({
+							...state,
+							database: "reachable",
+							status: 200,
+						})),
 						Effect.catchTag("StorageError", () =>
-							Effect.succeed({ docket: null, signup: "closed", status: 503 }),
+							Effect.succeed({
+								docket: null,
+								signup: "closed",
+								database: "unreachable",
+								status: 503,
+							}),
 						),
-						Effect.map(({ docket, signup, status }) =>
+						Effect.map(({ status, ...state }) =>
 							Response.json(
-								{ commit: commitSha, docket, signup },
+								{ commit: commitSha, ...state },
 								{ status, headers: { "Cache-Control": "no-store" } },
 							),
 						),

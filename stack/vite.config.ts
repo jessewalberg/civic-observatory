@@ -6,6 +6,11 @@ import viteReact from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { FUNCTIONS } from "./src/lib/site";
 
+if (process.env.WORKERS_CI === "1" || process.env.WORKERS_CI_BUILD_UUID)
+	throw new Error(
+		"Cloudflare Workers Builds is not a release path here (docs/runbooks/release.md).",
+	);
+
 // The checkout's full commit, served by /api/health, x-commit-sha and the page.
 const commit = execFileSync("git", ["rev-parse", "HEAD"], {
 	cwd: fileURLToPath(new URL(".", import.meta.url)),
@@ -20,8 +25,12 @@ export default defineConfig({
 		alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
 	},
 	plugins: [
-		// Local bindings from wrangler.jsonc, and nothing remote.
-		cloudflare({ viteEnvironment: { name: "ssr" }, remoteBindings: false }),
+		// Local bindings from wrangler.jsonc, and nothing remote. Alchemy says in its
+		// own build process that it brings its Cloudflare plugin, and two of them
+		// must not be mixed.
+		process.env.ALCHEMY_CLOUDFLARE_VITE_INJECTED === "1"
+			? []
+			: cloudflare({ viteEnvironment: { name: "ssr" }, remoteBindings: false }),
 		// Not the default `/_serverFn`, which a firewall rule blocks for the whole
 		// zone (src/lib/site.ts). The browser's calls and the Worker's dispatch
 		// both follow this.

@@ -333,17 +333,27 @@ export async function readAddresses(): Promise<{
 	};
 }
 
+/** Counts only: the release a person loaded, and what is stored of it. */
 export async function readHealth() {
-	const [release, settings] = await read(
-		env.DB.prepare(RELEASE),
+	const [release, stored, settings] = await read(
+		env.DB.prepare(
+			"SELECT seq, generated_at FROM releases ORDER BY seq DESC LIMIT 1",
+		),
+		env.DB.prepare(
+			"SELECT (SELECT count(*) FROM items) AS items, (SELECT count(*) FROM towns) AS towns",
+		),
 		env.DB.prepare("SELECT signup_open FROM settings WHERE id = 1"),
 	);
-	const current = releaseOf(release?.[0]);
+	const current = release?.[0];
 	return {
-		docket: current && {
-			generatedAt: current.generatedAt,
-			items: current.items,
-		},
+		docket: current
+			? {
+					release: Number(current.seq),
+					generatedAt: String(current.generated_at),
+					items: Number(stored?.[0]?.items ?? 0),
+					towns: Number(stored?.[0]?.towns ?? 0),
+				}
+			: null,
 		signup: settings?.[0]?.signup_open === 1 ? "open" : "closed",
 	};
 }
