@@ -46,11 +46,18 @@ function Method() {
 					Proposed changes to zoning, subdivision or wetlands regulations, to
 					maps, and to the plan of conservation and development.
 				</li>
-				<li>Enforcement about one property.</li>
+				<li>
+					Enforcement about a business's or other non-residential property.
+				</li>
 				<li>
 					Sales, leases, acquisitions and easements of land, development or
 					reuse of town property, farmland preservation, and water or sewer
 					extensions to a named area.
+				</li>
+				<li>
+					New lots and subdivisions, a new house on a vacant lot, houses built
+					for sale or rent, multi-family housing, and commercial, industrial,
+					agricultural, institutional and town matters.
 				</li>
 			</ul>
 			<p>
@@ -58,6 +65,16 @@ function Method() {
 				fees, appointments and staffing; events, trail work and education
 				programs; and general reports that name no matter. A matter taken up at
 				one meeting is one item, with the decision if one was made.
+			</p>
+			<p>
+				Also left out: a matter whose subject is one existing home and the
+				household in it. That is enforcement or a complaint about the home; its
+				septic, well, occupancy or health; flooding or drainage of its lot; and
+				the household's own alterations, which are an addition, deck, pool,
+				shed, fence, garage, accessory structure or apartment, a home
+				occupation, a setback or coverage variance for the owner's house, or a
+				wetlands permit for any of these. A matter that is not clearly one or
+				the other is left out.
 			</p>
 			<h2>The scope rule</h2>
 			<ol>

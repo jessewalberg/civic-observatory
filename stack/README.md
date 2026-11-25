@@ -66,11 +66,23 @@ current release's digest says.
 Item ids are stable. `releases` keeps one row for each load; `withdrawn_items` keeps what an item's address needs once
 the item itself is gone. An id that a later release brings back is an item again.
 
-**Private homes.** Where a town's document is about one, the docket shows its address: a permit for a house, a variance,
-an order about one property. A person's name is replaced with a role there, in the display fields and in the quotes, but
-an address can still point to whoever lives at it, so this is not anonymity and no page says that it is. The loader
-refuses a field for a raw name; it cannot see a name in a sentence. What is in scope is the data release's decision, not
-the app's: the app shows what the release holds, and withdraws what a later one drops.
+**The docket accumulates.** Each release keeps the same window start, ends on the day it was collected, and holds the
+agendas already posted for the 14 days after that. A matter that an earlier release holds keeps its id in the next one, and
+gains its outcome when its minutes are posted. A release is made outside this repository, from the towns' documents; the
+app only loads it.
+
+**Private homes.** A release leaves out a matter whose subject is one existing home and the household in it: enforcement
+or a complaint about that home; its septic, well, occupancy or health; flooding or drainage of its lot; and the household's
+own alterations, which are an addition, deck, pool, shed, fence, garage, accessory structure or apartment, a home
+occupation, a setback or coverage variance for the owner's house, or a wetlands permit for any of these. It keeps new lots
+and subdivisions, a new house on a vacant lot, houses built for sale or rent, multi-family, commercial, industrial,
+agricultural, institutional and town matters, changes to regulations and maps, and enforcement about a business's or other
+non-residential property. A matter that is not clearly one or the other is left out. An item that a release leaves out is
+withdrawn like any other. Where the docket shows an address, a person's name is replaced with a role, in the display
+fields and in the quotes, but an address can still point to whoever lives or works at it, so this is not anonymity and no
+page says that it is. The loader refuses a field for a raw name; it cannot see a name in a sentence, or tell what an
+item is about. What is in scope is the data release's decision, not the app's: the app shows what the release holds, and
+withdraws what a later one drops.
 
 ## Sign-up
 
@@ -207,7 +219,7 @@ Before the launch:
 Fresh data (C3):
 
 - **Rows read as the dataset grows:** a list counts every item that matches and skips the earlier pages with `OFFSET`, the
-  sitemap reads every id, and the method page every board. At 363 items that is small. It grows with every release, and
+  sitemap reads every id, and the method page every board. At a few hundred items that is small. It grows with every release, and
   nothing caps a release's size.
 - **The words:** that each quote is in its document is checked where the bundle is built, not by this loader, which checks
   that a quote and a link are there.
