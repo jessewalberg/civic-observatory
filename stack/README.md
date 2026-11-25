@@ -45,8 +45,8 @@ yet.
 into the local D1. The whole file is refused, and nothing is written, for any of these:
 
 - another `schema_version`, a missing field, a field of the wrong type, or any field this app does not know;
-- a raw name field (`applicant`, `owner` or `name`), at any depth: only the display fields, which hold no individual's
-  name, are ever stored;
+- a raw name field (`applicant`, `owner` or `name`), at any depth: only the display fields are ever stored, and in them
+  the bundle has a role where the document names an individual;
 - a duplicate town, board, meeting or item, or a reference to one that is not in the file;
 - a meeting of a board that is not in its town's list of boards, by the exact label, so that what is and is not collected
   is stated for every board that has a meeting or an item;
@@ -56,12 +56,18 @@ into the local D1. The whole file is refused, and nothing is written, for any of
 
 What passes replaces the content in one D1 batch, which is one transaction: either the whole release is there or the
 whole old one still is. The batch's first statement takes the next release number, so of two loads that started from the
-same release only one can finish. Its last compares the stored items with the file's count. No statement is longer than
-D1 accepts, so the same statements can go through another transport. Loading the release that is already there writes
-nothing.
+same release only one can finish. Its last compares the stored items with the file's count. Loading the release that is
+already there writes nothing. A client that was killed may not know whether its load finished: the current release's
+digest says.
 
 Item ids are stable. `releases` keeps one row for each load; `withdrawn_items` keeps what an item's address needs once
 the item itself is gone. An id that a later release brings back is an item again.
+
+**Private homes.** Where a town's document is about one, the docket shows its address: a permit for a house, a variance,
+an order about one property. A person's name is replaced with a role there, in the display fields and in the quotes, but
+an address can still point to whoever lives at it, so this is not anonymity and no page says that it is. The loader
+refuses a field for a raw name; it cannot see a name in a sentence. What is in scope is the data release's decision, not
+the app's: the app shows what the release holds, and withdraws what a later one drops.
 
 ## Sign-up
 
@@ -130,6 +136,33 @@ There are no unit tests (Jesse, 2026-10-09).
 Two lines outside this folder keep the root app as it was: `!stack` in the root `biome.json`, which would otherwise
 refuse the configuration here, and `@source not "../stack"` in the root stylesheet, which would otherwise gain rules from
 words here.
+
+## Not proven here
+
+Everything above runs locally. Before the docket is public, the slices that follow must prove:
+
+Stages and release (C2):
+
+- **The headers at the edge:** that static files get `public/_headers`, that `no-transform` keeps the zone's page-speed
+  script out of a page asked for with `Accept: text/html`, and that the rate limit and the records are bound.
+- **Withdrawal at the edge:** that nothing between the Worker and a reader keeps a page past a release that withdrew its
+  item. The Worker's own answers are right, and say `must-revalidate`; a browser's back button and a copy someone saved
+  are out of reach.
+- **The contact address:** `hello@civicobservatory.com` does not exist yet. The method, privacy and terms pages and every
+  item send corrections and removals there, so it must receive mail that somebody reads before the docket is public.
+- **The cost of reading:** pages are not limited, and each reads D1.
+
+Fresh data (C3):
+
+- **The remote load:** one `DB.batch()` of the D1 binding, inside a Worker, which
+  [is one transaction](https://developers.cloudflare.com/d1/worker-api/d1-database/#batch) (read 2026-11-24). The REST
+  API and chunks of an import are not that and must not be used for it. The same refusals, the same interruption and the
+  same two loads at once must be shown on a remote database.
+- **Rows read as the dataset grows:** a list counts every item that matches and skips the earlier pages with `OFFSET`, the
+  sitemap reads every id, and the method page every board. At 363 items that is small. It grows with every release, and
+  nothing caps a release's size.
+- **The words:** that each quote is in its document is checked where the bundle is built, not by this loader, which checks
+  that a quote and a link are there.
 
 ## Pins
 
