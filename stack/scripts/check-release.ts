@@ -469,7 +469,7 @@ async function productionCases(worker: () => BuiltWorker, items: number): Promis
 				["the zone's block is gone", "THE ZONE'S BLOCK IS GONE", same, {}],
 				["the Worker itself answers 403 where the block was", "THE ZONE'S BLOCK IS GONE", at(OLD_CALL, () => ({ status: 403, headers: { "x-commit-sha": HEAD }, body: "" })), {}],
 				["the zone challenges where it blocked", "or is not what answers", at(OLD_CALL, () => ({ status: 403, headers: { "cf-mitigated": "challenge" }, body: "" })), {}],
-				["every page sets Access's cookie", "/method: sets a cookie", both(blocked, (_, reply) => ({ ...reply, ...header("set-cookie", ACCESS_COOKIE)(reply) })), {}],
+				["every page sets Access's cookie", "/api/health: sets a cookie",both(blocked, (_, reply) => ({ ...reply, ...header("set-cookie", ACCESS_COOKIE)(reply) })), {}],
 				["plain http is served","http:// answered 200, not a redirect", blocked, { PLAIN_ORIGIN: served }],
 			] as [string, string, Breaks, Record<string, string>][]
 		).flatMap(([name, says, breaks, env]): Case[] =>
