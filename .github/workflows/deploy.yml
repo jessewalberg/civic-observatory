@@ -41,7 +41,7 @@ jobs:
   # bundle. It reads no secret and releases nothing.
   stack:
     name: Development docket (stack)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # The pinned Playwright 1.59.1 does not support 26.04.
     timeout-minutes: 25
     defaults:
       run:
