@@ -38,13 +38,12 @@ const worker = resources.Website?.Props as WorkerProps;
  */
 function binding(value: unknown) {
 	if (typeof value === "string") return value;
-	const { Type, Props, kind, namespaceId, simple } = value as Record<
+	const { Type, dataset, kind, namespaceId, simple } = value as Record<
 		string,
 		unknown
 	>;
-	const { dataset } = (Props ?? {}) as { dataset?: unknown };
-	if (typeof Type === "string")
-		return typeof dataset === "string" ? `${Type} ${dataset}` : Type;
+	if (typeof Type === "string") return Type;
+	if (typeof dataset === "string") return `${kind} ${dataset}`;
 	if (kind === "Cloudflare.RateLimit") return { namespaceId, simple };
 	if (kind !== "PropExpr")
 		return typeof kind === "string" ? kind : "computed at deploy";
