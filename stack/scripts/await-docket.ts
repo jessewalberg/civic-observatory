@@ -56,7 +56,7 @@ async function main() {
 	const base = workersDev();
 	const local = base.startsWith("http://127.0.0.1");
 	const step = local ? 100 : 20_000;
-	const deadline = Date.now() + (local ? 3_000 : 60 * 60_000);
+	const deadline = Date.now() + (local ? 10_000 : 60 * 60_000);
 	say(
 		told`Waiting for the load, up to 60 minutes: bun run load <file> --stage production --production-approved <the commit of this run>`,
 	);
