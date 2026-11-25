@@ -76,6 +76,14 @@ const direct = (stage: string, ...args: string[]) => [
 	"alchemy.run.ts",
 ];
 
+/** A command of Alchemy's own CLI that takes no stage, on the stack file. */
+const alchemy = (...args: string[]) => [
+	"node_modules/alchemy/bin/cli.js",
+	...args,
+	"--config",
+	"alchemy.run.ts",
+];
+
 function run(args: string[], env: Env, until?: string) {
 	return new Promise<{ code: number | null; output: string }>((resolve) => {
 		const child = spawn(process.execPath, args, {
@@ -353,7 +361,8 @@ const NOT_THE_JOB: [string, Env, string][] = [
 ];
 
 const COMMIT = "Deploy refused: APP_RELEASE must be HEAD, the full SHA.";
-const DESTROY = "Destroy is refused for the preview and production stages.";
+const ONLY =
+	"Only plan and deploy are allowed for the preview and production stages.";
 const USE_DOMAIN = "Use: bun scripts/production-domain.ts inspect|move|restore";
 const APPROVED = ["--stage", "production", "--production-approved", "a".repeat(40)];
 const REFUSED: Case[] = [
@@ -401,19 +410,27 @@ const REFUSED: Case[] = [
 		env: production,
 		says: "Production deploys run only in",
 	},
-	{
-		name: "direct, production dev, not the job",
-		args: direct("production", "dev"),
-		env: production,
-		says: "Production deploys run only in",
-		waits: true,
-	},
-	{
-		name: "direct, production destroy, the job itself",
-		args: direct("production", "destroy", "--yes"),
-		env: job,
-		says: DESTROY,
-	},
+	// Alchemy's other commands, nested ones too, in each stage and in the job itself.
+	// `unsafe nuke` scans and deletes whatever the token reaches in the account,
+	// whatever the stage: always a dry run here, in case this check is ever wrong.
+	...(
+		[
+			["preview", preview],
+			["production", production],
+			["the job itself", job],
+		] as const
+	).flatMap(([name, env]): Case[] => {
+		const stage = env.ALCHEMY_STAGE ?? "";
+		return [
+			{ name: `direct, ${name}, unsafe nuke`, args: alchemy("unsafe", "nuke", "--dry-run", "--yes"), env, says: ONLY },
+			{ name: `direct, ${name}, unsafe nuke, a global option before it`, args: alchemy("--no-input", "unsafe", "nuke", "--dry-run", "--yes"), env, says: ONLY },
+			{ name: `direct, ${name}, state list`, args: alchemy("state", "list"), env, says: ONLY },
+			{ name: `direct, ${name}, drift`, args: direct(stage, "drift"), env, says: ONLY },
+			{ name: `direct, ${name}, destroy`, args: direct(stage, "destroy", "--yes"), env, says: ONLY },
+			{ name: `direct, ${name}, dev`, args: direct(stage, "dev"), env, says: ONLY, waits: true },
+			{ name: `direct, ${name}, deploy, a global option before it`, args: [...direct(stage).slice(0, 1), "--no-input", "deploy", "--yes", ...direct(stage).slice(1)], env, says: ONLY },
+		];
+	}),
 	{
 		name: "direct, the job, APP_RELEASE another commit",
 		args: direct("production", "deploy", "--yes"),
@@ -444,12 +461,6 @@ const REFUSED: Case[] = [
 		args: direct("preview", "deploy", "--yes"),
 		env: { ...preview, APP_RELEASE: OTHER },
 		says: COMMIT,
-	},
-	{
-		name: "direct, preview destroy",
-		args: direct("preview", "destroy", "--yes"),
-		env: preview,
-		says: DESTROY,
 	},
 	{
 		name: "guard, plan --yes",

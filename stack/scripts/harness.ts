@@ -78,6 +78,28 @@ export function readBundleFile(): BundleFile {
 	) as BundleFile;
 }
 
+/** A bundle with at least `least` items: more meetings like its first busy one. */
+export function enlarged(bundle: BundleFile, least: number): BundleFile {
+	const large = structuredClone(bundle);
+	const pattern = large.meetings.find(
+		({ item_count }) => item_count > 0,
+	) as BundleMeeting;
+	const item = large.items.find(
+		({ id }) => id.replace(/-\d+$/, "") === pattern.id,
+	) as BundleItem;
+	for (let n = 1; large.items.length < least; n++) {
+		const id = `${pattern.id}-more-${n}x`;
+		large.meetings.push({ ...pattern, id, item_count: 30 });
+		for (let i = 1; i <= 30; i++)
+			large.items.push({
+				...structuredClone(item),
+				id: `${id}-${String(i).padStart(2, "0")}`,
+				request: `${item.request} (more ${n}.${i})`,
+			});
+	}
+	return large;
+}
+
 /** Runs scripts/load-docket.ts as an operator would. */
 export function load(state: string, bundle: unknown, ...args: string[]) {
 	mkdirSync(`${root}${state}`, { recursive: true });

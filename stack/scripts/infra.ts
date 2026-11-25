@@ -85,8 +85,8 @@ export function assertProductionJob(what: string) {
  * Whether this process runs a read-only plan. The guard's action
  * (`bun scripts/infra.ts <action>`) and Alchemy's command (`alchemy <command>`,
  * which loads alchemy.run.ts) both sit at argv[2]. Only an exact `plan` is
- * read-only: deploy (with or without --dry-run), destroy, dev and any invocation
- * this cannot recognize count as an apply.
+ * read-only: deploy (with or without --dry-run) counts as an apply, and nothing
+ * else of Alchemy's is allowed at all.
  */
 export const readOnlyPlan = (argv: readonly string[] = process.argv) =>
 	argv[2] === "plan";
@@ -121,11 +121,14 @@ export function readInfrastructure() {
 		throw new Error("Set PRODUCTION_DOMAIN to managed or unmanaged.");
 	// An apply, by any path, runs only from a clean tree whose HEAD is APP_RELEASE,
 	// the release marker the Worker serves, and a production apply only in the
-	// production job. Destroy is refused for both stages.
+	// production job. Every other command of Alchemy's is refused for both stages and
+	// in the job itself, nested ones and ones this does not know included: `destroy`,
+	// `dev`, `drift --repair`, `state …`, and `unsafe nuke`, which deletes whatever the
+	// token reaches in the account and knows no stage.
 	if (!readOnlyPlan()) {
-		if (process.argv[2] === "destroy")
+		if (process.argv[2] !== "deploy")
 			throw new Error(
-				"Destroy is refused for the preview and production stages.",
+				"Only plan and deploy are allowed for the preview and production stages.",
 			);
 		if (stage === "production") assertProductionJob("Production deploys run");
 		assertDeployCommit(release);

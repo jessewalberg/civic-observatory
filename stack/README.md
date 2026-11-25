@@ -129,8 +129,10 @@ hold URLs and addresses. No cron, bucket, email, model or `LOCAL_TODAY`.
 
 `scripts/infra.ts` is the one door to Alchemy: `alchemy.run.ts` calls its checks before anything is built or asked, so Alchemy's
 own command line meets them too. It refuses an unknown stage, an apply from a dirty tree or with another `APP_RELEASE` than
-`HEAD`, `destroy`, and a production apply anywhere but in `production.yml`'s job. It is a convenience: the boundary is where
-the deploy token is kept, which is the operator's machine and the main-only GitHub environment `production`.
+`HEAD`, a production apply anywhere but in `production.yml`'s job, and, for both stages and in that job itself, every command of
+Alchemy's but `plan` and `deploy`: `destroy`, `dev`, `drift`, `state …`, and `unsafe nuke`, which deletes across the account
+whatever the stage. It is a convenience, and cannot stop a command that never loads this stack file. The boundary is where the
+deploy token is kept, which is the operator's machine and the main-only GitHub environment `production`.
 
 **The zone's block.** The zone answers 403 to every path under `/_serverFn`. No command, token or step here reads or writes it
 through an API. The release asks for it from outside: a block that is gone stops a run before the domain moves, and after
