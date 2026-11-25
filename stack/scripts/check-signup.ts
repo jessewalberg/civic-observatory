@@ -489,21 +489,34 @@ async function membership() {
 		from.flatMap((one) =>
 			from.flatMap((two) => from.map((last) => [one, two, last])),
 		);
-	const orders: Step[][] = [
-		...three(steps),
-		// Both hold a token; the review's own order is among these, both ways.
-		...three(tokenSteps).map((rest) => [
-			["A", "signup"] as const,
-			["B", "signup"] as const,
-			...rest,
-		]),
-	];
+	/** A token each, and then everything that can be done with them. */
+	const withTokens = three(tokenSteps).map((rest) => [
+		["A", "signup"] as const,
+		["B", "signup"] as const,
+		...rest,
+	]);
+	const byTwo: Step[][] = [...three(steps), ...withTokens];
+	// Again with both tokens in one client's hands, as whoever wants to find out
+	// would hold them: removing with one and asking with the other, both ways.
+	const orders: Step[][] = [...byTwo, ...withTokens];
+	must(
+		(["A", "B"] as const).every((one) =>
+			withTokens.some(
+				([, , first, then]) =>
+					first?.join() === `${one},remove` &&
+					then?.join() === `${one === "A" ? "B" : "A"},intent`,
+			),
+		),
+		"removing with one token and asking with the other is among the orders, both ways",
+	);
 	const seen = new Map<string, { calls: string[]; requests: string[] }[]>();
 	let at = 0;
 	let made = 0;
 	for (const world of WORLDS) {
 		const all: { calls: string[]; requests: string[] }[] = [];
-		for (const order of orders) {
+		for (const [index, order] of orders.entries()) {
+			const from = (client: "A" | "B") =>
+				ADDRESS[index < byTwo.length ? client : "A"];
 			await clear();
 			at += 1;
 			const email = `member-${at}@example.com`;
@@ -540,11 +553,11 @@ async function membership() {
 			for (const [client, action] of order) {
 				const answer =
 					action === "signup"
-						? await signUp(email, ADDRESS[client])
+						? await signUp(email, from(client))
 						: await send(
 								calls[action],
 								withToken(calls[action], tokens[client]),
-								ADDRESS[client],
+								from(client),
 							);
 				if (action === "signup") tokens[client] = tokenIn(answer.text);
 				made += 1;
@@ -585,7 +598,7 @@ async function membership() {
 		}
 	expect(
 		true,
-		`${orders.length} orders of calls by two clients, in ${WORLDS.length} cases (${made} calls): status, body and headers are the same whether the address was there before or not, and nobody else's sign-up changes`,
+		`${byTwo.length} orders of calls by two clients and ${withTokens.length} by one with two tokens, in ${WORLDS.length} cases (${made} calls): status, body and headers are the same whether the address was there before or not, and nobody else's sign-up changes`,
 	);
 	// The work behind each answer, from the Worker's own records.
 	await new Promise((resolve) => setTimeout(resolve, 500));
