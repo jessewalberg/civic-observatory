@@ -88,6 +88,9 @@ requests by kind of page and day. Page requests are requests, not people; they c
   Cloudflare serves without the Worker.
 - `src/server/observability.ts`: one record for each request, of allowlisted values only: route, method, status, time, D1
   counts, release. Never a URL, a query, an address, an email, a header or a body.
+- The framework prints the errors it catches, and a parser's message quotes what it could not read. So a call that is not
+  a JSON object is a 400 before the framework reads it, and on a stage the console prints the class of a caught error and
+  no more (`src/server/log.ts`). A page that cannot read D1 is a 503 that says nothing of the inside.
 
 ## Commands
 
@@ -98,7 +101,7 @@ Run from `stack/` with Bun 1.4.4. `vite`, `tsc` and `wrangler` run on Node 24.
 | `bun install --frozen-lockfile` | Install exactly what `bun.lock` records. |
 | `bun run check`, `bun run typecheck`, `bun run build` | Biome; `tsc`; the build with local bindings, then `tsc`. |
 | `bun run db:local` | Apply the migrations to the local D1. |
-| `bun run load fixtures/docket.json` | Load a bundle into the local D1. |
+| `bun run load <file>` | Load a bundle into the local D1. `bun fixtures/docket.ts` prints the made-up one. |
 | `bun run dev` | The app on port 3000. |
 | `bun run report` | The counts, from the local D1. |
 | `bun run check:docket` | Loads a bundle (`DOCKET_BUNDLE=<file>`, or the fixture) and reads every page of it from the built Worker; every refusal; releases that drop, change and add items; loads that are interrupted. |
@@ -113,6 +116,10 @@ account and need no secret. Ports: `STACK_DOCKET_PORT`, `STACK_SIGNUP_PORT`, `ST
 `STACK_SHOTS_PORT`. Chromium: `bunx playwright install chromium-headless-shell`, or set `CHROMIUM_PATH`.
 
 There are no unit tests (Jesse, 2026-10-09).
+
+Two lines outside this folder keep the root app as it was: `!stack` in the root `biome.json`, which would otherwise
+refuse the configuration here, and `@source not "../stack"` in the root stylesheet, which would otherwise gain rules from
+words here.
 
 ## Pins
 

@@ -1,0 +1,7 @@
+# Bun settings for stack/ only (the root app keeps its own install).
+[install]
+# Save exact versions when a dependency is added.
+exact = true
+# Refuse any package version published less than 14 days ago (seconds), for
+# direct and transitive dependencies alike.
+minimumReleaseAge = 1209600
