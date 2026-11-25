@@ -1,0 +1,9 @@
+node_modules
+dist
+.wrangler
+.smoke
+.tanstack
+.dev.vars
+.env
+.env.*
+*.local

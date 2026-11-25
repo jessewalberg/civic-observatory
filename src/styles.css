@@ -1,6 +1,9 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* stack/ is another app with a stylesheet of its own. */
+@source not "../stack";
+
 @custom-variant dark (&:is(.dark *));
 
 /* ============================================

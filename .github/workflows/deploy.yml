@@ -37,6 +37,46 @@ jobs:
       - name: Offline export migration into local D1 and R2
         run: bun run smoke:migration
 
+  # The development docket (stack/): its own install, its own checks on a made-up
+  # bundle. It reads no secret and releases nothing.
+  stack:
+    name: Development docket (stack)
+    runs-on: ubuntu-24.04 # The pinned Playwright 1.59.1 does not support 26.04.
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: stack
+    env:
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6 # vite, tsc and wrangler run on Node
+        with:
+          node-version: 24
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: stack/package.json
+      - name: Install (frozen lockfile)
+        run: bun install --frozen-lockfile
+      - name: Known vulnerabilities in what is served
+        run: bun audit --prod --audit-level=high
+      - name: Format and lint
+        run: bun run check
+      - name: Build and typecheck
+        run: bun run build
+      - name: Chromium for the checks
+        run: bunx playwright install --with-deps chromium-headless-shell
+      - name: The docket and its loader
+        run: bun run check:docket
+      - name: The sign-up
+        run: bun run check:signup
+      - name: The pages
+        run: bun run check:pages
+      - name: Limits and headers
+        run: bun run check:limits
+
 # Jesse, 2026-10-09: no unit tests, including gates and CI.
 # Jesse, 2026-11-07: Alchemy, Effect, Better Auth and D1; no cutover on this errand.
 # No credentials, remote migrations, infrastructure application, DNS, or deploy job.

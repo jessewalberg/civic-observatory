@@ -9,6 +9,7 @@
 			"scripts/**/*",
 			"alchemy.run.ts",
 			"vite.config.ts",
+			"!stack",
 			"!src/routeTree.gen.ts",
 			"!src/styles.css",
 			"!server/api.ts",
