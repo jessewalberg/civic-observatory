@@ -296,8 +296,8 @@ export const RELEASE_BREAKS: ReleaseBreak[] = [
 		"Wrangler is told to open more than the database",
 		/told to open one binding/,
 		"scripts/remote-proxy.ts",
-		'{ DB: { type: "d1", database_id: id, remote: true } },',
-		'{ DB: { type: "d1", database_id: id, remote: true }, KV: { type: "kv_namespace", id: "0".repeat(32), remote: true } },',
+		'		DB: { type: "d1", database_id: id, raw: true },\n',
+		'		DB: { type: "d1", database_id: id, raw: true },\n		KV: { type: "kv_namespace", id: "0".repeat(32), raw: true },\n',
 	),
 	load(
 		"a refusal prints the database's ID",
