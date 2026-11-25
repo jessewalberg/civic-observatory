@@ -45,10 +45,12 @@ function Privacy() {
 			<h2>Having it deleted</h2>
 			<p>
 				"Remove my address", on the front page in the browser you signed up
-				with, deletes the sign-up and everything stored with it at once. From
-				anywhere else, write to <a href={`mailto:${CONTACT}`}>{CONTACT}</a> from
-				that address. Otherwise it is kept until the alerts are offered or given
-				up.
+				with, deletes the sign-up made in that browser, with everything stored
+				with it, at once. It deletes nothing else: every sign-up is kept by
+				itself, so one of the same address made in another browser is removed
+				there. From anywhere else, write to{" "}
+				<a href={`mailto:${CONTACT}`}>{CONTACT}</a> from that address. Otherwise
+				it is kept until the alerts are offered or given up.
 			</p>
 			<h2>People in the documents</h2>
 			<p>

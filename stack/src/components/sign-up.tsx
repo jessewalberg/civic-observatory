@@ -251,7 +251,7 @@ function SignedUp({
 			if (status !== "done") return say(TRY_AGAIN);
 			keepToken(null);
 			say(
-				"Done. What this browser signed up is deleted. An earlier sign-up of the same address from another browser can be removed there.",
+				"Done. The sign-up made in this browser is deleted, and nothing else. One made in another browser is removed there.",
 			);
 		});
 	return (

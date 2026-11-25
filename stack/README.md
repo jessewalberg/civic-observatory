@@ -66,16 +66,19 @@ the item itself is gone. An id that a later release brings back is an item again
 | What | How |
 | --- | --- |
 | Open or closed | `settings.signup_open`, one row. Closed as released. Opening it is an operator's statement, not a deploy: `UPDATE settings SET signup_open = 1`. |
-| A sign-up | Email (lowercased, stored once), towns and role. |
+| A sign-up | Every submission is its own row: email (lowercased), towns, role, the hash of its own token, and its own paid intent. The same email may be there several times. No row, token or intent of one submission is ever attached to another's, so no answer, alone or after any other, says whether an address was there before. |
 | Limits | 5 submissions an hour for one client and 60 an hour in all, both rolling. One conditional `INSERT … SELECT … WHERE` takes the place and counts, so concurrent submissions cannot pass it; the sign-up's other statements run only if it took a place, in the same batch. Past a limit: 429 with `Retry-After`, and nothing stored. |
 | The client | `HMAC-SHA-256(SIGNUP_CLIENT_KEY, "docket-signup-client:v1:" + address)`, where an IPv6 address counts as its /64. The address is never stored or logged. The hash is deleted with the next page request after its hour. Without the secret, sign-up answers as closed; locally a random key is made for each run. |
-| A repeat | The same email again changes nothing that is stored about it and gets the same answer, with a token of its own. That token can record the paid intent for the sign-up that is there. It cannot remove it. |
-| Tokens | 256 random bits, kept in the browser; D1 holds the SHA-256. |
-| Paid intent | "Tell me when paid instant alerts launch, $29 a month" stores at most one row for each sign-up. |
-| Remove my address | From the browser that made the sign-up: deletes it, its tokens and its intent. From any other browser: deletes that browser's own token. The answer is the same for both and says what each means. |
+| Tokens | 256 random bits, kept in the browser; D1 holds the SHA-256. A token reaches the submission it came from and no other. |
+| Paid intent | "Tell me when paid instant alerts launch, $29 a month" marks the token's own submission, once. |
+| Remove my address | Deletes the submission this browser's token made, with its intent, and nothing else. |
 
-No email is sent, and the page says so. `bun run report` prints counts only: sign-ups by role and town, intents, and page
-requests by kind of page and day. Page requests are requests, not people; they count answers of 200 to a `GET` of a page.
+No email is sent, and the page says so. `bun run report` prints counts only: page requests by kind of page and day, and
+sign-ups. It counts each email once: the earliest row that is there gives its role and towns, and a paid intent counts
+once for an email, whichever of its rows has it. Page requests are requests, not people; they count answers of 200 to a
+`GET` of a page.
+
+An address is not proven to belong to whoever typed it.
 
 ## Limits and headers
 
@@ -105,7 +108,7 @@ Run from `stack/` with Bun 1.4.4. `vite`, `tsc` and `wrangler` run on Node 24.
 | `bun run dev` | The app on port 3000. |
 | `bun run report` | The counts, from the local D1. |
 | `bun run check:docket` | Loads a bundle (`DOCKET_BUNDLE=<file>`, or the fixture) and reads every page of it from the built Worker; every refusal; releases that drop, change and add items; loads that are interrupted. |
-| `bun run check:signup` | The limits under 50 concurrent submissions, repeats, tokens, removal, the closed row, hostile input, and what records and D1 hold. |
+| `bun run check:signup` | The limits under 50 concurrent submissions, tokens, removal, the closed row, hostile input, what records and D1 hold, and that no order of calls answers differently for an address that was there before. |
 | `bun run check:pages` | Every kind of page over HTTP and in Chromium: status, head, headers, hosts, console, width, keyboard, no script, weight. |
 | `bun run check:limits` | The rate limit, the body limit, the headers, the old function path, the stages' robots and https. |
 | `bun run check:breaks` | Breaks the app on purpose, one way at a time, in a scratch copy, and expects the checks above to fail. Slow; not in CI. |

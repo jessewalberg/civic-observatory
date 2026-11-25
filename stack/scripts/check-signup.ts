@@ -96,18 +96,13 @@ const withToken = (call: Call | undefined, token: string) =>
 
 async function counts() {
 	const [row] = await app().sql(
-		`SELECT (SELECT count(*) FROM signups) AS signups, (SELECT count(*) FROM signup_tokens) AS tokens,
-			(SELECT count(*) FROM paid_intents) AS intents, (SELECT count(*) FROM signup_attempts) AS attempts`,
+		`SELECT (SELECT count(*) FROM signups) AS signups,
+			(SELECT count(paid_intent_at) FROM signups) AS intents, (SELECT count(*) FROM signup_attempts) AS attempts`,
 	);
-	return row as Record<"signups" | "tokens" | "intents" | "attempts", number>;
+	return row as Record<"signups" | "intents" | "attempts", number>;
 }
 async function clear() {
-	for (const table of [
-		"paid_intents",
-		"signup_tokens",
-		"signups",
-		"signup_attempts",
-	])
+	for (const table of ["signups", "signup_attempts"])
 		await app().sql(`DELETE FROM ${table}`);
 }
 const open = (value: 0 | 1) =>
@@ -178,13 +173,10 @@ async function inTheBrowser(towns: string[]) {
 		(key) => localStorage.getItem(key),
 		TOKEN_KEY,
 	);
-	const [stored] = await app().sql(
-		"SELECT token_hash, made FROM signup_tokens",
-	);
+	const [stored] = await app().sql("SELECT token_hash FROM signups");
 	expect(
 		/^[0-9a-f]{64}$/.test(token ?? "") &&
-			stored?.token_hash === sha256(token ?? "") &&
-			stored.made === 1,
+			stored?.token_hash === sha256(token ?? ""),
 		"the browser keeps the token, and D1 only its hash",
 	);
 	const [attempt] = await app().sql("SELECT client FROM signup_attempts");
@@ -200,7 +192,13 @@ async function inTheBrowser(towns: string[]) {
 	await page.getByText("Noted.").waitFor();
 	expect(
 		(await counts()).intents === 1,
-		"the paid intent, pressed twice, is one row",
+		"the paid intent, pressed twice, is one",
+	);
+	// Somebody else's sign-up of the same address, which must stay.
+	must(
+		(await signUp(MARK, "192.0.2.99")).status === 200 &&
+			(await counts()).signups === 2,
+		"another submission of the same address is a row of its own",
 	);
 
 	await page.reload();
@@ -214,13 +212,19 @@ async function inTheBrowser(towns: string[]) {
 	await page.getByText("Done.").waitFor();
 	const left = await counts();
 	expect(
-		left.signups === 0 &&
-			left.tokens === 0 &&
+		left.signups === 1 &&
 			left.intents === 0 &&
+			(
+				await app().sql(
+					"SELECT 1 FROM signups WHERE token_hash = ?1",
+					sha256(token ?? ""),
+				)
+			).length === 0 &&
 			(await page.evaluate((key) => localStorage.getItem(key), TOKEN_KEY)) ===
 				null,
-		"Remove my address deletes the sign-up, its tokens, its intent and the browser's token",
+		"Remove my address deletes the sign-up this browser made, its intent and the browser's token, and nothing else",
 	);
+	await clear();
 	await open(1);
 	await page.reload();
 	await page.locator('form[data-ready="true"]').waitFor();
@@ -295,7 +299,6 @@ async function limits() {
 		status(mine, 200) === SIGNUP.perClient &&
 			status(mine, 429) === 50 - SIGNUP.perClient &&
 			now.signups === SIGNUP.perClient &&
-			now.tokens === SIGNUP.perClient &&
 			now.attempts === SIGNUP.perClient,
 		`of 50 at once from one address, ${status(mine, 200)} are stored and ${status(mine, 429)} answer 429`,
 	);
@@ -348,7 +351,7 @@ async function limits() {
 			now.attempts === SIGNUP.inAll,
 		`of 100 at once from 100 addresses, ${status(all, 200)} are stored and ${status(all, 429)} answer 429`,
 	);
-	// The same email at once counts each time, and is stored once.
+	// The same email at once counts each time, and each is a row of its own.
 	await clear();
 	const same = await Promise.all(
 		Array.from({ length: 50 }, (_, at) =>
@@ -356,14 +359,15 @@ async function limits() {
 		),
 	);
 	now = await counts();
-	const [made] = await app().sql("SELECT sum(made) AS n FROM signup_tokens");
+	const [own] = await app().sql(
+		"SELECT count(DISTINCT token_hash) AS n FROM signups",
+	);
 	expect(
 		status(same, 200) === 50 &&
-			now.signups === 1 &&
-			now.tokens === 50 &&
+			now.signups === 50 &&
 			now.attempts === 50 &&
-			made?.n === 1,
-		"50 at once with one email: one sign-up, made by one token",
+			own?.n === 50,
+		"50 at once with one email: 50 submissions, each with its own token",
 	);
 
 	// The hour rolls.
@@ -398,89 +402,236 @@ async function limits() {
 	await clear();
 }
 
-async function repeats() {
-	const made = await signUp("First@Example.com ", "192.0.2.30");
-	const before = JSON.stringify(await app().sql("SELECT * FROM signups"));
+/** Every submission is its own: what one token does, and to what. */
+async function own() {
+	const first = await signUp("First@Example.com ", "192.0.2.30");
 	const [stored] = await app().sql("SELECT email FROM signups");
 	expect(
 		stored?.email === "first@example.com",
 		"an email is stored trimmed and in lower case",
 	);
-	const repeat = await signUp("FIRST@example.COM", "192.0.2.31", (body) =>
+	const rowOf = async (token: string) =>
+		JSON.stringify(
+			await app().sql(
+				"SELECT * FROM signups WHERE token_hash = ?1",
+				sha256(token),
+			),
+		);
+	const mine = tokenIn(first.text);
+	const before = await rowOf(mine);
+	const second = await signUp("FIRST@example.COM", "192.0.2.31", (body) =>
 		body.replace("builder_developer", "resident"),
 	);
-	const shape = (text: string) => text.replace(/[0-9a-f]{64}/, "T");
-	const names = (headers: Headers) => [...headers.keys()].sort().join(" ");
-	expect(
-		made.status === 200 &&
-			repeat.status === 200 &&
-			shape(made.text) === shape(repeat.text) &&
-			made.text.length === repeat.text.length &&
-			names(made.headers) === names(repeat.headers) &&
-			tokenIn(made.text) !== tokenIn(repeat.text),
-		"the same email again gets the same answer, with a token of its own",
+	const theirs = tokenIn(second.text);
+	const [pair] = await app().sql(
+		"SELECT count(*) AS n, count(DISTINCT email) AS emails, count(DISTINCT role) AS roles FROM signups",
 	);
 	expect(
-		JSON.stringify(await app().sql("SELECT * FROM signups")) === before,
-		"and nothing that is stored about it changes",
+		pair?.n === 2 &&
+			pair.emails === 1 &&
+			pair.roles === 2 &&
+			(await rowOf(mine)) === before,
+		"the same email again is a row of its own, and the first one stays as it was",
 	);
-	const mine = tokenIn(made.text);
-	const theirs = tokenIn(repeat.text);
-	const asked = await send(
-		calls.intent,
-		withToken(calls.intent, theirs),
-		"192.0.2.31",
-	);
-	const askedAgain = await send(
-		calls.intent,
-		withToken(calls.intent, mine),
-		"192.0.2.30",
-	);
+	const asked = () =>
+		app().sql(
+			"SELECT token_hash FROM signups WHERE paid_intent_at IS NOT NULL",
+		);
+	await send(calls.intent, withToken(calls.intent, theirs), "192.0.2.31");
+	const marked = await asked();
 	expect(
-		asked.status === 200 &&
-			askedAgain.status === 200 &&
-			asked.text === askedAgain.text &&
-			(await counts()).intents === 1,
-		"either token records the intent of the one sign-up, once",
+		marked.length === 1 &&
+			marked[0]?.token_hash === sha256(theirs) &&
+			(await rowOf(mine)) === before,
+		"a token marks the intent of its own submission, and of no other",
 	);
-	const removal = await send(
-		calls.remove,
-		withToken(calls.remove, theirs),
-		"192.0.2.31",
-	);
-	let now = await counts();
+	const when = await rowOf(theirs);
+	await new Promise((resolve) => setTimeout(resolve, 5));
+	await send(calls.intent, withToken(calls.intent, theirs), "192.0.2.31");
+	expect((await rowOf(theirs)) === when, "and only once");
+	await send(calls.remove, withToken(calls.remove, theirs), "192.0.2.31");
 	expect(
-		removal.status === 200 &&
-			now.signups === 1 &&
-			now.tokens === 1 &&
-			now.intents === 1 &&
-			JSON.stringify(await app().sql("SELECT * FROM signups")) === before,
-		"a repeat's token cannot remove the sign-up; only the token is forgotten",
+		(await rowOf(theirs)) === "[]" && (await rowOf(mine)) === before,
+		"a token removes its own submission, and no other",
 	);
-	const unknown = await send(
+	await send(
 		calls.remove,
 		withToken(calls.remove, "f".repeat(64)),
 		"192.0.2.31",
 	);
-	const last = await send(
-		calls.remove,
-		withToken(calls.remove, mine),
-		"192.0.2.30",
-	);
-	now = await counts();
 	expect(
-		last.text === removal.text &&
-			last.text === unknown.text &&
-			last.status === removal.status &&
-			now.signups === 0 &&
-			now.tokens === 0 &&
-			now.intents === 0,
-		"the first token removes everything, with the same answer as any other",
+		(await rowOf(mine)) === before &&
+			(await send(calls.intent, withToken(calls.intent, theirs), "192.0.2.31"))
+				.status === 404,
+		"a token that is gone, or never was, does nothing",
 	);
+	await clear();
+}
+
+/**
+ * Nothing tells whether an address was there before: not the answer to any call,
+ * and not the answers to several, in whatever order. The same calls are made
+ * where somebody else had signed the address up and where nobody had, and
+ * everything a caller can see must be the same, and the work D1 did for it too.
+ */
+async function membership() {
+	const WORLDS = ["absent", "present", "asked", "removed", "twice"] as const;
+	type Step = readonly ["A" | "B", "signup" | "intent" | "remove"];
+	const ADDRESS = { A: "192.0.2.81", B: "2001:db8:9:9::1" };
+	const NEVER = "e".repeat(64);
+	const CLIENTS = ["A", "B"] as const;
+	const ACTIONS = ["signup", "intent", "remove"] as const;
+	const steps: Step[] = CLIENTS.flatMap((client) =>
+		ACTIONS.map((action) => [client, action] as const),
+	);
+	const tokenSteps = steps.filter(([, action]) => action !== "signup");
+	const three = (from: Step[]) =>
+		from.flatMap((one) =>
+			from.flatMap((two) => from.map((last) => [one, two, last])),
+		);
+	const orders: Step[][] = [
+		...three(steps),
+		// Both hold a token; the review's own order is among these, both ways.
+		...three(tokenSteps).map((rest) => [
+			["A", "signup"] as const,
+			["B", "signup"] as const,
+			...rest,
+		]),
+	];
+	const seen = new Map<string, { calls: string[]; requests: string[] }[]>();
+	let at = 0;
+	let made = 0;
+	for (const world of WORLDS) {
+		const all: { calls: string[]; requests: string[] }[] = [];
+		for (const order of orders) {
+			await clear();
+			at += 1;
+			const email = `member-${at}@example.com`;
+			const prior: string[] = [];
+			if (world !== "absent") {
+				for (let time = 0; time < (world === "twice" ? 2 : 1); time++)
+					prior.push(tokenIn((await signUp(email, "192.0.2.80")).text));
+				const token = prior[0] as string;
+				if (world === "asked" || world === "removed")
+					await send(
+						calls.intent,
+						withToken(calls.intent, token),
+						"192.0.2.80",
+					);
+				if (world === "removed")
+					await send(
+						calls.remove,
+						withToken(calls.remove, token),
+						"192.0.2.80",
+					);
+				await app().sql("DELETE FROM signup_attempts");
+			}
+			const rows = async () =>
+				JSON.stringify(
+					(await app().sql("SELECT * FROM signups ORDER BY id")).filter(
+						({ token_hash }) =>
+							prior.some((token) => sha256(token) === token_hash),
+					),
+				);
+			const theirs = await rows();
+			const tokens = { A: NEVER, B: NEVER };
+			const answers: string[] = [];
+			const requests: string[] = [];
+			for (const [client, action] of order) {
+				const answer =
+					action === "signup"
+						? await signUp(email, ADDRESS[client])
+						: await send(
+								calls[action],
+								withToken(calls[action], tokens[client]),
+								ADDRESS[client],
+							);
+				if (action === "signup") tokens[client] = tokenIn(answer.text);
+				made += 1;
+				requests.push(answer.headers.get("x-request-id") ?? "");
+				answers.push(
+					JSON.stringify([
+						answer.status,
+						answer.text.replace(/[0-9a-f]{64}/g, "T"),
+						[...answer.headers]
+							.filter(([name]) => !["date", "x-request-id"].includes(name))
+							.map(([name, value]) => [
+								name,
+								value.replace(/nonce-[0-9a-f]{32}/, "nonce"),
+							])
+							.sort(),
+					]),
+				);
+			}
+			must(
+				(await rows()) === theirs,
+				`${world}: ${order.join(" ")} changed somebody else's sign-up`,
+			);
+			all.push({ calls: answers, requests });
+		}
+		seen.set(world, all);
+	}
+	const says = (order: Step[]) =>
+		order.map(([client, action]) => `${client} ${action}`).join(", ");
+	const absent = seen.get("absent") ?? [];
+	for (const world of WORLDS)
+		for (const [index, order] of orders.entries()) {
+			const here = seen.get(world)?.[index]?.calls ?? [];
+			for (const [call, answer] of here.entries())
+				must(
+					answer === absent[index]?.calls[call],
+					`an answer tells whether an address was there: ${world}, ${says(order)}, call ${call + 1}: ${answer.slice(0, 90)} and not ${absent[index]?.calls[call]?.slice(0, 90)}`,
+				);
+		}
 	expect(
-		(await send(calls.intent, withToken(calls.intent, mine), "192.0.2.30"))
-			.status === 404,
-		"a token whose sign-up is gone records nothing",
+		true,
+		`${orders.length} orders of calls by two clients, in ${WORLDS.length} cases (${made} calls): status, body and headers are the same whether the address was there before or not, and nobody else's sign-up changes`,
+	);
+	// The work behind each answer, from the Worker's own records.
+	await new Promise((resolve) => setTimeout(resolve, 500));
+	const work = new Map<string, string>();
+	for (const line of app().lines)
+		if (line.startsWith("{")) {
+			const { requestId, database } = JSON.parse(line) as {
+				requestId?: string;
+				database?: { rows_read: number; rows_written: number };
+			};
+			if (requestId && database)
+				work.set(requestId, `${database.rows_read}/${database.rows_written}`);
+		}
+	for (const world of WORLDS)
+		for (const [index, order] of orders.entries())
+			for (const [call, id] of (
+				seen.get(world)?.[index]?.requests ?? []
+			).entries())
+				must(
+					work.has(id) &&
+						work.get(id) === work.get(absent[index]?.requests[call] ?? ""),
+					`D1's work tells whether an address was there: ${world}, ${says(order)}, call ${call + 1}: ${work.get(id)} rows and not ${work.get(absent[index]?.requests[call] ?? "")}`,
+				);
+	expect(true, "D1 reads and writes the same number of rows for each of them");
+	// And the time, in turn, so that a busy machine is busy for both.
+	await clear();
+	const times: Record<"absent" | "present", number[]> = {
+		absent: [],
+		present: [],
+	};
+	for (let round = 0; round < 60; round++)
+		for (const world of ["absent", "present"] as const) {
+			const email = `time-${round}-${world}@example.com`;
+			if (world === "present") await signUp(email, "192.0.2.80");
+			await app().sql("DELETE FROM signup_attempts");
+			const started = performance.now();
+			await signUp(email, "192.0.2.81");
+			times[world].push(performance.now() - started);
+			await app().sql("DELETE FROM signup_attempts");
+		}
+	const median = (list: number[]) =>
+		[...list].sort((a, b) => a - b)[Math.floor(list.length / 2)] as number;
+	const [without, with_] = [median(times.absent), median(times.present)];
+	expect(
+		with_ / without < 2 && without / with_ < 2,
+		`a sign-up takes as long for an address that was there (median ${with_.toFixed(1)} ms) as for one that was not (${without.toFixed(1)} ms)`,
 	);
 	await clear();
 }
@@ -718,12 +869,12 @@ async function report() {
 	const tokens = [];
 	for (const [at, email] of emails.entries())
 		tokens.push(tokenIn((await signUp(email, `192.0.2.${60 + at}`)).text));
-	await signUp("one@example.com", "192.0.2.70");
-	await send(
-		calls.intent,
-		withToken(calls.intent, tokens[0] as string),
-		"192.0.2.60",
+	// Again, in another role and with every intent: each email still counts once.
+	const again = await signUp("one@example.com", "192.0.2.70", (body) =>
+		body.replace("builder_developer", "resident"),
 	);
+	for (const token of [tokens[0] as string, tokenIn(again.text)])
+		await send(calls.intent, withToken(calls.intent, token), "192.0.2.60");
 	for (const path of [
 		"/",
 		"/?kind=decision",
@@ -748,13 +899,14 @@ async function report() {
 	};
 	const kinds = Object.values(report.requests_by_day)[0] ?? {};
 	expect(
-		report.signups === 3 &&
-			(report.signups_by_role as Record<string, number>).builder_developer ===
-				3 &&
-			report.repeat_signups === 1 &&
+		report.submissions === 4 &&
+			report.signups === 3 &&
+			JSON.stringify(report.signups_by_role) === '{"builder_developer":3}' &&
 			report.paid_intents === 1 &&
+			JSON.stringify(report.paid_intents_by_role) ===
+				'{"builder_developer":1}' &&
 			report.signup_open === true,
-		"the report counts sign-ups by role, repeats and intents",
+		"the report counts each email once, by the role of its earliest row, and an intent once an email",
 	);
 	const [firstTown] = Object.entries(
 		report.signups_by_town as Record<string, number>,
@@ -832,14 +984,9 @@ async function nothingKept() {
 	);
 	const other = JSON.stringify(
 		await Promise.all(
-			[
-				"signup_attempts",
-				"signup_tokens",
-				"paid_intents",
-				"counters",
-				"releases",
-				"settings",
-			].map((table) => app().sql(`SELECT * FROM ${table}`)),
+			["signup_attempts", "counters", "releases", "settings"].map((table) =>
+				app().sql(`SELECT * FROM ${table}`),
+			),
 		),
 	);
 	expect(
@@ -869,7 +1016,8 @@ try {
 	await open(1);
 	await inTheBrowser(bundle.towns);
 	await limits();
-	await repeats();
+	await own();
+	await membership();
 	await hostile();
 	await honeypot();
 	await closedRow();

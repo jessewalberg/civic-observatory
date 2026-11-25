@@ -240,38 +240,90 @@ const BREAKS: Break[] = [
 	),
 	breakIt(
 		"signup",
-		"a repeat changes the role",
-		/nothing that is stored about it changes/,
+		"an email may be there once",
+		/another submission of the same address is a row of its own/,
+		"migrations/0001_docket.sql",
+		"	email TEXT NOT NULL,",
+		"	email TEXT NOT NULL UNIQUE,",
+	),
+	breakIt(
+		"signup",
+		"a repeat changes the earlier row",
+		/the first one stays as it was|nobody else's|changed somebody else's/,
 		SIGNUP,
-		"ON CONFLICT (email) DO NOTHING",
-		"ON CONFLICT (email) DO UPDATE SET role = excluded.role",
+		"	for (const { meta } of results) recordDatabase(meta);",
+		`	for (const { meta } of results) recordDatabase(meta);
+	await env.DB.prepare("UPDATE signups SET role = ?1 WHERE email = ?2").bind(input.role, input.email).run();`,
 	),
 	breakIt(
 		"signup",
 		"a repeat is told that the address is known",
-		/gets the same answer/,
+		/an answer tells whether an address was there/,
 		SIGNUP,
 		'	if (taken?.results.length === 1) return { status: "ok", token };',
 		`	if (taken?.results.length === 1) {
-		const [mine] = (await env.DB.prepare("SELECT id FROM signups WHERE id = ?1").bind(signup).all()).results;
-		return { status: "ok", token, ...(mine ? {} : { known: true }) };
+		const same = (await env.DB.prepare("SELECT id FROM signups WHERE email = ?1").bind(input.email).all()).results;
+		return { status: "ok", token, ...(same.length > 1 ? { known: true } : {}) };
 	}`,
 	),
 	breakIt(
 		"signup",
-		"any token of the address can remove it",
-		/a repeat's token cannot remove the sign-up/,
+		"a header tells that the address is known",
+		/an answer tells whether an address was there/,
 		SIGNUP,
-		" AND made = 1)",
-		")",
+		"	const [taken, , why] = results;",
+		`	const [taken, , why] = results;
+	const same = (await env.DB.prepare("SELECT id FROM signups WHERE email = ?1").bind(input.email).all()).results;
+	if (same.length > 1) (await import("./observability")).answerHeader("X-Again", "1");`,
+	),
+	breakIt(
+		"signup",
+		"a sign-up looks for the address first",
+		/D1's work tells whether an address was there/,
+		SIGNUP,
+		"	for (const { meta } of results) recordDatabase(meta);",
+		`	for (const { meta } of results) recordDatabase(meta);
+	recordDatabase((await env.DB.prepare("SELECT id FROM signups WHERE email = ?1").bind(input.email).all()).meta);`,
+	),
+	breakIt(
+		"signup",
+		"a token is tied to the address's earlier row",
+		/a token marks the intent of its own submission/,
+		SIGNUP,
+		"		WHERE token_hash = ?1 RETURNING 1 AS known`,",
+		"		WHERE id = (SELECT min(id) FROM signups WHERE email = (SELECT email FROM signups WHERE token_hash = ?1)) RETURNING 1 AS known`,",
+	),
+	breakIt(
+		"signup",
+		"an intent answers differently for an address that was there",
+		/an answer tells whether an address was there/,
+		SIGNUP,
+		"RETURNING 1 AS known`,",
+		"RETURNING iif((SELECT count(*) FROM signups o WHERE o.email = signups.email) > 1, NULL, 1) AS known`,",
+	),
+	breakIt(
+		"signup",
+		"any token of the address removes all of it",
+		/and nothing else/,
+		SIGNUP,
+		'"DELETE FROM signups WHERE token_hash = ?1",',
+		'"DELETE FROM signups WHERE email = (SELECT email FROM signups WHERE token_hash = ?1)",',
 	),
 	breakIt(
 		"signup",
 		"removing leaves the sign-up",
 		/Remove my address deletes the sign-up/,
 		SIGNUP,
-		"DELETE FROM signups WHERE id = (",
-		"DELETE FROM signups WHERE 0 AND id = (",
+		"DELETE FROM signups WHERE token_hash = ?1",
+		"DELETE FROM signups WHERE 0 AND token_hash = ?1",
+	),
+	breakIt(
+		"signup",
+		"the report counts submissions as people",
+		/the report counts each email once/,
+		"scripts/report-docket.ts",
+		"FROM signups GROUP BY email",
+		"FROM signups GROUP BY id",
 	),
 	breakIt(
 		"signup",
@@ -312,8 +364,8 @@ const BREAKS: Break[] = [
 		"the report lists the emails",
 		/the report holds no email/,
 		"scripts/report-docket.ts",
-		'"SELECT role AS label, count(*) AS n FROM signups GROUP BY role ORDER BY role"',
-		'"SELECT role AS label, count(*) AS n FROM signups GROUP BY role UNION ALL SELECT email, 1 FROM signups"',
+		"GROUP BY j.value ORDER BY j.value`",
+		"GROUP BY j.value UNION ALL SELECT email, 1 FROM signups`",
 	),
 	// The pages.
 	breakIt(

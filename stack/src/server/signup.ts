@@ -119,12 +119,10 @@ RETURNING id`;
 // The rest of a sign-up happens only for an attempt that took a place.
 const PLACE = "EXISTS (SELECT 1 FROM signup_attempts WHERE id = ?1)";
 
-const STORE = `INSERT INTO signups (id, email, role, towns, created_at)
-SELECT ?2, ?3, ?4, ?5, ?6 WHERE ${PLACE}
-ON CONFLICT (email) DO NOTHING`;
-
-const STORE_TOKEN = `INSERT INTO signup_tokens (token_hash, signup_id, made, created_at)
-SELECT ?2, s.id, s.id = ?3, ?4 FROM signups s WHERE s.email = ?5 AND ${PLACE}`;
+// A row of its own, whatever else is stored. No statement of this file reads or
+// compares an email, so nothing here can answer by one.
+const STORE = `INSERT INTO signups (email, role, towns, token_hash, created_at)
+SELECT ?2, ?3, ?4, ?5, ?6 WHERE ${PLACE}`;
 
 // Why there was no place: read in the same batch, so as the insert saw it.
 const WHY = `SELECT (SELECT signup_open FROM settings WHERE id = 1) AS open,
@@ -157,24 +155,16 @@ export async function signUp(
 	const now = Date.now();
 	const since = now - SIGNUP.windowMs;
 	const attempt = crypto.randomUUID();
-	const signup = crypto.randomUUID();
 	const client = await clientHash(secret, address);
-	const [taken, , , why] = await env.DB.batch<Record<string, unknown>>([
+	const results = await env.DB.batch<Record<string, unknown>>([
 		env.DB.prepare(TAKE_PLACE).bind(attempt, client, now, since),
 		env.DB.prepare(STORE).bind(
 			attempt,
-			signup,
 			input.email,
 			input.role,
 			JSON.stringify(input.towns),
-			now,
-		),
-		env.DB.prepare(STORE_TOKEN).bind(
-			attempt,
 			await sha256(token),
-			signup,
 			now,
-			input.email,
 		),
 		env.DB.prepare(WHY).bind(client, since),
 		env.DB.prepare(
@@ -183,7 +173,8 @@ export async function signUp(
 			ON CONFLICT (day, kind) DO UPDATE SET count = count + 1`,
 		).bind(attempt, new Date(now).toISOString().slice(0, 10)),
 	]);
-	if (taken) recordDatabase(taken.meta);
+	for (const { meta } of results) recordDatabase(meta);
+	const [taken, , why] = results;
 	if (taken?.results.length === 1) return { status: "ok", token };
 	const reason = why?.results[0];
 	if (reason?.open !== 1) return { status: "closed" };
@@ -196,38 +187,26 @@ export async function signUp(
 	};
 }
 
-/** Records the paid intent of a token's sign-up, once. */
+/** Marks the paid intent of the submission a token came from, once. */
 export async function recordIntent(token: string): Promise<boolean> {
-	const hash = await sha256(token);
-	const [, known] = await env.DB.batch<Record<string, unknown>>([
-		env.DB.prepare(
-			`INSERT INTO paid_intents (signup_id, created_at)
-			SELECT signup_id, ?2 FROM signup_tokens WHERE token_hash = ?1
-			ON CONFLICT (signup_id) DO NOTHING`,
-		).bind(hash, Date.now()),
-		env.DB.prepare(
-			"SELECT 1 AS known FROM signup_tokens WHERE token_hash = ?1",
-		).bind(hash),
-	]);
-	if (known) recordDatabase(known.meta);
-	return known?.results.length === 1;
+	const { results, meta } = await env.DB.prepare(
+		`UPDATE signups SET paid_intent_at = coalesce(paid_intent_at, ?2)
+		WHERE token_hash = ?1 RETURNING 1 AS known`,
+	)
+		.bind(await sha256(token), Date.now())
+		.all();
+	recordDatabase(meta);
+	return results[0]?.known === 1;
 }
 
-/**
- * Deletes the sign-up this token made, with its tokens and intent; any other
- * token is only forgotten itself. Nothing in the answer tells which.
- */
+/** Deletes the submission a token came from, and nothing else. */
 export async function removeSignup(token: string): Promise<void> {
-	const hash = await sha256(token);
-	const results = await env.DB.batch([
-		env.DB.prepare(
-			"DELETE FROM signups WHERE id = (SELECT signup_id FROM signup_tokens WHERE token_hash = ?1 AND made = 1)",
-		).bind(hash),
-		env.DB.prepare("DELETE FROM signup_tokens WHERE token_hash = ?1").bind(
-			hash,
-		),
-	]);
-	for (const { meta } of results) recordDatabase(meta);
+	const { meta } = await env.DB.prepare(
+		"DELETE FROM signups WHERE token_hash = ?1",
+	)
+		.bind(await sha256(token))
+		.run();
+	recordDatabase(meta);
 }
 
 /**

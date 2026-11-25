@@ -600,8 +600,6 @@ async function noRawNames(worker: BuiltWorker, bundle: BundleFile) {
 		...TABLES,
 		"settings",
 		"signups",
-		"signup_tokens",
-		"paid_intents",
 		"signup_attempts",
 		"counters",
 	]) {
@@ -618,8 +616,8 @@ async function noRawNames(worker: BuiltWorker, bundle: BundleFile) {
 		"SELECT count(*) AS n FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '\\_cf%' ESCAPE '\\' AND name <> 'd1_migrations'",
 	);
 	expect(
-		known[0]?.n === 12,
-		"D1 has 12 tables, and none has a raw name column",
+		known[0]?.n === 10,
+		"D1 has 10 tables, and none has a raw name column",
 	);
 	for (const path of [
 		"/",

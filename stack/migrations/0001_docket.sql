@@ -105,29 +105,24 @@ CREATE TABLE settings (
 );
 INSERT INTO settings (id, signup_open) VALUES (1, 0);
 
+-- One row for each submission, and nothing ties one to another. The same email
+-- may be there several times: what is kept about one submission must not depend
+-- on another, or an answer could say whether an address was there before.
 CREATE TABLE signups (
-	id TEXT PRIMARY KEY,
-	email TEXT NOT NULL UNIQUE,
+	-- Never reused, so the lowest id of an email is its earliest row.
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	email TEXT NOT NULL,
 	role TEXT NOT NULL,
 	-- A JSON array of town slugs.
 	towns TEXT NOT NULL,
+	-- The SHA-256 of the token the submission was given.
+	token_hash TEXT NOT NULL UNIQUE,
+	-- When this submission asked to be told of paid alerts.
+	paid_intent_at INTEGER,
 	created_at INTEGER NOT NULL
 );
-
--- A browser's token, as its SHA-256. `made` is 1 for the browser that made the
--- sign-up, which alone may remove it.
-CREATE TABLE signup_tokens (
-	token_hash TEXT PRIMARY KEY,
-	signup_id TEXT NOT NULL REFERENCES signups (id) ON DELETE CASCADE,
-	made INTEGER NOT NULL CHECK (made IN (0, 1)),
-	created_at INTEGER NOT NULL
-);
-CREATE INDEX signup_tokens_signup ON signup_tokens (signup_id);
-
-CREATE TABLE paid_intents (
-	signup_id TEXT PRIMARY KEY REFERENCES signups (id) ON DELETE CASCADE,
-	created_at INTEGER NOT NULL
-);
+-- For counting (scripts/report-docket.ts). The Worker never asks by email.
+CREATE INDEX signups_email ON signups (email, id);
 
 -- The rolling limits: one row for each submission that took a place, kept an
 -- hour. `client` is a keyed hash, never an address.
