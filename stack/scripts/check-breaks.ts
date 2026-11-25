@@ -1,5 +1,5 @@
-// `bun run check:breaks [part of a break's words]`: breaks the app on purpose, one
-// way at a time, in a scratch copy, and expects the check named to fail for it
+// `bun run check:breaks [part of a break's words | check:<name>,…]`: breaks the app on
+// purpose, one way at a time, in a scratch copy, and expects the check named to fail for it
 // (stack/README.md). Slow, and not in CI: it is how the checks themselves are
 // checked. Each break's text must occur exactly once in its file.
 import { spawn } from "node:child_process";
@@ -607,6 +607,7 @@ function run(one: Break, copy: string, runner: number) {
 		const [program = "", ...args] = command;
 		const child = spawn(program, args, {
 			cwd: copy,
+			detached: true,
 			env: {
 				...process.env,
 				DOCKET_BUNDLE: "",
@@ -620,11 +621,16 @@ function run(one: Break, copy: string, runner: number) {
 		};
 		child.stdout.on("data", add);
 		child.stderr.on("data", add);
-		// A check that never ends has not caught anything.
+		// A check that never ends has not caught anything. Its whole group goes: a
+		// workerd that stays would keep the port.
 		const late = setTimeout(() => {
-			said += "\nstopped after five minutes";
-			child.kill("SIGKILL");
-		}, 300_000);
+			said += "\nstopped after fifteen minutes";
+			try {
+				process.kill(-(child.pid as number), "SIGKILL");
+			} catch {
+				// It had ended.
+			}
+		}, 900_000);
 		child.on("close", (code) => {
 			clearTimeout(late);
 			resolve({ code, said });
@@ -633,7 +639,11 @@ function run(one: Break, copy: string, runner: number) {
 }
 
 const wanted = process.argv[2] ?? "";
-const chosen = BREAKS.filter(({ what }) => what.includes(wanted));
+const chosen = BREAKS.filter(({ what, check }) =>
+	wanted.startsWith("check:")
+		? wanted.split(",").includes(`check:${check}`)
+		: what.includes(wanted),
+);
 const queue = [...chosen.entries()];
 const missed: string[] = [];
 mkdirSync(folder, { recursive: true });
