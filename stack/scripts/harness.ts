@@ -113,10 +113,12 @@ export function load(state: string, bundle: unknown, ...args: string[]) {
 		["scripts/load-docket.ts", file, "--state", state, ...args],
 		{ cwd: root, encoding: "utf8" },
 	);
-	return {
-		ok: result.status === 0,
-		said: `${result.stdout}${result.stderr}`.trim(),
-	};
+	const [stage, ...said] = `${result.stdout}${result.stderr}`
+		.trim()
+		.split("\n");
+	if (stage !== "Stage: local")
+		throw new Error(`A load did not say its stage first: ${stage}`);
+	return { ok: result.status === 0, said: said.join("\n") };
 }
 
 export const loadInto = (worker: BuiltWorker, bundle: unknown) =>
