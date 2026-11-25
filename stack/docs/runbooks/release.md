@@ -360,6 +360,13 @@ person ([as documented](https://developers.cloudflare.com/workers/local-developm
 and the session fails before anything is read or written. The rehearsal (section 2, step 6) shows which it is. Nothing is
 named `civic-docket-load` in the account: it is the name of the edge preview alone, and is never deployed.
 
+**Wrangler's version.** From 4.72.0 (2026-03-10) Wrangler takes the token that the API gives for a session when the session's
+exchange address does not answer
+([changelog](https://github.com/cloudflare/workers-sdk/blob/main/packages/wrangler/CHANGELOG.md), #12771, read 2026-11-25).
+Versions before it stop there. On 2026-11-25 that address answered 400 on this account, and 4.59.2, the pin until then, could
+not connect ("Could not create remote preview session"); nothing was read or written. `check:load` plays the API as the edge
+answers it.
+
 ## 7. Rollback
 
 The owner's call, except the automatic give-back. **The old Worker is given the domain only while the block is on.**

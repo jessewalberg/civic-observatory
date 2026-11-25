@@ -214,4 +214,6 @@ Fresh data (C3):
 ## Pins
 
 Every dependency is pinned exactly, at the versions the reference stack runs, and `bunfig.toml` refuses versions younger
-than 14 days when the lockfile changes. `seroval` and `seroval-plugins` are overridden to `~1.6.12`.
+than 14 days when the lockfile changes. Two are ahead of it: `wrangler` 4.72.0, the first that can open a session on the edge
+today, and `miniflare` of the same day ([why](docs/runbooks/release.md#6-the-load)). The Vite plugin brings its own older
+copies, which only the local build uses. `seroval` and `seroval-plugins` are overridden to `~1.6.12`.
