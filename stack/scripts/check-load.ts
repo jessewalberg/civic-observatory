@@ -25,8 +25,10 @@ const { expect, must, done } = checks("check:load");
 const ACCOUNT = "acc0".repeat(8);
 const DATABASE = "dbdbdbdb-1111-4222-8333-dbdbdbdbdbdb";
 const TOKEN = "cfut_rehearsal0token0of0nobody";
+const SESSION = "session0token0of0nobody";
+const SUBDOMAIN = "subdomain0of0nobody";
 const COMMIT = "c0".repeat(20);
-const PRIVATE = [ACCOUNT, DATABASE, TOKEN];
+const PRIVATE = [ACCOUNT, DATABASE, TOKEN, SESSION, SUBDOMAIN];
 
 const scratch = `${root}.smoke/load-${randomUUID()}`;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -233,13 +235,11 @@ const api = createServer(async (request, response) => {
 			result: null,
 		});
 	requests.push(`${request.method} ${path.split("?")[0]}`);
-	// What Wrangler asks for before it uploads the proxy.
-	if (path === "/exchange")
-		return send(200, {
-			inspector_websocket: "wss://127.0.0.1/inspector",
-			prewarm: `${apiOrigin}/prewarm`,
-			token: "session",
-		});
+	// Where Wrangler before 4.72.0 insisted on getting a token. The edge answers so.
+	if (path === "/exchange") {
+		response.writeHead(400, { "Content-Type": "text/html" });
+		return response.end("<title>Invalid Workers Preview configuration</title>");
+	}
 	if (request.headers.authorization !== `Bearer ${TOKEN}`)
 		return refuse(403, 10000, "Authentication error");
 	if (path.startsWith("/accounts?"))
@@ -275,9 +275,14 @@ const api = createServer(async (request, response) => {
 			uuid: account.uuid ?? DATABASE,
 			name: account.name ?? "civic-docket-Database-preview-abcdefgh23456789",
 		});
+	// What Wrangler asks for before it uploads the proxy.
 	if (path === `/accounts/${ACCOUNT}/workers/subdomain/edge-preview`)
-		return ok({ exchange_url: `${apiOrigin}/exchange` });
+		return ok({ exchange_url: `${apiOrigin}/exchange`, token: SESSION });
+	if (path === `/accounts/${ACCOUNT}/workers/subdomain`)
+		return ok({ subdomain: SUBDOMAIN });
 	if (/\/workers\/scripts\/[\w-]+\/edge-preview$/.test(path)) {
+		if (request.headers["cf-preview-upload-config-token"] !== SESSION)
+			return refuse(403, 10000, "not the session's token");
 		uploaded = `${path}\n${Buffer.concat(chunks).toString("latin1")}`;
 		return refuse(403, 10000, "the rehearsal goes no further");
 	}
@@ -900,11 +905,23 @@ async function session(bundle: BundleFile) {
 				]),
 		`Wrangler is told to open one binding, this database, in an edge preview with a deadline: ${JSON.stringify(bindings)}`,
 	);
-	const written = requests.filter((one) => !one.startsWith("GET "));
+	const asked = [...new Set(requests)]
+		.sort()
+		.join(", ")
+		.replaceAll(ACCOUNT, "…")
+		.replaceAll(DATABASE, "…");
 	expect(
-		written.every((one) => one.endsWith("/civic-docket-load/edge-preview")) &&
-			!requests.some((one) => /\/(domains|routes|subdomain$)/.test(one)),
-		`and it deploys nothing: ${[...new Set(requests)].join(", ").replaceAll(ACCOUNT, "…").replaceAll(DATABASE, "…")}`,
+		asked ===
+			[
+				"GET /accounts",
+				"GET /accounts/…/d1/database/…",
+				"GET /accounts/…/workers/scripts/civic-docket-preview/settings",
+				"GET /accounts/…/workers/subdomain",
+				"GET /accounts/…/workers/subdomain/edge-preview",
+				"GET /exchange",
+				"POST /accounts/…/workers/scripts/civic-docket-load/edge-preview",
+			].join(", "),
+		`and it deploys nothing: ${asked}`,
 	);
 	expect(
 		(await control()).length === 0,
