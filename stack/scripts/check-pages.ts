@@ -564,7 +564,7 @@ async function withdrawnWhileKept(
 	await page.evaluate((path) => {
 		const link = document.createElement("a");
 		link.href = path;
-		document.body.append(link);
+		document.body.appendChild(link);
 		link.click();
 	}, `/item/${id}`);
 	const again = await answer;
