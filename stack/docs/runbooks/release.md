@@ -270,12 +270,17 @@ the stage. Without `--stage` it is the local database.
    of the D1 binding**, which [is one transaction](https://developers.cloudflare.com/d1/worker-api/d1-database/#batch) (read
    2026-11-25).
 4. If the answer is lost, the current release is read again and said. A killed client: run the same command again.
+5. **Nothing acts later than ten minutes.** The batch holds the time it was asked for, and the database refuses the whole of it
+   if it arrives more than ten minutes away from that, however it was delayed. The connection's own Worker answers nothing after
+   the same ten minutes, so a preview that a killed client left behind can do nothing. A message about an uncertain outcome
+   names the time; after it, what the database says is what is there. The switch (section 5) is held to the same. A machine
+   whose clock is off by ten minutes cannot load.
 
 **How it connects, and why.** Read 2026-11-25:
 
 | Way | One transaction | What it exposes | Taken |
 | --- | --- | --- | --- |
-| [Remote bindings](https://developers.cloudflare.com/workers/local-development/#remote-bindings): a local Worker whose `DB` is the remote database, through `startRemoteProxySession` | Yes. The binding sends a batch as one request, and Wrangler's proxy passes that request on to the same D1 service unchanged (`check:load` runs that proxy and counts) | Nothing is deployed. While the command runs: a proxy on this machine's loopback, without a password, that can run any statement on this one database; and an edge preview of Wrangler's proxy, which answers only with the session's token. Both end with the command, and nothing has to be deleted | **Yes** |
+| [Remote bindings](https://developers.cloudflare.com/workers/local-development/#remote-bindings): a local Worker whose `DB` is the remote database, through Wrangler's own remote proxy (what `startRemoteProxySession` starts, with a deadline in front of it: `scripts/remote-proxy.ts`) | Yes. The binding sends a batch as one request, and Wrangler's proxy passes that request on to the same D1 service unchanged (`check:load` runs that proxy and counts) | Nothing is deployed. While the command runs: a proxy on this machine's loopback, without a password, that can run any statement on this one database; and an edge preview of the proxy, which answers only with the session's token. Measured on the edge, 2026-11-25, with such a preview of a name that is not deployed: it answers with its token at once and 404 without, and the name stays undeployed. The loopback one ends with the command, the preview at the latest after ten minutes, and nothing has to be deleted | **Yes** |
 | A one-off operator Worker, deployed, used once with a one-time secret, deleted | Yes | A public address bound to the production database for seconds to minutes, and for as long as it takes if the client is killed before it deletes it. It is a deploy past the guard | No |
 | D1's REST API | Its reference says nothing of a rollback | Nothing new | No |
 | `wrangler d1 execute --file` ([import](https://developers.cloudflare.com/d1/best-practices/import-export-data/)) | A file's statements, not this batch with its bound values and its two guards; what a failed import leaves is not what one transaction leaves | Nothing new | No |
@@ -307,7 +312,7 @@ top says what to do:
 | old | `the first one; …` | on | Nothing is owed. Run the job again when the cause is known |
 | new | `the first one did not finish; …` | on, or unread | Run it again, once no domain call may land; or `check:production … release` from another machine. Red: `restore`, then read again. Green: run it again, so that the cutover is recorded |
 | new | `unknown; …` | on, or unread | Read the runs (`gh run list --workflow production.yml --branch main --event push`). One succeeded: GitHub's list was late; read again. None moved the domain: somebody did by hand. `restore`, and the next run does the whole cutover |
-| any | `Refusing: GitHub …` | any | Read again in some minutes, or when the run that goes on has ended. If it stays, a run was deleted: a pull request sets `CUTOVER_SINCE` to a time after it, and the domain goes back by hand first if the new Worker has it |
+| any | `Refusing: GitHub …` | any | Read again in some minutes, or when the run that goes on has ended. If it stays, a run was deleted, at the beginning of the list, in it, or a successful one: a pull request sets `CUTOVER_SINCE` to a time after it and `FIRST_RUN` to the number of the run after it, and the domain goes back by hand first if the new Worker has it. Never delete a run of this workflow |
 | new | `finished; …` | on | Nothing is owed |
 | old | `finished, and the domain was given back by hand since` | on | Nothing is owed. "Going forward again", below |
 | old | any | gone | Put the block back at once, in the dashboard |
@@ -333,7 +338,7 @@ sign-ups back too.
 
 **Going forward again** after the domain was given back by hand from a finished cutover: a push, or a re-run of a finished
 run, refuses to move it. Enable the workflow, and merge a pull request that sets `CUTOVER_SINCE` (`scripts/production-domain.ts`)
-to a time after the give-back; its card says that it moves the domain. After an automatic give-back nothing is needed.
+to a time after the give-back, and `FIRST_RUN` to the number its own run will have; its card says that it moves the domain. After an automatic give-back nothing is needed.
 
 **The domain is on no Worker.** The run refuses. Attach it to the Worker that should serve
 (`PUT /accounts/{account}/workers/domains` with `hostname`, `service`, `zone_id`), then read it back.
@@ -379,7 +384,8 @@ reads a push's workflows from the commit that was pushed. This branch is never p
 
 - merges the docket's branch into `main`, with `stack/` and `.github/workflows/production.yml` in it. Its own merge commit
   is the first push that carries the workflow, and it changes `stack/`, so it starts the first run;
-- sets `CUTOVER_SINCE` to a time before the merge, if it has passed long since;
+- leaves `CUTOVER_SINCE` at a time before the merge and `FIRST_RUN` at 1: the workflow is new, so GitHub numbers its runs from 1
+  (`gh run list --workflow production.yml` lists none before the merge);
 - changes the root `README.md`, which still says that no merge deploys.
 
 `production.yml` starts only for pushes that change `stack/**` or the workflow itself

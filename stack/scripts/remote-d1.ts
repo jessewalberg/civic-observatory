@@ -13,6 +13,7 @@ import {
 	Declined,
 	deployToken,
 } from "./cloudflare-api";
+import { SESSION_SECONDS } from "./docket-bundle";
 import { type Database, openDatabase, openRemote } from "./local-d1";
 import { mask, redact } from "./public-log";
 
@@ -127,7 +128,8 @@ async function connect(token: string, accountId: string, id: string) {
 			throw new Error("D1_PROXY is the rehearsal's, on 127.0.0.1.");
 		return { connection: played, end: () => {} };
 	}
-	const child = spawn("node", ["scripts/remote-proxy.ts", id], {
+	const until = String(Date.now() + SESSION_SECONDS * 1_000);
+	const child = spawn("node", ["scripts/remote-proxy.ts", id, until], {
 		cwd: root,
 		stdio: ["pipe", "pipe", "pipe"],
 		env: {

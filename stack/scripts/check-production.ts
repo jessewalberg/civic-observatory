@@ -447,9 +447,10 @@ async function problems(): Promise<string[]> {
 	);
 	let alive = 0;
 	await politely(paths, async (path) => {
-		const { status } = await get(path, { method: "HEAD" });
-		if (status === 200) alive += 1;
-		else expect(false, `${path}, in the sitemap, answered ${status}`);
+		const answer = await get(path, { method: "HEAD" });
+		ours(answer);
+		if (answer.status === 200) alive += 1;
+		else expect(false, `${path}, in the sitemap, answered ${answer.status}`);
 	});
 	expect(
 		alive === paths.length,
@@ -543,7 +544,11 @@ async function problems(): Promise<string[]> {
 
 	// The old app's function path: nothing of this app is there. On the domain the
 	// zone answers for it first, as it did for the old app.
+	// Nothing of the docket answers there: the zone's own answer has neither a commit
+	// nor the docket's headers. Everywhere else it is the docket's, like any other.
 	const old = await get(`${OLD_FUNCTIONS}/x`);
+	if (onDomain) clean(old);
+	else ours(old);
 	expect(
 		onDomain
 			? old.status === 403 &&

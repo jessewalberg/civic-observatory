@@ -12,6 +12,7 @@ import {
 	Refused,
 	readBundle,
 	readCurrent,
+	SESSION_SECONDS,
 } from "./docket-bundle";
 import type { Database, Statement } from "./local-d1";
 import { complain } from "./public-log";
@@ -26,7 +27,9 @@ async function run(
 	database: Database,
 	statements: Statement[],
 	digest: string,
+	now: string,
 ) {
+	const until = new Date(Date.parse(now) + SESSION_SECONDS * 1_000);
 	try {
 		return await database.batch(statements);
 	} catch (error) {
@@ -38,7 +41,7 @@ async function run(
 				seen === undefined
 					? "The current release could not be read."
 					: `Release ${seen?.seq ?? "none"} is there.`
-			} Run the same command again: it loads, or says that it is there.`,
+			} If the database never answered, the load may still be made until ${until.toISOString()}, and not after. Run the same command again: it loads, or says that it is there.`,
 		);
 	}
 }
@@ -81,6 +84,7 @@ async function main() {
 			database,
 			loadStatements(bundle, current, shrink, now),
 			bundle.digest,
+			now,
 		);
 		const [gone] = await database.rows(
 			"SELECT count(*) AS n FROM withdrawn_items WHERE withdrawn_at = ?1",

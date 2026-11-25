@@ -48,9 +48,16 @@ import { complain, mask, redact, say } from "./public-log";
  * The cutover is finished once one production.yml run has succeeded since this
  * time. If the domain is given back by hand after that, later pushes and re-runs
  * refuse instead of taking it again. Moving it again is a decision: a pull request
- * sets this to a time after the give-back, so the yes on its card covers the move.
+ * sets this to a time after the give-back (and FIRST_RUN with it), so the yes on its
+ * card covers the move.
  */
 const CUTOVER_SINCE = "2026-11-25T00:00:00Z";
+/**
+ * The first run since then. GitHub numbers a workflow's runs from 1, so a history that
+ * begins later has lost its beginning, and with it, perhaps, the run that finished the
+ * cutover. A pull request that moves CUTOVER_SINCE raises this to the run after.
+ */
+const FIRST_RUN = 1;
 
 /** For how long a domain write that nobody confirmed may still take effect. */
 const MAY_LAND_MS = 60 * 60_000;
@@ -313,9 +320,9 @@ function endOf(job: Job, run: Run) {
  * and a runner that dies does not take them with it.
  *
  * One success is enough. That there is none has to be shown: by a list that is
- * whole (it counts what it lists, has this run, and misses no run between the first
- * and the last), and by every attempt of every run in it, as GitHub has that run
- * now. A run that is run again loses its old end in the list, and a list can lag.
+ * whole (it counts what it lists, has this run, begins at the first run there was and
+ * misses none after it), and by every attempt of every run in it, as GitHub has that
+ * run now. A run that is run again loses its old end in the list, and a list can lag.
  */
 async function readCutover(): Promise<Cutover> {
 	const runs = "/workflows/production.yml/runs";
@@ -324,12 +331,26 @@ async function readCutover(): Promise<Cutover> {
 		event: "push",
 		created: `>=${CUTOVER_SINCE}`,
 	};
-	const succeeded = await github<{ total_count?: unknown }>(
-		`${runs}?${new URLSearchParams({ ...since, status: "success", per_page: "1" })}`,
+	const succeeded = await github<{
+		total_count?: unknown;
+		workflow_runs?: unknown;
+	}>(
+		`${runs}?${new URLSearchParams({ ...since, status: "success", per_page: "100" })}`,
 	);
-	if (typeof succeeded.total_count !== "number")
+	if (
+		typeof succeeded.total_count !== "number" ||
+		!Array.isArray(succeeded.workflow_runs)
+	)
 		throw new Error("GitHub's run list has no count.");
-	if (succeeded.total_count > 0) return { finished: true };
+	// One it names, of those that count: a count alone says nothing of which they are.
+	const counted = (succeeded.workflow_runs as Run[]).map(({ run_number }) =>
+		Number(run_number),
+	);
+	if (counted.some((number) => number >= FIRST_RUN)) return { finished: true };
+	if (succeeded.total_count > counted.length || counted.some(Number.isNaN))
+		throw new Error(
+			`Refusing: GitHub counts ${succeeded.total_count} successful runs and lists ${counted.length}. ${LATE}`,
+		);
 
 	const listed = await every<Run>(runs, "workflow_runs", since);
 	// This run, by the numbers the runner has; on another machine there is none.
@@ -344,6 +365,10 @@ async function readCutover(): Promise<Cutover> {
 	const numbers = listed
 		.map((run) => Number(run.run_number))
 		.sort((a, b) => a - b);
+	if (numbers.length > 0 && numbers[0] !== FIRST_RUN)
+		throw new Error(
+			`Refusing: GitHub's list of production.yml's runs begins at run ${numbers[0]}, not at run ${FIRST_RUN}. ${LATE}`,
+		);
 	const gap = numbers.findIndex(
 		(number, i) =>
 			!Number.isInteger(number) || number !== Number(numbers[0]) + i,

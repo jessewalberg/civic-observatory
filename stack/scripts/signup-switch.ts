@@ -2,6 +2,7 @@
 // row, of the local D1 or a stage's (docs/runbooks/release.md, section 5). One
 // statement, and then a read back, which is what it prints.
 import { parseArgs } from "node:util";
+import { SESSION_SECONDS } from "./docket-bundle";
 import { complain } from "./public-log";
 import { chooseStage, STAGE_OPTIONS } from "./remote-d1";
 
@@ -18,12 +19,20 @@ async function main() {
 		);
 	const database = await open();
 	try {
-		await database.batch([
-			[
-				"UPDATE settings SET signup_open = ?1 WHERE id = 1",
-				[to === "open" ? 1 : 0],
-			],
-		]);
+		// A write that arrives late does nothing.
+		const until = Math.floor(Date.now() / 1_000) + SESSION_SECONDS;
+		await database
+			.batch([
+				[
+					"UPDATE settings SET signup_open = ?1 WHERE id = 1 AND unixepoch() <= ?2",
+					[to === "open" ? 1 : 0, until],
+				],
+			])
+			.catch((error: unknown) => {
+				throw new Error(
+					`${error instanceof Error ? error.message : "no answer"}\nIt may still be made until ${new Date(until * 1_000).toISOString()}, and not after. Run the same command again.`,
+				);
+			});
 		const rows = await database.rows("SELECT id, signup_open FROM settings");
 		const is = rows[0]?.signup_open === 1 ? "open" : "closed";
 		if (rows.length !== 1 || is !== to)

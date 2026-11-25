@@ -908,7 +908,7 @@ async function interrupted(worker: BuiltWorker, bundle: BundleFile) {
 			readBundle(next),
 			current,
 			undefined,
-			"2031-01-01T00:00:00.000Z",
+			new Date().toISOString(),
 		);
 		const fails = async (statements: Statement[]) => {
 			try {
@@ -1010,7 +1010,7 @@ async function interrupted(worker: BuiltWorker, bundle: BundleFile) {
 				readBundle(version),
 				base,
 				undefined,
-				"2032-01-01T00:00:00.000Z",
+				new Date().toISOString(),
 			),
 		) as [Statement[], Statement[]];
 		await one.batch(winner);

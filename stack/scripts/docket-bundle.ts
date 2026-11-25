@@ -411,7 +411,13 @@ const value = (from: unknown): Value =>
 			? from
 			: null;
 
-/** The whole load: one batch, in this order. */
+/**
+ * For how long a write that was asked for may still be made. The database itself
+ * refuses it afterwards, however late it arrives, and a remote connection ends.
+ */
+export const SESSION_SECONDS = 600;
+
+/** The whole load: one batch, in this order. `now` is when it is asked for. */
 export function loadStatements(
 	bundle: Bundle,
 	current: Current | null,
@@ -490,10 +496,11 @@ export function loadStatements(
 	});
 	return [
 		// The number after the one this load read. Another load that finished
-		// since has taken it, and this whole batch fails.
+		// since has taken it, and this whole batch fails. So it does when it arrives
+		// too late: a release of no items is refused by the table.
 		[
 			`INSERT INTO releases (seq, digest, schema_version, generated_at, window_start, window_end, upcoming_through, item_count, shrink_reason, loaded_at)
-			VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)`,
+			VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, CASE WHEN abs(unixepoch() - unixepoch(?10)) <= ${SESSION_SECONDS} THEN ?8 ELSE 0 END, ?9, ?10)`,
 			[
 				seq,
 				bundle.digest,

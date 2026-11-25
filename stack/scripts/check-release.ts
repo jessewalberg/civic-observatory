@@ -342,6 +342,13 @@ async function productionCases(worker: () => BuiltWorker, items: number): Promis
 		["a page is rate limited", "a page is rate limited", at(ITEM, header("ratelimit-policy", '"pages";q=1;w=60'))],
 		["/ names no script", "/: names no script or stylesheet", at("/", text("/assets/", "/elsewhere/"))],
 		["a script is missing", ".js answered 404", at(SCRIPT, status(404))],
+		["a page that is not read whole names another commit", `${SMALL}: x-commit-sha is 666666666666`, (path, reply, method) => (method === "HEAD" && path === SMALL ? { ...reply, ...header("x-commit-sha", "6".repeat(40))(reply) } : reply)],
+		["a page that is not read whole has no HSTS", `${SMALL}: strict-transport-security is missing`, (path, reply, method) => (method === "HEAD" && path === SMALL ? { ...reply, ...header("strict-transport-security")(reply) } : reply)],
+		["a 404 does not name its commit", "/no-such-page: x-commit-sha is none", at("/no-such-page", header("x-commit-sha"))],
+		["a 410 may be framed", "/pricing: x-frame-options is missing", at("/pricing", header("x-frame-options"))],
+		["the old function path's 404 has no policy", `${OLD_FUNCTIONS}/x: content-security-policy is missing`, at(OLD_CALL, header("content-security-policy"))],
+		["the old function path's 404 is another commit's", `${OLD_FUNCTIONS}/x: x-commit-sha is 777777777777`, at(OLD_CALL, header("x-commit-sha", "7".repeat(40)))],
+		["a refused call has no HSTS", "strict-transport-security is missing", at(CALL, header("strict-transport-security"))],
 		["a static file has no nosniff", "/favicon.svg: x-content-type-options is missing", at("/favicon.svg", header("x-content-type-options"))],
 		["a static file's policy is another", "/favicon.svg: content-security-policy is default-src *", at("/favicon.svg", header("content-security-policy", "default-src *"))],
 		["a stylesheet is not kept", ".css: cache-control is no-store", at(STYLE, header("cache-control", "no-store"))],
@@ -709,6 +716,8 @@ interface Scenario {
 	holder?: string;
 	/** Successful production.yml runs GitHub lists. */
 	finishedRuns?: number;
+	/** GitHub counts them and does not list them, or not their numbers, or numbers before FIRST_RUN. */
+	successes?: "unlisted" | "unnumbered" | "before the first";
 	/** This run's earlier attempts, if it is run again. */
 	earlierAttempts?: readonly Past[];
 	/** The attempts of every other run, the newest run first. */
@@ -929,17 +938,20 @@ async function rehearse(worker: BuiltWorker, items: number, job: Job, scenario: 
 		}
 		const allowed = asked.method === "GET" && asked.headers.authorization === `Bearer ${GITHUB_TOKEN}`;
 		// This run and the others, newest first, numbered one after another.
+		// Numbered from 1, the successful ones first.
+		const others = scenario.otherRuns ?? [];
+		const own = (scenario.finishedRuns ?? 0) + others.length + 1;
 		const all = [
 			{
 				id: 1001,
-				run_number: 500,
+				run_number: own,
 				// Read elsewhere, there is no run of one's own.
 				attempts: [...(scenario.earlierAttempts ?? []), { ends: null, ago: 0 }],
 				listed: !scenario.byHandRead,
 			},
-			...(scenario.otherRuns ?? []).map((attempts, i) => ({
+			...others.map((attempts, i) => ({
 				id: 900 - i,
-				run_number: 499 - i,
+				run_number: own - 1 - i,
 				attempts,
 				listed: !scenario.unlisted?.includes(i),
 			})),
@@ -968,7 +980,14 @@ async function rehearse(worker: BuiltWorker, items: number, job: Job, scenario: 
 			url.searchParams.get("event") === "push" &&
 			/^>=2026-/.test(url.searchParams.get("created") ?? "")
 		) {
-			if (url.searchParams.get("status") === "success") return json(200, { total_count: scenario.finishedRuns ?? 0, workflow_runs: [] });
+			if (url.searchParams.get("status") === "success")
+				return json(200, {
+					total_count: scenario.finishedRuns ?? 0,
+					workflow_runs: Array.from({ length: scenario.finishedRuns ?? 0 }, (_, i) => ({
+						id: 700 + i,
+						run_number: scenario.successes === "unnumbered" ? undefined : scenario.successes === "before the first" ? -i : i + 1,
+					})).slice(0, scenario.successes === "unlisted" ? 0 : 100),
+				});
 			const listed = all.filter((run) => run.listed);
 			return page("workflow_runs", scenario.list === "empty" ? [] : listed.map((run) => runOf(run, scenario.list === "lags" ? 1 : undefined)), scenario.list);
 		}
@@ -1345,8 +1364,12 @@ const SCENARIOS: Scenario[] = [
 			["GitHub counts two runs and lists one, and the other finished the cutover", { otherRuns: [[FINISHED]], list: "cut short" }, "counts 2 and lists 1"],
 			["GitHub counts 122 runs and lists a hundred, and one of the others finished the cutover", { otherRuns: [[LOST], ...Array.from({ length: 119 }, () => [EARLY]), [FINISHED]], list: "without its second page" }, "counts 122 and lists 100"],
 			["GitHub’s list is empty, and a run finished the cutover", { otherRuns: [[FINISHED]], list: "empty" }, "Refusing: GitHub does not list this run."],
-			["GitHub lists this run alone, not yet the one that finished the cutover", { otherRuns: [[FINISHED]], unlisted: [0] }, "that finished the cutover and none that moved the domain"],
-			["GitHub lists a run that moved the domain, not yet the later one that finished", { otherRuns: [[FINISHED], [LOST]], unlisted: [0] }, "Refusing: GitHub lists run 500 of production.yml and not the one before it."],
+			["GitHub lists this run alone, not the first one, that finished the cutover", { otherRuns: [[FINISHED]], unlisted: [0] }, "begins at run 2, not at run 1"],
+			["GitHub’s list has lost its beginning, where a run finished the cutover, and has one that moved the domain", { otherRuns: [[LOST], [FINISHED]], unlisted: [1] }, "begins at run 2, not at run 1"],
+			["GitHub counts a successful run and lists none", { finishedRuns: 1, successes: "unlisted" }, "counts 1 successful runs and lists 0"],
+			["GitHub lists a successful run without its number", { finishedRuns: 1, successes: "unnumbered" }, "counts 1 successful runs and lists 1"],
+			["this run is the first, and somebody moved the domain", {}, "that finished the cutover and none that moved the domain"],
+			["GitHub lists a run that moved the domain, not yet the later one that finished", { otherRuns: [[FINISHED], [LOST]], unlisted: [0] }, "Refusing: GitHub lists run 3 of production.yml and not the one before it."],
 			["no run moved the domain: somebody did", { otherRuns: [[EARLY], [EARLY]] }, "and none that moved the domain. Nothing was changed. Read the runs"],
 			["an earlier run lost its runner before its move", { otherRuns: [[{ ...LOST, lostIn: "The pages" }]] }, "and none that moved the domain"],
 			["an earlier run was cancelled before its move began", { otherRuns: [[{ ends: "cancelled", move: "cancelled", neverBegan: true, ago: 90 }]] }, "and none that moved the domain"],
@@ -1380,7 +1403,12 @@ const SCENARIOS: Scenario[] = [
 		[
 			["GitHub’s list is empty", { otherRuns: [[FINISHED]], list: "empty" }, "Refusing: GitHub does not list this run."],
 			["GitHub’s list is cut short", { otherRuns: [[FINISHED]], list: "cut short" }, "counts 2 and lists 1"],
-			["GitHub does not list the finished run yet", { otherRuns: [[EARLY], [FINISHED], [EARLY]], unlisted: [1] }, "Refusing: GitHub lists run 499 of production.yml and not the one before it."],
+			["GitHub does not list the finished run yet", { otherRuns: [[EARLY], [FINISHED], [EARLY]], unlisted: [1] }, "Refusing: GitHub lists run 3 of production.yml and not the one before it."],
+			["GitHub’s list has lost its beginning, where a run finished the cutover", { otherRuns: [[EARLY], [FINISHED]], unlisted: [1] }, "begins at run 2, not at run 1"],
+			["GitHub lists this run alone, not the first one, that finished the cutover", { otherRuns: [[FINISHED]], unlisted: [0] }, "begins at run 2, not at run 1"],
+			["GitHub counts a successful run and lists none", { finishedRuns: 1, successes: "unlisted" }, "counts 1 successful runs and lists 0"],
+			["GitHub lists a successful run without its number", { finishedRuns: 1, successes: "unnumbered" }, "counts 1 successful runs and lists 1"],
+			["the successful run GitHub lists is one before the first that counts", { finishedRuns: 1, successes: "before the first" }, "begins at run 2, not at run 1"],
 		] as const
 	).map(([what, with_, says]): Scenario => ({ name: `a push after the domain was given back by hand, and ${what}: nothing is moved`, holder: OLD, ...with_, ends: nothing(OLD), says })),
 	{

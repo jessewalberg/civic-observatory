@@ -14,6 +14,12 @@ import { CURRENT, loadStatements, readBundle } from "./docket-bundle";
 import { type BundleFile, checks, readBundleFile, root } from "./harness";
 import { BATCH_WORKER, openRemote, type Rows } from "./local-d1";
 
+declare const Bun: {
+	Transpiler: new (options: {
+		loader: "ts";
+	}) => { transformSync(code: string): string };
+};
+
 const { expect, must, done } = checks("check:load");
 /** Recognizable, so that none of them can be printed unseen. */
 const ACCOUNT = "acc0".repeat(8);
@@ -43,10 +49,14 @@ interface Play {
 	drop?: boolean;
 	/** Make its last-but-one statement fail. */
 	spoil?: boolean;
+	/** The session's deadline, if it is not ten minutes away. */
+	until?: string;
+	/** Make it arrive as if it had been asked for this many seconds ago. */
+	aged?: number;
 }
 
 // Between the client and Wrangler's own proxy: it counts, and plays what goes wrong.
-const RELAY = `import proxy from "./proxy.js";
+const RELAY = `import proxy from "./scripts/remote-proxy-worker.js";
 let log = [];
 let play = {};
 let gathered = 0;
@@ -70,13 +80,26 @@ export default {
 				gathered += 1;
 				while (gathered < play.gather) await scheduler.wait(5);
 			}
+			if (load && play.aged) {
+				// As asked: a write held back, against a clock that went on.
+				const [first] = statements;
+				first.params[9] = new Date(Date.parse(first.params[9]) - play.aged * 1000).toISOString();
+				request = new Request(request, { body: JSON.stringify(statements) });
+			}
+			if (play.aged && statements[0].sql.startsWith("UPDATE settings")) {
+				statements[0].params[1] -= play.aged;
+				request = new Request(request, { body: JSON.stringify(sent) });
+			}
 			if (load && play.spoil) {
 				statements.splice(-2, 0, { sql: "INSERT INTO items (id) VALUES (NULL)", params: [] });
 				request = new Request(request, { body: JSON.stringify(statements) });
 			}
 		}
 		// Wrangler asks Cloudflare for the binding "raw": the service behind it.
-		const response = await proxy.fetch(request, { DB: env.__D1_BETA__DB });
+		const response = await proxy.fetch(request, {
+			DB: env.__D1_BETA__DB,
+			UNTIL: play.until ?? String(Date.now() + 600_000),
+		});
 		if (!load || !play.drop) return response;
 		await response.text();
 		return new Response("the answer is lost", { status: 502 });
@@ -110,7 +133,14 @@ async function startCloud() {
 					{ type: "ESModule", path: "relay.js", contents: RELAY },
 					{
 						type: "ESModule",
-						path: "proxy.js",
+						path: "scripts/remote-proxy-worker.js",
+						contents: new Bun.Transpiler({ loader: "ts" }).transformSync(
+							readFileSync(`${root}scripts/remote-proxy-worker.ts`, "utf8"),
+						),
+					},
+					{
+						type: "ESModule",
+						path: "node_modules/wrangler/wrangler-dist/ProxyServerWorker.js",
 						contents: readFileSync(
 							`${root}node_modules/wrangler/wrangler-dist/ProxyServerWorker.js`,
 							"utf8",
@@ -477,9 +507,63 @@ async function interrupted(bundle: BundleFile) {
 	expect(
 		!spoiled.ok &&
 			/The load failed, whole: D1: /.test(spoiled.said) &&
-			/Release 1 is there\. Run the same command again/.test(spoiled.said) &&
+			/Release 1 is there\. If the database never answered, the load may still be made until (\d{4}-\d\d-\d\dT[\d:.]+Z), and not after\. Run the same command again/.test(
+				spoiled.said,
+			) &&
+			Math.abs(
+				Date.parse(/until (\S+Z), and/.exec(spoiled.said)?.[1] ?? "") -
+					Date.now() -
+					600_000,
+			) < 60_000 &&
 			(await dump()) === old,
-		"a batch that fails half way leaves the old release whole, and says which one is there",
+		"a batch that fails half way leaves the old release whole, says which one is there, and until when a load may still land",
+	);
+	// A write that was held back, and one through a session that somebody left behind.
+	await control({ aged: 590 });
+	const inTime = await load(changed(bundle, 2030));
+	must(inTime.ok, `a load held back for 590 s is made: ${inTime.said}`);
+	must((await load(bundle)).ok, "and the old content again");
+	const whole_ = await dump();
+	for (const aged of [620, 86_400, -620]) {
+		await control({ aged });
+		const late = await load(changed(bundle, 2031));
+		must(
+			!late.ok &&
+				/CHECK constraint failed: item_count > 0/.test(late.said) &&
+				(await dump()) === whole_,
+			`a load that arrives ${aged} s late: ${late.said}`,
+		);
+	}
+	await control();
+	const opened = await run("signup-switch", ["open", "--stage", "preview"]);
+	must(opened.ok, opened.said);
+	await control({ aged: 620 });
+	const tooLate = await run("signup-switch", ["closed", "--stage", "preview"]);
+	await control();
+	must(
+		!tooLate.ok && tooLate.said.includes("reads back as open, not closed"),
+		`a switch that arrives late: ${tooLate.said}`,
+	);
+	await run("signup-switch", ["closed", "--stage", "preview"]);
+	await control({ until: String(Date.now() - 1) });
+	const over = await load(changed(bundle, 2031));
+	const overSwitch = await run("signup-switch", [
+		"open",
+		"--stage",
+		"preview",
+	]);
+	must(
+		!over.ok && !overSwitch.ok && (await dump()) === whole_,
+		`after the session's deadline: ${over.said} ${overSwitch.said}`,
+	);
+	for (const until of ["", "soon"]) {
+		await control({ until });
+		must(!(await load(changed(bundle, 2031))).ok, `a deadline of "${until}"`);
+	}
+	await control();
+	expect(
+		(await dump()) === whole_,
+		"a load that arrives later than ten minutes after it was asked for, or through a session past its deadline, changes nothing",
 	);
 	// The answer is lost after it was done.
 	await control({ drop: true });
@@ -487,7 +571,7 @@ async function interrupted(bundle: BundleFile) {
 	await control();
 	expect(
 		lost.ok &&
-			/Release 2: .*the answer was lost, and the release is there/.test(
+			/Release \d+: .*the answer was lost, and the release is there/.test(
 				lost.said,
 			),
 		"a load whose answer is lost is read back, and said to be there",
@@ -502,12 +586,14 @@ async function interrupted(bundle: BundleFile) {
 	await control();
 	const winner = both.find(({ ok }) => ok);
 	const loser = both.find(({ ok }) => !ok);
+	const [{ n: now_ } = { n: 0 }] = await sql(
+		"SELECT max(seq) AS n FROM releases",
+	);
 	expect(
-		winner !== undefined &&
-			/Release 3: /.test(winner.said) &&
+		winner?.said.includes(`Release ${now_}: `) === true &&
 			/UNIQUE constraint failed: releases\.seq/.test(loser?.said ?? "") &&
-			/Release 3 is there/.test(loser?.said ?? "") &&
-			(await sql("SELECT count(*) AS n FROM releases"))[0]?.n === 3 &&
+			loser?.said.includes(`Release ${now_} is there`) === true &&
+			(await sql("SELECT count(*) AS n FROM releases"))[0]?.n === now_ &&
 			(await dump()) !== base,
 		"of two loads from the same release one finishes and the other fails whole, and says so",
 	);
@@ -634,7 +720,17 @@ async function session(bundle: BundleFile) {
 	const metadata =
 		/name="metadata"[\s\S]*?\r\n\r\n([\s\S]*?)\r\n--/.exec(uploaded)?.[1] ??
 		"{}";
-	const { bindings } = JSON.parse(metadata) as { bindings?: object[] };
+	const { bindings } = JSON.parse(metadata) as {
+		bindings?: { name: string; text?: string }[];
+	};
+	const ends = bindings?.find(({ name }) => name === "UNTIL")?.text ?? "";
+	must(
+		/^\d{13}$/.test(ends) &&
+			Number(ends) > Date.now() + 480_000 &&
+			Number(ends) <= Date.now() + 600_000 &&
+			uploaded.includes("The session is over."),
+		`the edge preview ends by itself within ten minutes: ${ends}`,
+	);
 	expect(
 		!ok &&
 			/Not connected, and nothing was read or written/.test(said) &&
@@ -642,8 +738,11 @@ async function session(bundle: BundleFile) {
 				`/accounts/${ACCOUNT}/workers/scripts/civic-docket-load/edge-preview`,
 			) &&
 			JSON.stringify(bindings) ===
-				JSON.stringify([{ name: "DB", type: "d1", id: DATABASE, raw: true }]),
-		`Wrangler is told to open one binding, this database, in an edge preview: ${JSON.stringify(bindings)}`,
+				JSON.stringify([
+					{ name: "UNTIL", type: "plain_text", text: ends },
+					{ name: "DB", type: "d1", id: DATABASE, raw: true },
+				]),
+		`Wrangler is told to open one binding, this database, in an edge preview with a deadline: ${JSON.stringify(bindings)}`,
 	);
 	const written = requests.filter((one) => !one.startsWith("GET "));
 	expect(
