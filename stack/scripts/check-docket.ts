@@ -752,6 +752,8 @@ async function releases(
 				page.main.includes(`withdrawn from the docket on ${day}`) &&
 				page.main.includes(item.board) &&
 				page.main.includes(item.town) &&
+				page.headers.get("cache-control") ===
+					"public, max-age=0, must-revalidate, no-transform" &&
 				page.meta.get("robots") === "noindex",
 			`a dropped item's page answers 410 and says it was withdrawn on ${day}`,
 		);

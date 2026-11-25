@@ -45,6 +45,9 @@ const HEADERS: [string, RegExp][] = [
 	["x-frame-options", /^DENY$/],
 	["referrer-policy", /^strict-origin-when-cross-origin$/],
 	["permissions-policy", /camera=\(\)/],
+	// Nothing is added to a page on its way, and one that was kept is asked for
+	// again: an item can be withdrawn.
+	["cache-control", /^public, max-age=0, must-revalidate, no-transform$/],
 	["x-request-id", /^[0-9a-f-]{36}$/],
 ];
 const BANNED: [string, RegExp][] = [
@@ -234,6 +237,11 @@ async function otherAnswers(worker: BuiltWorker) {
 			page.status === 404 && page.main.includes("Page not found"),
 			`${path} answers ${page.status}, not 404 with a plain page`,
 		);
+		for (const [name, value] of HEADERS)
+			must(
+				value.test(page.headers.get(name) ?? ""),
+				`${path}: ${name} is "${page.headers.get(name)}"`,
+			);
 	}
 	expect(true, "a path that was never there answers 404 with a plain page");
 	const health = await worker.send("/api/health");
@@ -533,6 +541,43 @@ async function keyboard(browser: Browser, worker: BuiltWorker) {
 	);
 }
 
+/** A reader who has an item's page asks for it again after it was withdrawn. */
+async function withdrawnWhileKept(
+	browser: Browser,
+	worker: BuiltWorker,
+	bundle: BundleFile,
+) {
+	const id = bundle.items.at(-1)?.id as string;
+	const page = await browser.newPage();
+	const first = await page.goto(`${worker.base()}/item/${id}`);
+	must(first?.status() === 200, `/item/${id} answers ${first?.status()}`);
+	await page.locator(".masthead a[href='/method']").click();
+	await worker.sql(
+		"INSERT INTO withdrawn_items (id, town, board, meeting_date, withdrawn_at) SELECT id, 'A town', board, meeting_date, '2026-05-03T12:00:00Z' FROM items WHERE id = ?1",
+		id,
+	);
+	await worker.sql("DELETE FROM items WHERE id = ?1", id);
+	// As a link does: the browser may use what it kept, if it is allowed to.
+	const answer = page.waitForResponse((response) =>
+		response.url().endsWith(`/item/${id}`),
+	);
+	await page.evaluate((path) => {
+		const link = document.createElement("a");
+		link.href = path;
+		document.body.append(link);
+		link.click();
+	}, `/item/${id}`);
+	const again = await answer;
+	await page
+		.getByRole("heading", { name: "This item was withdrawn" })
+		.waitFor();
+	expect(
+		again.status() === 410,
+		"a browser that had an item's page learns by a link to it that it was withdrawn",
+	);
+	await page.close();
+}
+
 /** D1 does not answer. */
 async function broken(worker: BuiltWorker, paths: Record<string, string>) {
 	await worker.configure({ bindings: { APP_ENV: "preview" }, noData: true });
@@ -540,7 +585,7 @@ async function broken(worker: BuiltWorker, paths: Record<string, string>) {
 		const page = await read(worker, path as string);
 		must(
 			page.status === 503 &&
-				page.headers.get("cache-control") === "no-store" &&
+				page.headers.get("cache-control") === "no-store, no-transform" &&
 				page.main.includes("This page could not be loaded") &&
 				!/no such table|D1_ERROR|SQLITE|\bat .+\.js:\d+/i.test(page.html),
 			`${path} without D1 answers ${page.status}: ${page.html.match(/.{60}(?:no such table|D1_ERROR|SQLITE).{60}/i)?.[0]}`,
@@ -592,6 +637,7 @@ try {
 	await worker.sql("UPDATE settings SET signup_open = 0");
 	await withoutScript(browser, worker, bundle);
 	await keyboard(browser, worker);
+	await withdrawnWhileKept(browser, worker, bundle);
 	await broken(worker, paths);
 	expect(worker.egress.length === 0, "the Worker sent no request anywhere");
 	done();

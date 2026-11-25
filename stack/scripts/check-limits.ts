@@ -281,12 +281,38 @@ async function staticFiles() {
 			/frame-ancestors 'none'/.test(all),
 		"public/_headers states the Worker's headers for static files",
 	);
+	// As the edge asks, and as a browser does.
+	for (const accept of ["text/html", "*/*"])
+		for (const path of ["/", "/terms", "/pricing", "/no-such-page", "/?page=2"])
+			must(
+				(await app().send(path, { headers: { accept } })).headers.get(
+					"cache-control",
+				) === "public, max-age=0, must-revalidate, no-transform",
+				`${path} for ${accept} says that nothing may be added to it`,
+			);
+	for (const [path, cache] of [
+		["/sitemap.xml", "public, max-age=0, must-revalidate"],
+		["/api/health", "no-store"],
+	] as const)
+		must(
+			(await app().send(path)).headers.get("cache-control") === cache,
+			`${path} says ${cache}`,
+		);
+	expect(
+		true,
+		"every HTML answer says no-transform and must-revalidate; the sitemap revalidates; health is not kept",
+	);
 	const html = await (await app().send("/")).text();
 	const css = html.match(/href="(\/assets\/[^"]+\.css)"/)?.[1] as string;
 	const file = await app().send(css);
 	expect(
-		file.status === 200 && (await file.text()).length < 12_000,
-		"the stylesheet is served, under 12,000 bytes",
+		file.status === 200 &&
+			!/no-transform/.test(file.headers.get("cache-control") ?? "") &&
+			/\/assets\/\*\n {2}Cache-Control: public, max-age=31536000, immutable\n/.test(
+				rules,
+			) &&
+			(await file.text()).length < 12_000,
+		"the stylesheet is served, under 12,000 bytes, with its own caching",
 	);
 }
 

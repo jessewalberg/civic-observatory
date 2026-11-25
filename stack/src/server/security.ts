@@ -40,6 +40,24 @@ const contentSecurityPolicy = (nonce: string) =>
 	].join("; ");
 
 /**
+ * A page as it leaves the Worker is the page a visitor gets. Cloudflare's edge may
+ * add its page-speed script to the pages of a proxied zone (zone setting `rum`),
+ * with this answer's nonce on it, and the policy above and the privacy page name
+ * no one else. `no-transform` forbids it
+ * (https://developers.cloudflare.com/web-analytics/get-started/, read 2026-11-24).
+ * A page that was kept is asked for again before it is shown, because an item can
+ * be withdrawn.
+ */
+function untouched(response: Response) {
+	if (!response.headers.get("Content-Type")?.startsWith("text/html")) return;
+	const cache = response.headers.get("Cache-Control");
+	response.headers.set(
+		"Cache-Control",
+		`${cache ?? "public, max-age=0, must-revalidate"}, no-transform`,
+	);
+}
+
+/**
  * Runs a request with a fresh nonce and puts every security header on its
  * answer.
  */
@@ -51,6 +69,7 @@ export async function secured(
 	for (const [name, value] of Object.entries(SECURITY_HEADERS))
 		response.headers.set(name, value);
 	response.headers.set("Content-Security-Policy", contentSecurityPolicy(nonce));
+	untouched(response);
 	return response;
 }
 

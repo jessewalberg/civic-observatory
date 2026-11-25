@@ -91,6 +91,11 @@ An address is not proven to belong to whoever typed it.
 - `src/server/security.ts`: the same security headers on every answer, and a Content-Security-Policy with a new nonce
   each time that admits this site's own files and nothing else. `public/_headers` says the same for static files, which
   Cloudflare serves without the Worker.
+- Every HTML answer says `no-transform`. Cloudflare may add its page-speed script to the pages of a proxied zone, with the
+  page's own nonce on it, and [`no-transform` forbids it](https://developers.cloudflare.com/web-analytics/get-started/)
+  (read 2026-11-24). A page says `public, max-age=0, must-revalidate, no-transform`, so whoever kept one asks again before
+  showing it and learns that an item was withdrawn; so does the sitemap. An answer to a call, and a page that could not be
+  read, is `no-store`. Static files keep their own (`public/_headers`).
 - `src/server/observability.ts`: one record for each request, of allowlisted values only: route, method, status, time, D1
   counts, release. Never a URL, a query, an address, an email, a header or a body.
 - The framework prints the errors it catches, and a parser's message quotes what it could not read. So a call that is not
