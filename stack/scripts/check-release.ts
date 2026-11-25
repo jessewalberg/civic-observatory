@@ -1000,11 +1000,11 @@ console.log("::add-mask::vrooplex");
 console.log("[13:39:47.381] INFO: ::warning::vrooplex");
 console.error("Authorization: Bearer " + process.env.CLOUDFLARE_API_TOKEN);
 console.error(new Error("${PROSE}").stack);
-process.stdout.write("no end of line ${ZONE} ${PROSE}");
 const answer = await fetch(process.env.REHEARSAL_ALCHEMY, { method: "POST", body: JSON.stringify({ declared, arguments: process.argv.slice(2), token: process.env.CLOUDFLARE_API_TOKEN, account: process.env.CLOUDFLARE_ACCOUNT_ID }) });
 console.error("\\nerror: PUT https://api.cloudflare.com/client/v4/accounts/${ACCOUNT}/workers: " + await answer.text());
 if (answer.ok) say("Done: 3 succeeded (24.0s)");
 else say("Failed: 2 succeeded, 1 failed, 1 skipped (24.0s)", "ERROR");
+process.stdout.write("no end of line ${ZONE} ${PROSE}");
 process.exitCode = answer.ok ? 0 : 1;
 `;
 
@@ -1854,6 +1854,9 @@ async function main() {
 		for (const close of closers) close();
 		for (const worker of workers) await worker.stop();
 	}
+	// After a failure the cases beside it may still wait for what is closed.
+	for (const child of running) child.kill("SIGKILL");
+	process.exit();
 }
 
 await main();
