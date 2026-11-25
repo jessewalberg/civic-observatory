@@ -359,7 +359,7 @@ async function productionCases(worker: () => BuiltWorker, items: number): Promis
 		["the list of a board says that it holds every item", "the lists of every board hold", at("/?board=planning_zoning", text(/(Items (?:<!-- -->)?1(?:<!-- -->)? to (?:<!-- -->)?\d+(?:<!-- -->)? of (?:<!-- -->)?)\d+/, `$1${items}`))],
 		["a kind's list shows half of what it says", "the list of kind application shows neither items nor that there are none", at("/?kind=application", text(/<li class="entry">/, '<li class="other">'))],
 		["a list's entries are there and its count is not", "the list of kind hearing shows neither items nor that there are none", at("/?kind=hearing", text(/<p class="note">Items [\s\S]*?<\/p>/, ""))],
-		["a list that shows items says that there are none", "the list of kind hearing shows neither items nor that there are none", at("/?kind=hearing", text(/(<p class="note">)(Items )/, "$1No items match. $2"))],
+		["a list that shows items says that there are none", "the list of kind hearing shows neither items nor that there are none", at("/?kind=hearing", text(/(<p class="note">)(Items )/, "$1No items match.</p>$1$2"))],
 		["an empty list does not say so", "shows neither items nor that there are none", at(/^\/\?town=/, text("No items match.", ""))],
 		["a town's list shows another town's items", "shows an item of another town", at("/?town=aldermoor", text('href="/town/aldermoor"', 'href="/town/brackenfield"'))],
 		["a filtered list fails", "the list of kind notice answered 500", at("/?kind=notice", status(500))],
