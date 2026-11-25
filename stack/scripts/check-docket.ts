@@ -190,6 +190,51 @@ const REFUSED: [string, RegExp, Change][] = [
 		},
 	],
 	[
+		"a meeting, with its items, of a board its town does not list",
+		/^- \S+: "A Board Nobody Lists" is not one of .+'s boards$/m,
+		(b) => {
+			const item = first(b);
+			const id = meetingIdOf(item);
+			meetingOf(b, item).board = "A Board Nobody Lists";
+			for (const one of b.items)
+				if (meetingIdOf(one) === id) one.board = "A Board Nobody Lists";
+		},
+	],
+	[
+		"a meeting without items of a board its town does not list",
+		/is not one of .+'s boards/,
+		(b) => {
+			const quiet = b.meetings.find(({ item_count }) => item_count === 0);
+			if (quiet) quiet.board = `${quiet.board}s`;
+		},
+	],
+	[
+		"a board that only another town lists",
+		/is not one of .+'s boards/,
+		(b) => {
+			const item = first(b);
+			const source = b.sources.find(({ town }) => town === item.town);
+			const other = b.sources.find(({ town }) => town !== item.town);
+			if (!source || !other) return;
+			source.boards = source.boards.filter(({ board }) => board !== item.board);
+			other.boards.push({ ...other.boards[0], board: item.board } as {
+				board: string;
+				status: string;
+			});
+		},
+	],
+	[
+		"a board whose capitals differ",
+		/is not one of .+'s boards/,
+		(b) => {
+			const item = first(b);
+			for (const source of b.sources)
+				if (source.town === item.town)
+					for (const board of source.boards)
+						board.board = board.board.toUpperCase();
+		},
+	],
+	[
 		"an item of an unknown town",
 		/unknown town Atlantis/,
 		(b) => {

@@ -48,6 +48,8 @@ into the local D1. The whole file is refused, and nothing is written, for any of
 - a raw name field (`applicant`, `owner` or `name`), at any depth: only the display fields, which hold no individual's
   name, are ever stored;
 - a duplicate town, board, meeting or item, or a reference to one that is not in the file;
+- a meeting of a board that is not in its town's list of boards, by the exact label, so that what is and is not collected
+  is stated for every board that has a meeting or an item;
 - an item without an `https:` link to its source document or without its quote;
 - a meeting or an item dated outside the window, or a window that is not in order;
 - fewer items than 80% of the current release, unless `--shrink "<why>"` says why (the reason is stored with the release).

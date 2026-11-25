@@ -58,6 +58,22 @@ const BREAKS: Break[] = [
 	),
 	breakIt(
 		"docket",
+		"a meeting may be of any board",
+		/the loader refuses a meeting, with its items, of a board/,
+		LOADER,
+		"else if (!boardsOf.get(found.town)?.has(String(found.board)))",
+		"else if (!boardsOf.get(found.town))",
+	),
+	breakIt(
+		"docket",
+		"a meeting may be of a board of any town",
+		/the loader refuses a board that only another town lists/,
+		LOADER,
+		"!boardsOf.get(found.town)?.has(String(found.board))",
+		"![...boardsOf.values()].some((all) => all.has(String(found.board)))",
+	),
+	breakIt(
+		"docket",
 		"a source link may be anything that is not empty",
 		/the loader refuses a source link that is a script/,
 		LOADER,

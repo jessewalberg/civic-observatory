@@ -248,6 +248,8 @@ export function readBundle(raw: unknown): Bundle {
 	}
 
 	const sourced = new Set<string>();
+	/** A town's boards, as its source lists them. */
+	const boardsOf = new Map<string, Set<string>>();
 	list(raw.sources, "sources").forEach((source, at) => {
 		const where = `sources[${at}]`;
 		if (!shaped(source, SOURCE, where)) return;
@@ -260,6 +262,7 @@ export function readBundle(raw: unknown): Bundle {
 			if (shaped(board, BOARD, here))
 				once(seen, String((board as Record_).board), here);
 		});
+		boardsOf.set(town, seen);
 	});
 	for (const town of towns)
 		if (!sourced.has(town)) reasons.push(`${town} has no source`);
@@ -279,6 +282,11 @@ export function readBundle(raw: unknown): Bundle {
 		meetings.set(found.id, found);
 		if (!towns.has(found.town))
 			reasons.push(`${where}: unknown town ${found.town}`);
+		// An item's board is its meeting's, below.
+		else if (!boardsOf.get(found.town)?.has(String(found.board)))
+			reasons.push(
+				`${found.id}: ${JSON.stringify(found.board)} is not one of ${found.town}'s boards`,
+			);
 		if (!inWindow(found.meeting_date))
 			reasons.push(`${where}: ${found.meeting_date} is outside the window`);
 	});

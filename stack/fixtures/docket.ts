@@ -268,11 +268,15 @@ export const fixture = {
 							minutes_online: "no",
 							status: "agendas_only",
 						},
-						{
-							board: COUNCIL,
+						...[CONSERVATION, COUNCIL].map((board) => ({
+							board,
 							minutes_online: "partial",
-							status: "none_in_window",
-						},
+							status: others.some(
+								(meeting) => meeting.town === town && meeting.board === board,
+							)
+								? "collected"
+								: "none_in_window",
+						})),
 					],
 	})),
 	meetings: meetings.map(({ meeting }) => meeting),
