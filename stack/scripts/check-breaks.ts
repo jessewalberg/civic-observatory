@@ -187,7 +187,7 @@ const BREAKS: Break[] = [
 		/more rows and its second/,
 		DOCKET,
 		"		...(isFirst ? [env.DB.prepare(QUIET).bind(slug)] : []),",
-		"		env.DB.prepare(isFirst ? QUIET : `SELECT id FROM (${QUIET}) WHERE id = 'none'`).bind(slug),",
+		"		env.DB.prepare(isFirst ? QUIET : `SELECT count(*) AS id FROM (${QUIET})`).bind(slug),",
 	),
 	breakIt(
 		"docket",
