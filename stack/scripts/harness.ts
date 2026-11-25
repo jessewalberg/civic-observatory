@@ -100,6 +100,9 @@ export function enlarged(bundle: BundleFile, least: number): BundleFile {
 	return large;
 }
 
+/** An operator's machine is no run, wherever the checks are. */
+export const OPERATOR = { ...process.env, GITHUB_ACTIONS: "" };
+
 /** Runs scripts/load-docket.ts as an operator would. */
 export function load(state: string, bundle: unknown, ...args: string[]) {
 	mkdirSync(`${root}${state}`, { recursive: true });
@@ -111,7 +114,7 @@ export function load(state: string, bundle: unknown, ...args: string[]) {
 	const result = spawnSync(
 		process.execPath,
 		["scripts/load-docket.ts", file, "--state", state, ...args],
-		{ cwd: root, encoding: "utf8" },
+		{ cwd: root, encoding: "utf8", env: OPERATOR },
 	);
 	const [stage, ...said] = `${result.stdout}${result.stderr}`
 		.trim()
