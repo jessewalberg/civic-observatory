@@ -59,8 +59,9 @@ whole file is refused, and nothing is written, for any of these:
 What passes replaces the content in one D1 batch, which is one transaction: either the whole release is there or the
 whole old one still is. The batch's first statement takes the next release number, so of two loads that started from the
 same release only one can finish. Its last compares the stored items with the file's count. Loading the release that is
-already there writes nothing. A client that was killed may not know whether its load finished: the current release's
-digest says.
+already there writes nothing, and counts what is stored before it says so: where that is not the file's, the stored release is
+damaged, and the command says that and ends with 1. A client that was killed may not know whether its load finished: the
+current release's digest says.
 
 Item ids are stable. `releases` keeps one row for each load; `withdrawn_items` keeps what an item's address needs once
 the item itself is gone. An id that a later release brings back is an item again.
@@ -138,7 +139,8 @@ deploy token is kept, which is the operator's machine and the main-only GitHub e
 through an API. The release asks for it from outside: a block that is gone stops a run before the domain moves, and after
 that turns the run red without any change of its own.
 
-**This repository is public**, and so are its runs: what may be printed, and how that is proven, is in the runbook (section 3).
+**This repository is public**, and so are its runs: a run prints a closed vocabulary of this repository's own and no provider's
+word. What that is, and how it is proven, is in the runbook (section 3).
 
 `alchemy`, `@alchemy.run/cloudflare`, `@effect/platform-bun` and `@effect/platform-node` are development tools, like Vite and
 Wrangler: nothing of them is in the Worker or in a page.

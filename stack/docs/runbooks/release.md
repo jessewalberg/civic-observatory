@@ -86,9 +86,21 @@ GITHUB_REPOSITORY=jessewalberg/civic-observatory GITHUB_TOKEN=$(gh auth token) b
    | Every Worker's settings, `bindings[] \| select(.type == "ratelimit")` | None uses namespace 860301 or 860311 (two bindings with one ID share their counts) |
    | **Workers Builds** of `civic-observatory` (dashboard: the Worker, Settings, Builds; the API wants a user's token) | Not connected. A connected repository deploys `main` by itself. If it is, its disconnect is a step of the card. `vite.config.ts` here refuses to build in it |
    | Wider token: `cf "/zones/$ZONE/settings/rum" \| jq .result.value`, or the zone's Web Analytics page | It is on: the page-speed script is added to pages asked for with `Accept: text/html`. The docket's pages say `no-transform`, which forbids it, and the release check asks that way and fails on it. Turn nothing on |
-   | The zone's AI Labyrinth (Security, Settings, Bot traffic) | On 2026-11-25 one anonymous page of the old site carried its hidden link (`/cdn-cgi/content?id=…`, to a plain `curl`, not to a browser and not to the release check). It loads and runs nothing. The release check lets exactly that link pass and says how many pages had it |
+   | The zone's AI Labyrinth (Security, Settings, Bot traffic) | On 2026-11-25 one anonymous page of the old site carried its hidden link (`/cdn-cgi/content?id=…`, to a plain `curl`, not to a browser and not to the release check). It loads and runs nothing. The release check lets exactly that link pass, once a page: that host and path, an ID of that shape, its five attributes, its hidden style, no text. Anything else, or a second one, fails it. It says how many pages had it |
    | `bun run plan:production`, and again with `PRODUCTION_DOMAIN=unmanaged` | 3 to create (`Database`, `SignupClientKey`, `Website`) with their bindings; no update, replace or delete, no Access application. With the domain managed it is declared; unmanaged it is not |
-   | GitHub Actions: the environment `production` allows `main` only; Settings, Actions: a pull request of a fork needs approval and gets no secret | As said |
+   **The repository's settings that the release rests on**, read in GitHub before the card, because the workflow's file cannot
+   state them:
+
+   | Setting | Must be |
+   | --- | --- |
+   | Environments, `production`: deployment branches | `main` and no other; no self-review, wait or reviewer is relied on |
+   | Where `CLOUDFLARE_PRODUCTION_DEPLOY_TOKEN` is | In that environment alone, never a repository or organization secret |
+   | Actions, General: fork pull requests | Approval required for all outside collaborators; **no** write token and **no** secrets sent to forks' workflows (both boxes off) |
+   | Actions, General: workflow permissions | Read repository contents; Actions may not create or approve pull requests |
+   | Branches: `main` | A push needs a pull request, force pushes and deletion are off. Whoever may push to `main` can start a release |
+   | Collaborators | Who may write. **Anybody who may write may also run an old run again**, for 30 days, at that run's own commit and with that commit's workflow; a path filter does not stop it. A re-run of a finished release deploys its older commit again, and the check then says so. Give write to nobody who should not release |
+   | Actions: workflow runs | Who may delete one is who may write. Never delete a run of `production.yml` (section 7) |
+   | Workers Builds | Not connected (above) |
 
    `plan` changes nothing of the stage, but like every Alchemy run it uploads a temporary edge preview to read its state
    store's token.
@@ -128,12 +140,22 @@ no public text says.
    | --- | --- |
    | `bun run load <a refused file> --stage preview`, for a truncated file, a file with a field called `owner`, and one with a meeting of a board its town does not list | Refused before any call; `/api/health` still says `"docket":null` |
    | `bun run load <file> --stage preview` | `Release 1: …` with the file's counts; `/api/health` names release 1, its items and towns |
-   | The same command again | `Release 1 is this file already; nothing was written.` |
+   | The same command again | `Release 1 is this file already (… items, … meetings, … towns, … boards); nothing was written.` |
    | A file with fewer than 80% of the items, without and then with `--shrink "<why>"` | Refused; then loaded, with the reason in `releases`. Load the real file again |
-   | Kill: start a load of a changed file and `kill -9` its process group 0.5, 1, 2, 3 and 5 seconds after `Loading …` | After each, `/api/health` and `bun run report --stage preview` name the old release whole or the new one whole. Run the same command again: it loads, or says that it is there already |
+   | Kill: start a load of a changed file and kill its process group 0.5, 1, 2, 3 and 5 seconds after `Loading …` (the commands are below) | After each, `/api/health` and `bun run report --stage preview` name the old release whole or the new one whole. Run the same command again: it loads, or says that it is there already |
    | Two at once: two changed files, started together | One loads; the other fails whole (`UNIQUE constraint failed: releases.seq`), and says which release is there |
    | `bun run load <file> --stage production` with the preview file's token | Refused: no `--production-approved` |
    | `bun run load <file> --stage production --production-approved $(git rev-parse HEAD)`, before production exists | Refused: no such Worker |
+
+   The kill, in a folder outside the repository (`$OLDPWD` is `stack/` after `cd`), with `changed.json` the changed file there
+   and `AFTER` the seconds. The load, its local Worker and Wrangler's process are one process group, whose number is in
+   `load.pid`; the minus sign kills the group:
+
+   ```sh
+   setsid bash -c 'echo $$ > load.pid; cd "$1" && exec bun scripts/load-docket.ts "$2" --stage preview' - "$OLDPWD" "$PWD/changed.json" > load.log 2>&1 &
+   until grep -q '^Loading' load.log; do sleep 0.05; done; sleep "$AFTER"; kill -KILL -- "-$(cat load.pid)"
+   pgrep -g "$(cat load.pid)"   # nothing is left
+   ```
 
 7. `APP_RELEASE=$(git rev-parse HEAD) bun run check:production https://civic-docket-preview.<subdomain>.workers.dev preview`
    is green.
@@ -148,7 +170,14 @@ no public text says.
    | `bun run report --stage preview` | Counts only |
    | `bun run signup --stage preview closed` | Reads back `closed`; the page says that sign-up is not open, and a kept call is refused (403) |
 
-   Then delete what is left: `signups` and `signup_attempts` of the preview are empty (`report` says 0).
+   Then the clean-up of the test sign-ups, on the preview's database and no other. `NAME` must be the preview's, or stop:
+
+   ```sh
+   DB=$(cf "/accounts/$ACCOUNT/workers/scripts/civic-docket-preview/settings" | jq -r '.result.bindings[] | select(.type == "d1" and .name == "DB") | (.id // .database_id)')
+   NAME=$(cf "/accounts/$ACCOUNT/d1/database/$DB" | jq -r .result.name); echo "$NAME"
+   case "$NAME" in civic-docket-Database-preview-*) for T in signups signup_attempts counters; do cf "/accounts/$ACCOUNT/d1/database/$DB/query" --data "{\"sql\":\"DELETE FROM $T\"}" | jq -c '[.success, .result[0].meta.changes]'; done;; *) echo "not the preview";; esac
+   bun run report --stage preview   # submissions 0, signups 0, signup_open false, no requests
+   ```
 9. **Withdrawal at the edge.** Ask for two items as a browser does, twice each. Load a file without them (above 80%). Both
    answer 410 at the next request, from two networks, with no `cf-cache-status: HIT` before or after and
    `must-revalidate` on every page. Load the whole file again: 200.
@@ -156,7 +185,10 @@ no public text says.
     for with `Accept: text/html` says `no-transform` and holds no script of anybody else's. (`check:production` reads both.
     The preview's host is not in the zone; the domain is read again at the launch.)
 11. **The cost of reading.** Crawl every sitemap URL with the verifier's headers (at most four at a time; 0 errors), then read
-    what it cost, per kind of page, and write it into the record:
+    what it cost, per kind of page, and write it into the record. The read credential is another one: an account-owned token
+    with **Account Analytics Read** and nothing else ([SQL API](https://developers.cloudflare.com/analytics/analytics-engine/sql-api/),
+    read 2026-11-25), in a shell of its own (`cf` and `ACCOUNT` as at the top). Neither the preview file's token nor the deploy
+    token can read it, and neither should. The same token reads the GraphQL numbers:
 
     ```sh
     cf "/accounts/$ACCOUNT/analytics_engine/sql" --data "SELECT blob3 AS route, sum(_sample_interval) AS n, quantileWeighted(0.5)(double4, _sample_interval) AS rows_p50, max(double4) AS rows_max, quantileWeighted(0.95)(double2, _sample_interval) AS ms_p95 FROM civic_docket_requests WHERE blob1 = 'preview' AND timestamp > NOW() - INTERVAL '1' HOUR GROUP BY route"
@@ -192,12 +224,19 @@ production is deployed; the guard refuses it anywhere else.
 bun run load <file> --stage production --production-approved <the merge commit>
 ```
 
-It refuses unless the Worker that is deployed says that very commit. Load once, and nothing more until the run is over: the
-checks compare what they read with the release the wait saw, and another release fails the run.
+It refuses unless the Worker that is deployed says that very commit.
+
+**Loading again during a run is not allowed**, nor opening sign-up, nor any other write to the database, from the moment
+the wait says `Loaded` until the run has ended. The release checks are not one snapshot: they read health once, then the
+sitemap, then a head of every page, then some pages whole, and a load in between changes the data under them. Such a load can
+fail a correct release (an item withdrawn between two reads, counts that no longer agree, a release that is not the one the wait
+saw), and after the move that gives the domain back; or it can pass unseen, because what changed had been read already, and
+then data goes live that no check saw. The same holds for later releases, which have no wait to compare with: load before
+or after a run, never in it.
 
 From the first apply until the second, the docket can be read by whoever knows its `workers.dev` address, with sign-up closed.
-A release check reads about 30 pages whole, up to a few times while it settles, and those count as page requests in the
-report; the rest of the sitemap is asked for by its head, which is not counted. Leave the day of a release out of a count of
+A release check reads about 30 pages whole and about as many first pages of filtered lists (every kind, board and town, whose
+counts must add up to the items), up to a few times while it settles, and those count as page requests in the report; the rest of the sitemap is asked for by its head, which is not counted. Leave the day of a release out of a count of
 readers.
 
 **A run that did not finish.** A run whose machine died after the move leaves the domain on the new Worker and no
@@ -221,10 +260,21 @@ read 2026-11-24), so the give-back has that long.
 never touches the domain, the data or the switch, and gives nothing back: a failed check leaves the new version serving and
 the run red.
 
-**What the run prints is public.** No step prints an ID of the account, the zone, the database, the attachment or a token,
-an email address or the `workers.dev` subdomain. The subdomain travels between steps as an output and is masked
-(`::add-mask::`) before it is written; Alchemy's own output passes through a filter (`scripts/public-log.ts`). `check:release`
-runs every step, green and in each failure, against stand-ins that answer with recognizable ones, and reads all of it.
+**What the run prints is public**, so the steps that hold a credential or read an answer print a closed vocabulary of this
+repository's own (`scripts/public-log.ts`): which call, by a name of ours; the HTTP status; numeric error codes; counts, our commit,
+instants; what it means for the run, and what to do. Never a provider's words: no message, no body, no header's value, no name of a
+Worker, a person, a project or a path that is not one this file knows. A sentence can only be made of text written in these
+scripts and of values of those kinds. The `workers.dev` subdomain travels between steps as an output and is masked
+(`::add-mask::`) before it is written. Alchemy's output passes a list of allowed lines (`scripts/alchemy-output.ts`: the stage, our
+resources by name, its own status words, counts, durations, our commit); the rest is replaced by how many lines are not shown. An
+error nobody caught is printed as its class alone. `check:release` gives every field of every answer, and Alchemy's text, words that
+occur nowhere in these scripts, in 4xx, 429 and 5xx, in failures and in cancelled steps, and compares every word of the whole
+output with the scripts' own.
+
+**What the log does not say, an operator can read** on their own machine: the same commands run there write the full text of
+each such answer to a file of mode 600 in the machine's temporary folder, outside the repository, and print its path
+(`production-domain.ts inspect`, `check:production`). What Alchemy said of a failed apply: `bun run plan:production`, whose output
+is not filtered there. Do not paste either anywhere public.
 
 ## 4. After the merge
 
@@ -270,11 +320,16 @@ the stage. Without `--stage` it is the local database.
    of the D1 binding**, which [is one transaction](https://developers.cloudflare.com/d1/worker-api/d1-database/#batch) (read
    2026-11-25).
 4. If the answer is lost, the current release is read again and said. A killed client: run the same command again.
-5. **Nothing acts later than ten minutes.** The batch holds the time it was asked for, and the database refuses the whole of it
-   if it arrives more than ten minutes away from that, however it was delayed. The connection's own Worker answers nothing after
-   the same ten minutes, so a preview that a killed client left behind can do nothing. A message about an uncertain outcome
-   names the time; after it, what the database says is what is there. The switch (section 5) is held to the same. A machine
-   whose clock is off by ten minutes cannot load.
+   **"Already there"** is said only after counting: items, meetings, towns and boards as stored against the file's. Where they
+   differ, the stored release is damaged: the command says so, writes nothing and ends with 1. Then find out who wrote to the
+   database; load another reviewed file (a file with the same content counts as already there), or go back with
+   [Time Travel](https://developers.cloudflare.com/d1/reference/time-travel/).
+5. **Nothing acts later than ten minutes**, and no clock of this machine is trusted for that. The read of the current release
+   takes the time from the database itself; the batch holds that time, and the database refuses the whole batch if it arrives
+   more than ten minutes away from it, however it was delayed. The connection's own Worker answers nothing after ten minutes
+   counted from the time Cloudflare's API gave, so a preview that a killed client left behind can do nothing. A message about an
+   uncertain outcome names that time by the database's clock and by this machine's; after it, what the database says is what is
+   there. The switch (section 5) is held to the same.
 
 **How it connects, and why.** Read 2026-11-25:
 
@@ -394,7 +449,12 @@ read 2026-11-25). It leaves out all of the root app (`src/`, `server/`, `scripts
 root `package.json` and `bun.lock`), `docs/` and `deploy.yml`. So after a merge that changes only those, production rightly
 serves an older commit than `main`'s head: compare the live commit with the last commit that touched the two paths
 (`git log -1 --format=%H main -- stack .github/workflows/production.yml`). `deploy.yml` keeps its two jobs for pull requests and
-`main`; it has no secret and deploys nothing. The root app is deployed by nothing any more.
+`main`; it has no secret and deploys nothing.
+
+**What goes with the launch pull request, and is not done before it:** the root `package.json`'s `infra:staging` script and the
+root `alchemy.run.ts`. They use Alchemy 0.94 without this folder's guard, and would put an old staging Worker on `workers.dev` with
+no Access in front of it. Until they go, "nothing deploys but through the guard" is true of `stack/` and the workflows, not of the
+whole tree. After that the root app is deployed by nothing any more.
 
 ## 13. Record
 
