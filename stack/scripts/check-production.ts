@@ -17,15 +17,31 @@
 // Every page is asked for as a browser asks (`Accept: text/html`): Cloudflare adds its
 // page-speed script to those answers and to no other. It waits up to six minutes for
 // the commit, then gives everything else one minute to settle. An address on this
-// machine (check:release) gets seconds. It asks for about 40 pages and reads the
-// head of every other page the sitemap lists, four at a time; a head is not counted
-// as a page request (src/start.ts).
+// machine (check:release) gets seconds. It asks for about 60 pages and reads the
+// head of every page the sitemap lists, four at a time; a head is not counted as a
+// page request (src/start.ts). What it prints is a closed vocabulary (public-log.ts):
+// no value of an answer, but statuses and counts.
 import { readFileSync } from "node:fs";
-import { CALLS, limitPolicy } from "../src/lib/limits";
+import { BOARD_TYPES, KINDS } from "../src/lib/docket";
+import { CALLS, limitPolicy, PAGE_SIZE } from "../src/lib/limits";
 import { FUNCTIONS, OLD_FUNCTIONS, ORIGIN } from "../src/lib/site";
 import { SITE, workersDev } from "./cloudflare-api";
 import { expectedDocket, MIN_ITEMS, readDocket } from "./docket-health";
-import { complain, redact, say } from "./public-log";
+import {
+	classOf,
+	commit,
+	complain,
+	fail,
+	keep,
+	type Line,
+	list,
+	publicOutput,
+	say,
+	Told,
+	told,
+	word,
+} from "./public-log";
+import { FIXED, GONE, HOSTNAME, MISSING } from "./release-words";
 
 const file = (path: string) =>
 	readFileSync(new URL(`../public/${path}`, import.meta.url), "utf8");
@@ -45,10 +61,12 @@ const addressIsGood =
 		/^(https:\/\/[a-z0-9.-]+|http:\/\/127\.0\.0\.1:\d+)$/.test(where));
 /** What it is called in what is printed: never the account's own address. */
 const label = own
-	? "the new Worker's own address"
+	? told`the new Worker's own address`
 	: onDomain
-		? ORIGIN
-		: "the preview";
+		? word(ORIGIN)
+		: told`the preview`;
+const COMMIT = () => commit(expected);
+const BLOCK = word(OLD_FUNCTIONS);
 let base = where;
 let local = false;
 
@@ -60,19 +78,6 @@ const ACCESS: Record<string, string> = preview
 		}
 	: {};
 
-const FIXED = ["/", "/method", "/privacy", "/terms"];
-const GONE = [
-	"/explore",
-	"/pricing",
-	"/search",
-	"/topics/housing",
-	"/meeting/a-meeting",
-	"/dashboard",
-	"/admin",
-	"/sign-in",
-	"/sign-up",
-	"/reset-password",
-];
 /** How many of the sitemap's pages are read whole, evenly spaced in its order. */
 const ITEM_PAGES = 10;
 const TOWN_PAGES = 3;
@@ -98,6 +103,8 @@ const VENDOR_CODE =
 	/convex\.(?:cloud|site|dev)|workos|authkit|\/\/clerk\.|clerk\.accounts|@clerk\/|__clerk|clerk-js/i;
 
 interface Answer {
+	/** What it is called in what is printed. */
+	name: Line;
 	path: string;
 	status: number;
 	headers: Headers;
@@ -107,6 +114,7 @@ interface Answer {
 async function ask(
 	from: string,
 	path: string,
+	name: Line,
 	init: RequestInit = {},
 ): Promise<Answer> {
 	const response = await fetch(new URL(path, from), {
@@ -122,20 +130,22 @@ async function ask(
 		signal: AbortSignal.timeout(20_000),
 	});
 	return {
+		name,
 		path,
 		status: response.status,
 		headers: response.headers,
 		body: await response.text(),
 	};
 }
-const get = (path: string, init: RequestInit = {}) =>
-	ask(base, path, {
+const get = (path: string, name: Line, init: RequestInit = {}) =>
+	ask(base, path, name, {
 		...init,
 		headers: { ...ACCESS, ...(init.headers as Record<string, string>) },
 	});
 
-const short = (sha: unknown) =>
-	typeof sha === "string" && sha ? sha.slice(0, 12) : "none";
+/** A header, when it is not what it must be. */
+const state = (value: string | null) =>
+	value === null ? told`missing` : told`another value`;
 
 /** Runs `each` for every one of `all`, a few at a time. */
 async function politely<T>(all: T[], each: (one: T) => Promise<void>) {
@@ -148,11 +158,13 @@ async function politely<T>(all: T[], each: (one: T) => Promise<void>) {
 }
 
 /**
- * A link the zone may add for crawlers (AI Labyrinth): hidden, not followed, of the
- * zone's own host, and nothing runs. Nothing else may be added to a page.
+ * The one link the zone may add to a page, for crawlers (AI Labyrinth), as it was seen
+ * on 2026-11-25: on the zone's own host, an ID of that shape, five attributes and no
+ * other, hidden by its style, with nothing in it. Nothing else may be added, and not
+ * twice.
  */
 const LABYRINTH =
-	/<a href="https:\/\/civicobservatory\.com\/cdn-cgi\/content\?id=[\w.%-]+" aria-hidden="true" rel="nofollow noopener"[^>]*><\/a>/g;
+	/<a href="https:\/\/civicobservatory\.com\/cdn-cgi\/content\?id=[\w-]{43}-\d{10}\.\d{1,7}-\d(?:\.\d){3}-[\w.-]{16,200}" aria-hidden="true" rel="nofollow noopener" style="display: none !important; visibility: hidden !important"><\/a>/;
 let labyrinth = 0;
 
 /** What a page says about itself: its commit, its scripts and its assets. */
@@ -163,6 +175,10 @@ async function page(html: string) {
 		canonical: [] as string[],
 		title: "",
 		entries: 0,
+		/** The towns its entries link to. */
+		towns: [] as string[],
+		/** Its notes' text: what a list says of itself. */
+		notes: [] as string[],
 		quotes: 0,
 		inlineNonces: [] as (string | null)[],
 		assets: new Set<string>(),
@@ -184,7 +200,9 @@ async function page(html: string) {
 		})
 		.on('link[rel="canonical"]', {
 			element(element) {
-				seen.canonical.push(element.getAttribute("href") ?? "");
+				// As it is written; a filter's address has an ampersand.
+				const href = element.getAttribute("href") ?? "";
+				seen.canonical.push(href.replaceAll("&amp;", "&"));
 			},
 		})
 		.on("h1", {
@@ -195,6 +213,19 @@ async function page(html: string) {
 		.on(".entry h3 a", {
 			element() {
 				seen.entries += 1;
+			},
+		})
+		.on(".entry .when a", {
+			element(element) {
+				seen.towns.push(element.getAttribute("href") ?? "");
+			},
+		})
+		.on("main p.note", {
+			element() {
+				seen.notes.push("");
+			},
+			text(chunk) {
+				seen.notes[seen.notes.length - 1] += chunk.text;
 			},
 		})
 		.on("blockquote", {
@@ -242,6 +273,30 @@ async function page(html: string) {
 	return seen;
 }
 
+/**
+ * How many items a list says it has, if the list it shows is the first page of that;
+ * undefined when it shows something else. A list of none says so and shows none.
+ */
+function totalOf(seen: Awaited<ReturnType<typeof page>>): number | undefined {
+	const notes = seen.notes.map((note) => note.replace(/\s+/g, " ").trim());
+	const none = notes.some((note) => note.startsWith("No items match."));
+	const [, from, to, of] =
+		notes
+			.map((note) =>
+				/^Items (\d{1,7}) to (\d{1,7}) of (\d{1,7}), newest first/.exec(note),
+			)
+			.find(Boolean)
+			?.map(Number) ?? [];
+	if (of === undefined) return none && seen.entries === 0 ? 0 : undefined;
+	return !none &&
+		of > 0 &&
+		from === 1 &&
+		to === Math.min(of, PAGE_SIZE) &&
+		seen.entries === to
+		? of
+		: undefined;
+}
+
 /** The sitemap's pages of one kind, in its own order. */
 const listed = (sitemap: string) =>
 	[...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map(([, url]) => url ?? "");
@@ -272,92 +327,109 @@ function staticHeaders(path: string): [string, string][] {
 }
 
 /** Everything wrong with the deployed site; empty when the release is good. */
-async function problems(): Promise<string[]> {
-	const found: string[] = [];
+async function problems(): Promise<Line[]> {
+	const found: Line[] = [];
 	labyrinth = 0;
-	const expect = (condition: boolean, problem: string) => {
-		if (!condition) found.push(problem);
+	/** `seen` is what was there, for the operator's own machine. */
+	const expect = (condition: boolean, problem: Line, seen?: unknown) => {
+		if (condition) return;
+		found.push(problem);
+		if (seen !== undefined) keep(`${problem}: ${JSON.stringify(seen)}`);
+	};
+	const header = (answer: Answer, name: string, good: boolean) => {
+		const value = answer.headers.get(name);
+		expect(good, told`${answer.name}: ${word(name)} is ${state(value)}`, value);
 	};
 	const secured = (answer: Answer) => {
 		for (const [name, pattern] of SECURITY_HEADERS)
-			expect(
-				pattern.test(answer.headers.get(name) ?? ""),
-				`${answer.path}: ${name} is ${answer.headers.get(name) ?? "missing"}`,
-			);
+			header(answer, name, pattern.test(answer.headers.get(name) ?? ""));
 	};
 	/** Nothing of the old app's vendors, and no cookie, in any answer. */
 	const clean = (answer: Answer) => {
-		expect(!answer.headers.has("set-cookie"), `${answer.path}: sets a cookie`);
+		expect(
+			!answer.headers.has("set-cookie"),
+			told`${answer.name}: sets a cookie`,
+		);
 		const vendor = [...answer.headers].find(([name, value]) =>
 			VENDORS.test(`${name.replace(/[-_]/g, " ")} ${value}`),
 		);
 		expect(
 			!vendor,
-			`${answer.path}: a header of the old app's (${vendor?.[0]})`,
+			told`${answer.name}: has a header of the old app's`,
+			vendor,
 		);
 		expect(
 			!VENDOR_CODE.test(answer.body),
-			`${answer.path}: names one of the old app's vendors`,
+			told`${answer.name}: names one of the old app's vendors`,
 		);
 	};
 	const ours = (answer: Answer) => {
 		clean(answer);
+		const said = answer.headers.get("x-commit-sha");
 		expect(
-			answer.headers.get("x-commit-sha") === expected,
-			`${answer.path}: x-commit-sha is ${short(answer.headers.get("x-commit-sha"))}`,
+			said === expected,
+			told`${answer.name}: x-commit-sha is ${commit(said)}`,
+			said,
 		);
 		// Production may be indexed, and no other stage.
-		expect(
+		header(
+			answer,
+			"x-robots-tag",
 			/noindex/i.test(answer.headers.get("x-robots-tag") ?? "") === preview,
-			`${answer.path}: X-Robots-Tag says ${answer.headers.get("x-robots-tag") ?? "nothing"}`,
 		);
 		secured(answer);
 	};
 	/** A page as a visitor loads it whole, from this commit. */
 	const wholePage = async (
 		path: string,
-		{ status = 200, list = false, plain = false } = {},
+		name: Line,
+		{ status = 200, list: aList = false, plain = false } = {},
 	) => {
-		const answer = await get(path);
-		labyrinth += answer.body.match(LABYRINTH)?.length ?? 0;
+		const answer = await get(path, name);
 		const body = answer.body.replace(LABYRINTH, "");
+		if (body !== answer.body) labyrinth += 1;
 		const seen = await page(body);
 		ours(answer);
-		expect(answer.status === status, `${path} answered ${answer.status}`);
+		expect(answer.status === status, told`${name} answered ${answer.status}`);
 		expect(
 			/^text\/html/.test(answer.headers.get("content-type") ?? ""),
-			`${path}: not HTML`,
+			told`${name}: not HTML`,
 		);
 		expect(
 			seen.commit.length === 1 && seen.commit[0] === expected,
-			`${path}: <meta name="commit"> is ${short(seen.commit[0])}`,
+			told`${name}: <meta name="commit"> is ${commit(seen.commit[0])}`,
+			seen.commit,
 		);
 		expect(
 			!VENDORS.test(seen.frame),
-			`${path}: its frame names one of the old app's vendors`,
+			told`${name}: its frame names one of the old app's vendors`,
 		);
 		if (!plain)
 			expect(
 				seen.canonical.length === 1 && seen.canonical[0] === `${ORIGIN}${path}`,
-				`${path}: canonical is ${seen.canonical.join(", ") || "missing"}`,
+				told`${name}: its canonical address is not its own`,
+				seen.canonical,
 			);
 		expect(
-			plain || seen.robots.join() === (list ? "noindex, follow" : ""),
-			`${path}: its robots meta says ${seen.robots.join(", ") || "nothing"}`,
+			plain || seen.robots.join() === (aList ? "noindex, follow" : ""),
+			told`${name}: its robots meta is not as it must be`,
+			seen.robots,
 		);
 		expect(
 			seen.foreign.size === 0,
-			`${path}: loads ${[...seen.foreign].join(", ")}`,
+			told`${name}: loads ${seen.foreign.size} files from elsewhere`,
+			[...seen.foreign],
 		);
 		// What Cloudflare's edge could add to it, and that it may not.
 		expect(
 			!/cloudflareinsights|\/cdn-cgi\//.test(body),
-			`${path}: something of Cloudflare's is in it`,
+			told`${name}: something of Cloudflare's is in it`,
 		);
-		expect(
+		header(
+			answer,
+			"cache-control",
 			answer.headers.get("cache-control") ===
 				"public, max-age=0, must-revalidate, no-transform",
-			`${path}: Cache-Control is ${answer.headers.get("cache-control") ?? "missing"}`,
 		);
 		const policy = answer.headers.get("content-security-policy") ?? "";
 		const nonce = /script-src 'self' 'nonce-([0-9a-f]{32})';/.exec(policy)?.[1];
@@ -366,18 +438,18 @@ async function problems(): Promise<string[]> {
 				!/unsafe|https?:|\*/.test(policy) &&
 				seen.inlineNonces.length > 0 &&
 				seen.inlineNonces.every((value) => value === nonce),
-			`${path}: an inline script its policy does not admit`,
+			told`${name}: an inline script its policy does not admit`,
 		);
 		// A search engine must never be limited out of a page.
 		expect(
 			!answer.headers.has("ratelimit-policy"),
-			`${path}: a page is rate limited`,
+			told`${name}: a page is rate limited`,
 		);
-		return { ...seen, body };
+		return seen;
 	};
 
 	if (preview) {
-		const outside = await ask(base, "/");
+		const outside = await ask(base, "/", word("/"));
 		expect(
 			([401, 403].includes(outside.status) ||
 				(outside.status === 302 &&
@@ -385,45 +457,49 @@ async function problems(): Promise<string[]> {
 						outside.headers.get("location") ?? "",
 					))) &&
 				!outside.headers.has("x-commit-sha"),
-			`/ answered ${outside.status} to a request without Access's token`,
+			told`/ answered ${outside.status} to a request without Access's token`,
 		);
 	}
 
-	const health = await get("/api/health");
+	const health = await get("/api/health", word("/api/health"));
 	ours(health);
-	const state = readDocket(health.body);
-	const { docket } = state;
-	expect(health.status === 200, `/api/health answered ${health.status}`);
-	expect(
+	const said = readDocket(health.body);
+	const { docket } = said;
+	expect(health.status === 200, told`/api/health answered ${health.status}`);
+	header(
+		health,
+		"cache-control",
 		health.headers.get("cache-control") === "no-store",
-		`/api/health: Cache-Control is ${health.headers.get("cache-control") ?? "missing"}`,
 	);
 	expect(
-		state.commit === expected,
-		`/api/health: commit ${short(state.commit)}`,
+		said.commit === expected,
+		told`/api/health: it reports ${commit(said.commit)}`,
 	);
 	expect(
-		state.database === "reachable",
-		`/api/health: the database is ${state.database === "unreachable" ? "unreachable" : "unstated"}`,
+		said.database === "reachable",
+		told`/api/health: the database is ${said.database === "unreachable" ? told`unreachable` : told`unstated`}`,
 	);
 	expect(
 		mode === "cutover"
-			? state.signup === "closed"
-			: state.signup === "closed" || state.signup === "open",
-		`/api/health: sign-up is ${state.signup === "open" ? "open" : "unstated"}`,
+			? said.signup === "closed"
+			: said.signup === "closed" || said.signup === "open",
+		told`/api/health: sign-up is ${said.signup === "open" ? told`open` : told`unstated`}`,
 	);
 	expect(
 		docket !== null && (preview || docket.items >= MIN_ITEMS),
-		`/api/health: ${docket ? `release ${docket.release} has ${docket.items} items, fewer than ${MIN_ITEMS}` : "no release is loaded"}`,
+		docket
+			? told`/api/health: release ${docket.release} has ${docket.items} items, fewer than ${MIN_ITEMS}`
+			: told`/api/health: no release is loaded`,
 	);
-	const seenBefore = expectedDocket(process.env.EXPECT_DOCKET);
-	expect(
-		!seenBefore || JSON.stringify(seenBefore) === JSON.stringify(docket),
-		`/api/health: release ${docket?.release ?? "none"} with ${docket?.items ?? 0} items, not the one the wait saw (release ${seenBefore?.release}, ${seenBefore?.items} items)`,
-	);
+	const before = expectedDocket(process.env.EXPECT_DOCKET);
+	if (before)
+		expect(
+			JSON.stringify(before) === JSON.stringify(docket),
+			told`/api/health: release ${docket?.release ?? 0} with ${docket?.items ?? 0} items, not the one the wait saw (release ${before.release}, ${before.items} items)`,
+		);
 
 	// The sitemap: exactly the fixed pages, the towns and the items.
-	const sitemap = await get("/sitemap.xml");
+	const sitemap = await get("/sitemap.xml", word("/sitemap.xml"));
 	ours(sitemap);
 	const urls = listed(sitemap.body);
 	const paths = urls
@@ -434,7 +510,7 @@ async function problems(): Promise<string[]> {
 	expect(
 		sitemap.status === 200 &&
 			/^application\/xml/.test(sitemap.headers.get("content-type") ?? ""),
-		`/sitemap.xml answered ${sitemap.status}`,
+		told`/sitemap.xml answered ${sitemap.status}, or is not XML`,
 	);
 	expect(
 		paths.length === urls.length &&
@@ -443,73 +519,181 @@ async function problems(): Promise<string[]> {
 			items.length === docket?.items &&
 			towns.length === docket?.towns &&
 			paths.length === FIXED.length + items.length + towns.length,
-		`/sitemap.xml lists ${urls.length} pages, ${items.length} of them items and ${towns.length} towns; health says ${docket?.items ?? 0} and ${docket?.towns ?? 0}, and ${FIXED.length} are fixed`,
+		told`/sitemap.xml lists ${urls.length} pages, ${items.length} of them items and ${towns.length} towns; health says ${docket?.items ?? 0} and ${docket?.towns ?? 0}, and ${FIXED.length} are fixed`,
 	);
 	let alive = 0;
-	await politely(paths, async (path) => {
-		const answer = await get(path, { method: "HEAD" });
+	await politely([...paths.entries()], async ([at, path]) => {
+		const answer = await get(path, told`page ${at + 1} of the sitemap`, {
+			method: "HEAD",
+		});
 		ours(answer);
 		if (answer.status === 200) alive += 1;
-		else expect(false, `${path}, in the sitemap, answered ${answer.status}`);
+		else
+			expect(
+				false,
+				told`page ${at + 1} of the sitemap answered ${answer.status}`,
+				path,
+			);
 	});
 	expect(
 		alive === paths.length,
-		`${paths.length - alive} pages of the sitemap do not answer 200`,
+		told`${paths.length - alive} pages of the sitemap do not answer 200`,
 	);
 
-	const home = await wholePage("/");
-	expect(home.entries > 0, "/: lists no item");
-	for (const path of FIXED.slice(1)) await wholePage(path);
-	for (const path of spaced(items, ITEM_PAGES)) {
-		const seen = await wholePage(path);
+	const home = await wholePage("/", word("/"));
+	expect(
+		totalOf(home) === docket?.items,
+		told`/: does not list the items of the release`,
+		home.notes,
+	);
+	for (const path of FIXED.slice(1)) await wholePage(path, word(path));
+	for (const [at, path] of spaced(items, ITEM_PAGES).entries()) {
+		const name = told`item page ${at + 1} of ${ITEM_PAGES}`;
+		const seen = await wholePage(path, name);
 		expect(
 			seen.title.trim() !== "" && seen.quotes === 1,
-			`${path} shows no item`,
+			told`${name} shows no item`,
+			path,
 		);
 	}
-	for (const path of spaced(towns, TOWN_PAGES))
+	for (const [at, path] of spaced(towns, TOWN_PAGES).entries()) {
+		const name = told`town page ${at + 1} of ${TOWN_PAGES}`;
+		const seen = await wholePage(path, name);
+		expect(seen.title.trim() !== "", told`${name} shows no town`, path);
+	}
+
+	// The filters, from the data that is there. Every item has one kind, one board and
+	// one town, so the lists of every kind hold the release's items, and so do those of
+	// every board and of every town: a list that wrongly shows nothing is missed there.
+	interface Filter {
+		path: string;
+		name: Line;
+		town?: string;
+	}
+	const counts = new Map<string, number>();
+	const readList = async ({ path, name, town }: Filter) => {
+		const answer = await get(path, name);
+		ours(answer);
+		expect(answer.status === 200, told`${name} answered ${answer.status}`);
+		const seen = await page(answer.body);
+		const total = totalOf(seen);
 		expect(
-			(await wholePage(path)).title.trim() !== "",
-			`${path} shows no town`,
+			total !== undefined,
+			told`${name} shows neither items nor that there are none`,
+			seen.notes,
 		);
-	expect(
-		(await wholePage("/?kind=decision", { list: true })).entries > 0,
-		"/?kind=decision: lists no item",
-	);
-	for (const path of GONE) await wholePage(path, { status: 410, plain: true });
-	for (const path of ["/no-such-page", "/item/no-such-item-01"])
-		await wholePage(path, { status: 404, plain: true });
+		expect(
+			!town || seen.towns.every((link) => link === `/town/${town}`),
+			told`${name} shows an item of another town`,
+			seen.towns,
+		);
+		counts.set(path, total ?? 0);
+		return total ?? 0;
+	};
+	const whole = async (called: Line, all: Filter[], of: number | undefined) => {
+		await politely(all, async (one) => {
+			await readList(one);
+		});
+		const sum = all.reduce((so, { path }) => so + (counts.get(path) ?? 0), 0);
+		expect(
+			sum === of,
+			told`the lists of every ${called} hold ${sum} items in all, not ${of ?? 0}`,
+		);
+	};
+	const kinds = Object.keys(KINDS).map((kind) => ({
+		path: `/?kind=${kind}`,
+		name: told`the list of kind ${word(kind)}`,
+	}));
+	const boards = Object.keys(BOARD_TYPES).map((board) => ({
+		path: `/?board=${board}`,
+		name: told`the list of board ${word(board)}`,
+	}));
+	const slugs = towns
+		.map((path) => path.slice("/town/".length))
+		.filter((slug) => /^[a-z0-9-]{1,60}$/.test(slug));
+	const places: Filter[] = slugs.map((slug, at) => ({
+		path: `/?town=${slug}`,
+		name: told`the list of town ${at + 1} of ${slugs.length}`,
+		town: slug,
+	}));
+	await whole(told`kind`, kinds, docket?.items);
+	await whole(told`board`, boards, docket?.items);
+	await whole(told`town`, places, docket?.items);
+	const all: Filter[] = [...kinds, ...boards, ...places];
+	const holds = ({ path }: Filter) => counts.get(path) ?? 0;
+	// One of each that has items, read whole.
+	for (const some of [kinds, boards, places]) {
+		const one = (some as Filter[]).find((filter) => holds(filter) > 0);
+		if (one) {
+			const seen = await wholePage(one.path, one.name, { list: true });
+			expect(
+				(totalOf(seen) ?? 0) > 0 && seen.entries > 0,
+				told`${one.name} lists no item`,
+			);
+		}
+	}
+	// And one that has none: a kind, a board or a town, or a kind in the smallest town.
+	let empty = all.find((filter) => holds(filter) === 0);
+	const [smallest] = [...places].sort((a, b) => holds(a) - holds(b));
+	if (!empty && smallest) {
+		const inTown = kinds.map(({ path, name }) => ({
+			// In the docket's own order of filters (src/lib/docket.ts, listPath).
+			path: `${smallest.path}&${path.slice(2)}`,
+			name: told`${name} in ${smallest.name}`,
+			town: smallest.town,
+		}));
+		await whole(told`kind of a town`, inTown, holds(smallest));
+		empty = inTown.find((filter) => holds(filter) === 0);
+	}
+	if (empty) {
+		const seen = await wholePage(empty.path, empty.name, { list: true });
+		expect(
+			totalOf(seen) === 0,
+			told`${empty.name} does not say that it has no items`,
+		);
+	}
+
+	for (const path of GONE)
+		await wholePage(path, word(path), { status: 410, plain: true });
+	for (const path of MISSING)
+		await wholePage(path, word(path), { status: 404, plain: true });
 
 	// Static files, which are served without the Worker.
 	expect(
 		[...home.assets].some((path) => path.endsWith(".js")) &&
 			[...home.assets].some((path) => path.endsWith(".css")),
-		"/: names no script or stylesheet",
+		told`/: names no script or stylesheet`,
 	);
 	let scripts = "";
-	for (const path of [...home.assets, "/favicon.svg"]) {
-		const answer = await get(path, { headers: { Accept: "*/*" } });
-		expect(answer.status === 200, `${path} answered ${answer.status}`);
+	for (const [at, path] of [...home.assets, "/favicon.svg"].entries()) {
+		const name = path.endsWith(".js")
+			? told`file ${at + 1}, a script`
+			: path.endsWith(".css")
+				? told`file ${at + 1}, a stylesheet`
+				: word(path, told`file ${at + 1}`);
+		const answer = await get(path, name, { headers: { Accept: "*/*" } });
+		expect(answer.status === 200, told`${name} answered ${answer.status}`);
 		clean(answer);
-		for (const [name, value] of staticHeaders(path))
+		for (const [key, value] of staticHeaders(path))
 			expect(
-				answer.headers.get(name) === value,
-				`${path}: ${name} is ${answer.headers.get(name) ?? "missing"}, not what public/_headers says`,
+				answer.headers.get(key) === value,
+				told`${name}: ${word(key)} is ${state(answer.headers.get(key))}, not what public/_headers says`,
+				answer.headers.get(key),
 			);
 		expect(
 			!VENDORS.test(answer.body),
-			`${path}: names one of the old app's vendors`,
+			told`${name}: names one of the old app's vendors`,
 		);
 		if (path.endsWith(".js")) scripts += answer.body;
 	}
 
-	const robots = await get("/robots.txt");
+	const robots = await get("/robots.txt", word("/robots.txt"));
 	ours(robots);
 	expect(
 		robots.status === 200 &&
 			robots.body ===
 				(preview ? "User-agent: *\nDisallow: /\n" : file("robots.txt")),
-		`/robots.txt is not the ${preview ? "closed" : "public"} policy (${robots.status})`,
+		told`/robots.txt is not the ${preview ? told`closed` : told`public`} policy (${robots.status})`,
 	);
 
 	// The pages' own calls reach the Worker, and their limit is bound: one of the
@@ -517,11 +701,11 @@ async function problems(): Promise<string[]> {
 	// nothing.
 	expect(
 		!scripts.includes(OLD_FUNCTIONS),
-		`the pages' scripts name ${OLD_FUNCTIONS}, which the zone blocks`,
+		told`the pages' scripts name ${BLOCK}, which the zone blocks`,
 	);
 	const id = /(?<=[`'"])[0-9a-f]{64}(?=[`'"])/.exec(scripts)?.[0];
-	expect(id !== undefined, "the pages' scripts name no server function");
-	const call = await get(`${FUNCTIONS}/${id ?? "none"}`, {
+	expect(id !== undefined, told`the pages' scripts name no server function`);
+	const call = await get(`${FUNCTIONS}/${id ?? "none"}`, told`a call`, {
 		method: "POST",
 		headers: {
 			Accept: "application/json",
@@ -535,18 +719,19 @@ async function problems(): Promise<string[]> {
 	ours(call);
 	expect(
 		call.status === 400,
-		`a call under ${FUNCTIONS} that says nothing answered ${call.status}`,
+		told`a call under ${word(FUNCTIONS)} that says nothing answered ${call.status}`,
 	);
+	const limit = call.headers.get("ratelimit-policy");
 	expect(
-		call.headers.get("ratelimit-policy") === limitPolicy,
-		`a call: the limit (${CALLS.calls} a minute) is ${call.headers.get("ratelimit-policy") ?? "not bound"}`,
+		limit === limitPolicy,
+		told`a call: the limit (${CALLS.calls} a minute) is ${limit === null ? told`not bound` : told`another`}`,
+		limit,
 	);
 
-	// The old app's function path: nothing of this app is there. On the domain the
-	// zone answers for it first, as it did for the old app.
-	// Nothing of the docket answers there: the zone's own answer has neither a commit
-	// nor the docket's headers. Everywhere else it is the docket's, like any other.
-	const old = await get(`${OLD_FUNCTIONS}/x`);
+	// The old app's function path. On the domain the zone answers for it first, as it
+	// did for the old app: its answer has neither a commit nor the docket's headers.
+	// Everywhere else the docket answers, like any other path.
+	const old = await get(`${OLD_FUNCTIONS}/x`, told`${BLOCK}/x`);
 	if (onDomain) clean(old);
 	else ours(old);
 	expect(
@@ -556,23 +741,23 @@ async function problems(): Promise<string[]> {
 					!old.headers.has("cf-mitigated")
 			: old.status === 404,
 		onDomain
-			? `${OLD_FUNCTIONS} answered ${old.status}: THE ZONE'S BLOCK IS GONE, or is not what answers (docs/runbooks/release.md, section 7)`
-			: `${OLD_FUNCTIONS} answered ${old.status}`,
+			? told`${BLOCK} answered ${old.status}: THE ZONE'S BLOCK IS GONE, or is not what answers (docs/runbooks/release.md, section 7)`
+			: told`${BLOCK} answered ${old.status}`,
 	);
 	expect(
 		!old.headers.has("x-tss-serialized"),
-		`${OLD_FUNCTIONS} answered a server function`,
+		told`${BLOCK} answered a server function`,
 	);
 
 	// Plain http answers a redirect to https and nothing else.
 	const http = onDomain ? plainAddress() : undefined;
 	if (http) {
-		const plain = await ask(http, "/?kind=decision");
+		const plain = await ask(http, "/?kind=decision", told`http://`);
 		expect(
 			plain.status >= 301 &&
 				plain.status <= 308 &&
 				plain.headers.get("location") === `${ORIGIN}/?kind=decision`,
-			`http:// answered ${plain.status}, not a redirect to https`,
+			told`http:// answered ${plain.status}, not a redirect to https`,
 		);
 	}
 	return found;
@@ -580,7 +765,7 @@ async function problems(): Promise<string[]> {
 
 /** Where plain http is asked; in the rehearsal, a stand-in on this machine. */
 function plainAddress() {
-	if (!local) return ORIGIN.replace("https:", "http:");
+	if (!local) return `http://${HOSTNAME}`;
 	const played = process.env.PLAIN_ORIGIN ?? "";
 	return /^http:\/\/127\.0\.0\.1:\d+$/.test(played) ? played : undefined;
 }
@@ -592,20 +777,18 @@ const pause = () =>
 async function waitForCommit() {
 	const deadline = Date.now() + (local ? 4_000 : 6 * 60_000);
 	for (;;) {
-		let seen: string;
+		let seen: Line;
 		try {
-			const health = await get("/api/health");
-			const commit = health.headers.get("x-commit-sha");
-			if (commit === expected) return;
-			seen = `${health.status}, ${commit ? `x-commit-sha ${short(commit)}` : "not the docket"}`;
+			const health = await get("/api/health", word("/api/health"));
+			const said = health.headers.get("x-commit-sha");
+			if (said === expected) return;
+			seen = told`HTTP ${health.status}, ${said ? commit(said) : told`not the docket`}`;
 		} catch (error) {
-			seen = error instanceof Error ? error.name : "no answer";
+			seen = told`no answer (${classOf(error)})`;
 		}
 		if (Date.now() > deadline)
-			throw new Error(
-				`${label} never answered ${short(expected)} (last: ${seen}).`,
-			);
-		say(`waiting for ${short(expected)} at ${label}: ${seen}`);
+			return fail`${label} never answered ${COMMIT()} (last: ${seen}).`;
+		say(told`waiting for ${COMMIT()} at ${label}: ${seen}`);
 		await pause();
 	}
 }
@@ -614,71 +797,76 @@ async function check() {
 	await waitForCommit();
 	const deadline = Date.now() + (local ? 1_000 : 60_000);
 	for (;;) {
-		const found = await problems().catch((error: unknown) => [
-			`no answer (${error instanceof Error ? error.name : "failed"})`,
-		]);
+		const found = await problems().catch((error: unknown) => {
+			keep(error instanceof Error ? error.stack : error);
+			return [
+				error instanceof Told
+					? error.line
+					: told`no answer (${classOf(error)})`,
+			];
+		});
 		if (found.length === 0) break;
 		if (Date.now() > deadline)
-			throw new Error(
-				`${label} is not right:\n- ${found.slice(0, 40).join("\n- ")}${found.length > 40 ? `\n- and ${found.length - 40} more` : ""}`,
-			);
-		say(`not settled yet: ${found.slice(0, 5).join("; ")}`);
+			return fail`${label} is not right:${list(
+				found.slice(0, 40).map((line) => told`\n- ${line}`),
+				told``,
+			)}${found.length > 40 ? told`\n- and ${found.length - 40} more` : told``}`;
+		say(told`not settled yet: ${list(found.slice(0, 5), told`; `)}`);
 		await pause();
 	}
 	if (labyrinth)
-		say(`note: the zone added its hidden crawler link to ${labyrinth} pages`);
+		say(
+			told`note: the zone added its hidden crawler link to ${labyrinth} pages`,
+		);
 	say(
-		`${label} serves ${short(expected)}: every page, the sitemap, the data, robots, the static files, the limit and the headers are right; ${preview ? "nobody without the token gets in" : onDomain ? `the zone still blocks ${OLD_FUNCTIONS}` : `nothing is under ${OLD_FUNCTIONS}`}; no cookie and nothing of the old app's vendors.`,
+		told`${label} serves ${COMMIT()}: every page, the sitemap, the data, the filters, robots, the static files, the limit and the headers are right; ${
+			preview
+				? told`nobody without the token gets in`
+				: onDomain
+					? told`the zone still blocks ${BLOCK}`
+					: told`nothing is under ${BLOCK}`
+		}; no cookie and nothing of the old app's vendors.`,
 	);
 }
 
 /** What would fail the check after the move is found before it. */
 async function reachable() {
-	const home = await get("/");
+	const home = await get("/", word("/"));
 	if (home.headers.has("cf-mitigated") || home.status === 403)
-		throw new Error(
-			`${label} challenges this machine (${home.status}), so the check after the move could not read it. Nothing was moved.`,
-		);
-	const old = await get(`${OLD_FUNCTIONS}/x`);
+		return fail`${label} challenges this machine (${home.status}), so the check after the move could not read it. Nothing was moved.`;
+	const old = await get(`${OLD_FUNCTIONS}/x`, BLOCK);
 	if (
 		old.status !== 403 ||
 		old.headers.has("cf-mitigated") ||
 		old.headers.has("x-commit-sha")
 	)
-		throw new Error(
-			`${label}: ${OLD_FUNCTIONS} answered ${old.status}, so the zone's block is gone. Nothing was moved.`,
-		);
+		return fail`${label}: ${BLOCK} answered ${old.status}, so the zone's block is gone. Nothing was moved.`;
 	say(
-		`${label} answers this machine: ${home.status}; the zone blocks ${OLD_FUNCTIONS}.`,
+		told`${label} answers this machine: ${home.status}; the zone blocks ${BLOCK}.`,
 	);
 }
 
-try {
+async function main() {
+	publicOutput();
 	if (process.argv.length !== 4 || !addressIsGood)
-		throw new Error(
-			`Use: bun scripts/check-production.ts workers.dev cutover | ${ORIGIN} reachable|cutover|release | https://<host> preview`,
-		);
+		return fail`Use: bun scripts/check-production.ts workers.dev cutover | ${word(ORIGIN)} reachable|cutover|release | https://<host> preview`;
 	if (
 		own
 			? mode !== "cutover"
 			: !["reachable", "cutover", "release", "preview"].includes(mode)
 	)
-		throw new Error(
-			"The last argument is cutover, release, reachable or preview.",
-		);
+		return fail`The last argument is cutover, release, reachable or preview.`;
 	base = own ? workersDev() : onDomain ? SITE() : where;
 	local = base.startsWith("http://127.0.0.1");
-	if (mode === "reachable") await reachable();
-	else {
-		if (!/^[0-9a-f]{40}$/.test(expected))
-			throw new Error("Set APP_RELEASE to the full deployed commit SHA.");
-		if (Object.values(ACCESS).includes(""))
-			throw new Error(
-				"Set CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET (the preview's verifier token).",
-			);
-		await check();
-	}
-} catch (error) {
-	complain(error, redact("The check failed."));
-	process.exitCode = 1;
+	if (mode === "reachable") return reachable();
+	if (!/^[0-9a-f]{40}$/.test(expected))
+		return fail`Set APP_RELEASE to the full deployed commit SHA.`;
+	if (Object.values(ACCESS).includes(""))
+		return fail`Set CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET (the preview's verifier token).`;
+	return check();
 }
+
+main().catch((error: unknown) => {
+	complain(error, told`The check failed.`);
+	process.exitCode = 1;
+});

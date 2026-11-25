@@ -1,4 +1,5 @@
 // What /api/health says (src/routes/api/health.ts), read by the release.
+import { fail } from "./public-log";
 
 /** Fewer, and the load is wrong: the first release of the data holds 363. */
 export const MIN_ITEMS = 300;
@@ -48,6 +49,6 @@ export function expectedDocket(said: string | undefined): Docket | undefined {
 	if (!said?.trim()) return undefined;
 	const [release, items, towns, ...more] = said.trim().split(":").map(Number);
 	if (![release, items, towns].every(count) || more.length > 0)
-		throw new Error("EXPECT_DOCKET is unreadable.");
+		fail`EXPECT_DOCKET is unreadable.`;
 	return { release, items, towns } as Docket;
 }

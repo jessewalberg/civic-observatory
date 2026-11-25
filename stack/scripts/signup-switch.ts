@@ -2,8 +2,8 @@
 // row, of the local D1 or a stage's (docs/runbooks/release.md, section 5). One
 // statement, and then a read back, which is what it prints.
 import { parseArgs } from "node:util";
-import { SESSION_SECONDS } from "./docket-bundle";
-import { complain } from "./public-log";
+import { NOW, readNow, SESSION_SECONDS } from "./docket-bundle";
+import { complainHere, told } from "./public-log";
 import { chooseStage, STAGE_OPTIONS } from "./remote-d1";
 
 async function main() {
@@ -19,8 +19,11 @@ async function main() {
 		);
 	const database = await open();
 	try {
-		// A write that arrives late does nothing.
-		const until = Math.floor(Date.now() / 1_000) + SESSION_SECONDS;
+		// A write that arrives late, by the database's own clock, does nothing.
+		const [time] = await database.batch([NOW]);
+		const now = Date.parse(readNow(time?.rows));
+		const last = SESSION_SECONDS * 1_000;
+		const until = Math.floor((now + last) / 1_000);
 		await database
 			.batch([
 				[
@@ -30,7 +33,7 @@ async function main() {
 			])
 			.catch((error: unknown) => {
 				throw new Error(
-					`${error instanceof Error ? error.message : "no answer"}\nIt may still be made until ${new Date(until * 1_000).toISOString()}, and not after. Run the same command again.`,
+					`${error instanceof Error ? error.message : "no answer"}\nIt may still be made until ${new Date(until * 1_000).toISOString()} by the database's clock, ${new Date(Date.now() + last).toISOString()} by this machine's, and not after. Run the same command again.`,
 				);
 			});
 		const rows = await database.rows("SELECT id, signup_open FROM settings");
@@ -46,6 +49,6 @@ async function main() {
 try {
 	await main();
 } catch (error) {
-	complain(error, "The switch failed.");
+	complainHere(error, told`The switch failed.`);
 	process.exitCode = 1;
 }

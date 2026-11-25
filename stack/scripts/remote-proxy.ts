@@ -24,7 +24,8 @@ if (
 process.stdin.on("end", () => process.exit(0));
 process.stdin.on("error", () => process.exit(0));
 process.stdin.resume();
-setTimeout(() => process.exit(0), Math.max(0, Number(until) - Date.now()));
+// Ten minutes from here, whatever this machine's clock says.
+setTimeout(() => process.exit(0), 600_000);
 
 const here = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 // As Wrangler's own startRemoteProxySession does, with our entry.

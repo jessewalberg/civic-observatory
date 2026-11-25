@@ -136,8 +136,13 @@ async function check({ name, args, env, says, waits, allowed }: Case) {
 	if (!name.includes(CASE)) return;
 	const { code, output } = await run(args, env, waits && says);
 	const reached = output.includes("Loading stack state");
+	// In a run Alchemy's own words are not shown: how it ended is.
+	const unanswered = env.GITHUB_ACTIONS
+		? /^Alchemy: \d+ lines are not shown here; it ended with 1\.$/m.test(output) &&
+			!/Transport error/.test(output)
+		: /Transport error/.test(output);
 	const good = allowed
-		? reached && /Transport error/.test(output)
+		? reached && unanswered
 		: code !== 0 && !reached && output.includes(says ?? "");
 	if (!good)
 		throw new Error(`check:guard failed: ${name} (exit ${code})\n${output}`);
@@ -355,7 +360,7 @@ const NOT_THE_JOB: [string, Env, string][] = [
 		(name): [string, Env, string] => [
 			`an agent session (${name})`,
 			{ ...job, [name]: "1" },
-			`a coding-agent session (${name})`,
+			"after a push to main (a coding-agent session).",
 		],
 	),
 ];
@@ -547,14 +552,14 @@ const REFUSED: Case[] = [
 		says: "Set CLOUDFLARE_API_TOKEN",
 	})),
 	...[
-		["CLOUDFLARE_API", "https://elsewhere.example", "https://api.cloudflare.com"],
-		["CLOUDFLARE_API", "http://127.0.0.1.example:80", "https://api.cloudflare.com"],
-		["GITHUB_API_URL", "http://127.0.0.1.example:80", "https://api.github.com"],
-	].map(([name = "", value = "", real = ""]) => ({
+		["CLOUDFLARE_API", "https://elsewhere.example"],
+		["CLOUDFLARE_API", "http://127.0.0.1.example:80"],
+		["GITHUB_API_URL", "http://127.0.0.1.example:80"],
+	].map(([name = "", value = ""]) => ({
 		name: `domain, ${name} at ${value}`,
 		args: domain("inspect"),
 		env: { ...production, [name]: value },
-		says: `${name} may only be ${real} or on 127.0.0.1.`,
+		says: `${name} may only be the real one or on 127.0.0.1.`,
 	})),
 	// The operator's scripts, and the wait.
 	...[

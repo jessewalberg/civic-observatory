@@ -10,12 +10,13 @@ import {
 	account,
 	CLOUDFLARE,
 	call,
+	cloudflareNow,
 	Declined,
 	deployToken,
 } from "./cloudflare-api";
 import { SESSION_SECONDS } from "./docket-bundle";
 import { type Database, openDatabase, openRemote } from "./local-d1";
-import { mask, redact } from "./public-log";
+import { mask, redact, told, word } from "./public-log";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
@@ -80,6 +81,7 @@ async function findDatabase(
 	};
 	const { bindings = [] } = await call<{ bindings?: Binding[] }>(
 		token,
+		told`What Worker ${word(name)} is`,
 		"GET",
 		`/accounts/${accountId}/workers/scripts/${name}/settings`,
 	).catch((error: unknown) => {
@@ -103,6 +105,7 @@ async function findDatabase(
 	mask(id);
 	const database = await call<{ uuid?: string; name?: string }>(
 		token,
+		told`Which database Worker ${word(name)} has`,
 		"GET",
 		`/accounts/${accountId}/d1/database/${id}`,
 	);
@@ -122,13 +125,15 @@ async function connect(token: string, accountId: string, id: string) {
 	const played = process.env.D1_PROXY?.trim();
 	if (played) {
 		if (
-			!CLOUDFLARE.startsWith("http://127.0.0.1") ||
+			!CLOUDFLARE().startsWith("http://127.0.0.1") ||
 			!/^http:\/\/127\.0\.0\.1:\d+$/.test(played)
 		)
 			throw new Error("D1_PROXY is the rehearsal's, on 127.0.0.1.");
 		return { connection: played, end: () => {} };
 	}
-	const until = String(Date.now() + SESSION_SECONDS * 1_000);
+	// By Cloudflare's clock: the Worker that holds to it runs there, and this machine's
+	// may be wrong.
+	const until = String(Math.floor(cloudflareNow() + SESSION_SECONDS * 1_000));
 	const child = spawn("node", ["scripts/remote-proxy.ts", id, until], {
 		cwd: root,
 		stdio: ["pipe", "pipe", "pipe"],
@@ -141,8 +146,8 @@ async function connect(token: string, accountId: string, id: string) {
 			CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV: "false",
 			WRANGLER_LOG: "error",
 			WRANGLER_SEND_METRICS: "false",
-			...(CLOUDFLARE.startsWith("http://127.0.0.1")
-				? { CLOUDFLARE_API_BASE_URL: `${CLOUDFLARE}/client/v4` }
+			...(CLOUDFLARE().startsWith("http://127.0.0.1")
+				? { CLOUDFLARE_API_BASE_URL: `${CLOUDFLARE()}/client/v4` }
 				: {}),
 		} as unknown as NodeJS.ProcessEnv,
 	});

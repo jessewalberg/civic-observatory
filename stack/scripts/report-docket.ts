@@ -3,7 +3,7 @@
 // statement here answers with an email, a town list, a token or a client's hash.
 import { parseArgs } from "node:util";
 import type { Database } from "./local-d1";
-import { complain } from "./public-log";
+import { complainHere, told } from "./public-log";
 import { chooseStage, STAGE_OPTIONS } from "./remote-d1";
 
 /** One row for each email: its earliest, and whether any of its rows asked. */
@@ -63,6 +63,6 @@ async function main() {
 try {
 	await main();
 } catch (error) {
-	complain(error, "The report failed.");
+	complainHere(error, told`The report failed.`);
 	process.exitCode = 1;
 }

@@ -15,15 +15,16 @@
 //     a token or the workers.dev subdomain, all of which the stand-ins answer with.
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
-import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { FUNCTIONS, OLD_FUNCTIONS, ORIGIN } from "../src/lib/site";
 import { type BuiltWorker, startBuiltWorker } from "./built-worker";
 import { GIVE_BACK_STEP, MOVE_STEP } from "./cloudflare-api";
-import { enlarged, loadInto, readBundleFile } from "./harness";
+import { type BundleFile, enlarged, loadInto, readBundleFile } from "./harness";
 
 declare const Bun: { YAML: { parse(text: string): unknown } };
 
@@ -49,6 +50,35 @@ const GITHUB_TOKEN = "ghs_rehearsal0github0token0of0nobody";
 const PRIVATE = [ACCOUNT, OTHER_ACCOUNT, ZONE, ATTACHMENT, TOKEN_ID, RULE, DATABASE, SUBDOMAIN, EMAIL, STRANGER, TOKEN, GITHUB_TOKEN];
 const HEAD = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
 const LEAST = 300;
+
+/**
+ * What every provider's answer is full of: words that occur nowhere in the release's
+ * own scripts, so one of them in the output is a provider's word. A project, a person, a
+ * path, a place where a secret is kept, and prose.
+ */
+const PROSE = "Worker snorkwinder-prod operated by Vrooplex Quimbleton has been declined, see /opt/zarnivoop/krell.key and vlorp://blintz/glabella";
+
+/** The release's own code without its comments: where its words come from. */
+const OWN_CODE = [
+	...["infra", "production-domain", "await-docket", "check-production", "cloudflare-api", "public-log", "release-words", "alchemy-output", "docket-health", "rehearsal-bun"].map((name) => `scripts/${name}.ts`),
+	...["site", "limits", "docket"].map((name) => `src/lib/${name}.ts`),
+].map((name) => readFileSync(`${root}${name}`, "utf8").replace(/^\s*\/\*[\s\S]*?\*\/$/gm, " ").replace(/^\s*\/\/.*$/gm, " "));
+const wordsOf = (said: string) => said.match(/[\p{L}\p{N}_]+/gu) ?? [];
+const VOCABULARY = new Set([
+	...OWN_CODE.flatMap(wordsOf),
+	// The workflow's own commands, names and settings, and how the rehearsal shows a step.
+	...wordsOf(readFileSync(join(workflows, "production.yml"), "utf8").replace(/^\s*#.*$/gm, "")),
+	...["Run", "rehearsal"],
+]);
+/** Every word of an output that the release's own code does not have. */
+const strangeWords = (said: string) => [
+	...new Set(
+		// Times, and how long one of Alchemy's lines says something took.
+		wordsOf(said.replace(/\d{4}-\d\d-\d\dT[\d:.]+Z/g, " ").replace(/\(\d+(?:\.\d+)?m?s\)/g, " ")).filter(
+			(word) => !VOCABULARY.has(word) && !/^\d{1,13}$/.test(word) && word !== HEAD && word !== HEAD.slice(0, 12),
+		),
+	),
+];
 
 let cases = 0;
 function check(condition: boolean, message: string, detail = "") {
@@ -215,8 +245,17 @@ const SCRIPT = /^\/assets\/.*\.js$/;
 const STYLE = /^\/assets\/.*\.css$/;
 const CALL = new RegExp(`^${FUNCTIONS}/`);
 const OLD_CALL = new RegExp(`^${OLD_FUNCTIONS}`);
-const LABYRINTH = (more = "") =>
-	`<a href="https://${HOST}/cdn-cgi/content?id=abc_D-1.2.3" aria-hidden="true" rel="nofollow noopener" style="display: none"${more}></a>`;
+/** As it was seen on the live site, 2026-11-25 (its ID is spent). */
+const LABYRINTH = `<a href="https://${HOST}/cdn-cgi/content?id=RtD_Gmo61GrcQNadHnOsIsJ4agDkyay3Gl3LtF8gp0U-1795617261.3481553-1.2.1.1-oVy73d_ixj02IVMd3cEvPWejX0ysnb1dYJE5ADbLCYphXnL6VXEZ5mezxxtc7DLw" aria-hidden="true" rel="nofollow noopener" style="display: none !important; visibility: hidden !important"></a>`;
+/** It, or another, at the end of a page. */
+const linked = (link: string): Breaks => at("/terms", text("</body>", `${link}</body>`));
+/** A list's page as if nothing matched. */
+const emptied = (reply: Reply) => ({
+	body: reply.body
+		.toString("utf8")
+		.replace(/<ul class="entries">[\s\S]*?<\/ul>(?=<nav class="pages"|<\/section>)/, '<ul class="entries"></ul>')
+		.replace(/<p class="note">Items [\s\S]*?<\/p>/, '<p class="note">No items match. <a href="/#docket">Show every item</a></p>'),
+});
 
 interface Case {
 	name: string;
@@ -242,14 +281,17 @@ async function runCases(all: Case[]) {
 					HOME: process.env.HOME,
 					APP_RELEASE: HEAD,
 					WORKERS_SUBDOMAIN: SUBDOMAIN,
+					// As in a run, where what it prints is public.
+					GITHUB_ACTIONS: "true",
 					...(where === "workers.dev" ? { WORKERS_DEV_ORIGIN: address } : {}),
 					...(where === ORIGIN ? { SITE_ORIGIN: address } : {}),
 					...env,
 				}).done;
+				const strange = strangeWords(output.replace(/^::add-mask::.*$/gm, ""));
 				check(
-					code === (passes ? 0 : 1) && output.includes(says) && !output.includes(SUBDOMAIN),
+					code === (passes ? 0 : 1) && output.includes(says) && strange.length === 0,
 					name,
-					`exit ${code}, expected to say: ${says}\n${output}`,
+					`exit ${code}, expected to say: ${says}; words that are not ours: ${strange.join(" ")}\n${output}`,
 				);
 			}
 		}),
@@ -271,7 +313,11 @@ async function productionCases(worker: () => BuiltWorker, items: number): Promis
 	const towns = readBundleFile().towns.length;
 	const EXPECT = { EXPECT_DOCKET: `1:${items}:${towns}` };
 	/** The sixth item of the sitemap: no page that is read whole. */
-	const SMALL = `/item/${enlarged(readBundleFile(), LEAST).items.map(({ id }) => id).sort()[5]}`;
+	const large = enlarged(readBundleFile(), LEAST);
+	const SMALL = `/item/${large.items.map(({ id }) => id).sort()[5]}`;
+	/** Its place: after the four fixed pages and the towns. */
+	const SMALL_AT = 4 + large.towns.length + 6;
+	const ofKind = large.items.filter(({ kind }) => kind === "application").length;
 	const oneHead =
 		(code: number): Breaks =>
 		(path, reply, method) =>
@@ -279,10 +325,10 @@ async function productionCases(worker: () => BuiltWorker, items: number): Promis
 
 	const RED: [string, string, Breaks, Record<string, string>?][] = [
 		["another commit answers", "never answered", at("/api/health", header("x-commit-sha", "1".repeat(40)))],
-		["the health report names another commit", "/api/health: commit 444444444444", at("/api/health", text(HEAD, "4".repeat(40)))],
+		["the health report names another commit", "/api/health: it reports another commit", at("/api/health", text(HEAD, "4".repeat(40)))],
 		["D1 does not answer", "/api/health answered 503", at("/api/health", status(503))],
 		["the database is not migrated", "the database is unreachable", at("/api/health", text('"reachable"', '"unreachable"'))],
-		["the health report is kept", "/api/health: Cache-Control is missing", at("/api/health", header("cache-control"))],
+		["the health report is kept", "/api/health: cache-control is missing", at("/api/health", header("cache-control"))],
 		["no release is loaded", "no release is loaded", docket(null)],
 		["a release is no number", "no release is loaded", docket({ release: "one" })],
 		["the release has 299 items", `has 299 items, fewer than ${LEAST}`, docket({ items: 299 }), {}],
@@ -291,22 +337,35 @@ async function productionCases(worker: () => BuiltWorker, items: number): Promis
 		["the release has another number of towns", "not the one the wait saw", docket({ towns: towns + 1 })],
 		["sign-up is open at the cutover", "sign-up is open", at("/api/health", text('"signup":"closed"', '"signup":"open"'))],
 		["sign-up has no state", "sign-up is unstated", at("/api/health", text('"signup":"closed"', '"other":0'))],
-		["what the wait saw is unreadable", "no answer (Error)", same, { EXPECT_DOCKET: "none" }],
+		["what the wait saw is unreadable", "EXPECT_DOCKET is unreadable", same, { EXPECT_DOCKET: PROSE }],
+		["the health report is somebody else's words", "/api/health: it reports another commit", at("/api/health", () => ({ body: JSON.stringify({ commit: PROSE, database: PROSE, signup: PROSE, docket: { release: PROSE, items: PROSE, towns: PROSE } }) }))],
 		["an item's page fails", "answered 500", at(ITEM, status(500))],
 		["an item has no quote", "shows no item", at(ITEM, text(/<blockquote[\s\S]*?<\/blockquote>/, ""))],
 		["an item has an empty heading", "shows no item", at(ITEM, text(/(<h1[^>]*>)[\s\S]*?(<\/h1>)/, "$1$2"))],
 		["a town has an empty heading", "shows no town", at(TOWN, text(/(<h1[^>]*>)[\s\S]*?(<\/h1>)/, "$1$2"))],
-		["the front page lists nothing", "/: lists no item", at("/", text('class="entry', 'class="other'))],
-		["a filtered list lists nothing", "/?kind=decision: lists no item", at("/?kind=decision", text('class="entry', 'class="other'))],
-		["a filtered list may be indexed", "/?kind=decision: its robots meta says nothing", at("/?kind=decision", text('content="noindex, follow"', 'content=""'))],
+		["the front page lists nothing", "/: does not list the items of the release", at("/", text('class="entry', 'class="other'))],
+		["the front page says that nothing matches", "/: does not list the items of the release", at("/", emptied)],
+		["a kind that has items shows nothing", `the lists of every kind hold ${items - ofKind} items in all, not ${items}`, at("/?kind=application", emptied)],
+		["a board that has items shows nothing", "the lists of every board hold", at("/?board=planning_zoning", emptied)],
+		["a town that has items shows nothing", "the lists of every town hold", at("/?town=aldermoor", emptied)],
+		["every filter shows nothing", "the lists of every kind hold 0 items in all", at(/^\/\?(?:kind|board|town)=/, emptied)],
+		["the list of a board says that it holds every item", "the lists of every board hold", at("/?board=planning_zoning", text(/(Items (?:<!-- -->)?1(?:<!-- -->)? to (?:<!-- -->)?\d+(?:<!-- -->)? of (?:<!-- -->)?)\d+/, `$1${items}`))],
+		["a kind's list shows half of what it says", "the list of kind application shows neither items nor that there are none", at("/?kind=application", text(/<li class="entry">/, '<li class="other">'))],
+		["a list's entries are there and its count is not", "the list of kind hearing shows neither items nor that there are none", at("/?kind=hearing", text(/<p class="note">Items [\s\S]*?<\/p>/, ""))],
+		["a list that shows items says that there are none", "the list of kind hearing shows neither items nor that there are none", at("/?kind=hearing", text(/(<p class="note">)(Items )/, "$1No items match. $2"))],
+		["an empty list does not say so", "shows neither items nor that there are none", at(/^\/\?town=/, text("No items match.", ""))],
+		["a town's list shows another town's items", "shows an item of another town", at("/?town=aldermoor", text('href="/town/aldermoor"', 'href="/town/brackenfield"'))],
+		["a filtered list fails", "the list of kind notice answered 500", at("/?kind=notice", status(500))],
+		["a filtered list is another commit's", "the list of board wetlands: x-commit-sha is another commit", at("/?board=wetlands", header("x-commit-sha", "8".repeat(40)))],
+		["a filtered list may be indexed", "its robots meta is not as it must be", at(/^\/\?kind=/, text('content="noindex, follow"', 'content=""'))],
 		["a fixed page fails", "/privacy answered 500", at("/privacy", status(500))],
 		["a page is not HTML", "/method: not HTML", at("/method", header("content-type", "text/plain"))],
-		["a page names another commit in its meta tag", '<meta name="commit"> is 222222222222', at("/terms", text(`content="${HEAD}"`, `content="${"2".repeat(40)}"`))],
-		["/ has no commit meta tag", '/: <meta name="commit"> is none', at("/", text('name="commit"', 'name="other"'))],
-		["a town does not name its commit in a header", "x-commit-sha is none", at(TOWN, header("x-commit-sha"))],
-		["a page's canonical is another site", "canonical is https://elsewhere.example", at(ITEM, text(`rel="canonical" href="${ORIGIN}`, 'rel="canonical" href="https://elsewhere.example'))],
-		["an item must not be indexed", "its robots meta says noindex", at(ITEM, text("<head>", '<head><meta name="robots" content="noindex">'))],
-		["/ must not be indexed", "/: X-Robots-Tag says noindex", at("/", header("x-robots-tag", "noindex"))],
+		["a page names another commit in its meta tag", '<meta name="commit"> is another commit', at("/terms", text(`content="${HEAD}"`, `content="${PROSE}"`))],
+		["/ has no commit meta tag", '/: <meta name="commit"> is no commit', at("/", text('name="commit"', 'name="other"'))],
+		["a town does not name its commit in a header", "town page 1 of 3: x-commit-sha is no commit", at(TOWN, header("x-commit-sha"))],
+		["a page's canonical is another site", "its canonical address is not its own", at(ITEM, text(`rel="canonical" href="${ORIGIN}`, 'rel="canonical" href="https://vrooplex.example'))],
+		["an item must not be indexed", "its robots meta is not as it must be", at(ITEM, text("<head>", `<head><meta name="robots" content="${PROSE}">`))],
+		["/ must not be indexed", "/: x-robots-tag is another value", at("/", header("x-robots-tag", `noindex ${PROSE}`))],
 		["an old address answers 200", "/pricing answered 200", at("/pricing", status(200))],
 		["an old address is a 404", "/sign-in answered 404", at("/sign-in", status(404))],
 		["an unknown path answers 200", "/no-such-page answered 200", at("/no-such-page", status(200))],
@@ -314,59 +373,75 @@ async function productionCases(worker: () => BuiltWorker, items: number): Promis
 		["robots.txt disallows everything", "/robots.txt is not the public policy", at("/robots.txt", () => ({ body: "User-agent: *\nDisallow: /\n" }))],
 		["robots.txt has one byte more", "/robots.txt is not the public policy", at("/robots.txt", text(/$/, "\n"))],
 		["the sitemap is missing", "/sitemap.xml answered 404", at("/sitemap.xml", () => ({ status: 404, body: "" }))],
-		["the sitemap is not XML", "/sitemap.xml answered 200", at("/sitemap.xml", header("content-type", "text/html"))],
+		["the sitemap is not XML", "/sitemap.xml answered 200, or is not XML", at("/sitemap.xml", header("content-type", "text/html"))],
 		["the sitemap misses one item", `${items - 1} of them items`, at("/sitemap.xml", text(/ {2}<url><loc>[^<]*\/item\/[^<]*<\/loc><\/url>\n/, ""))],
 		["the sitemap lists an item twice", `${items + 1} of them items`, at("/sitemap.xml", text(/( {2}<url><loc>[^<]*\/item\/[^<]*<\/loc><\/url>\n)/, "$1$1"))],
 		["the sitemap misses a fixed page", "/sitemap.xml lists", at("/sitemap.xml", text(`${ORIGIN}/terms<`, `${ORIGIN}/method<`))],
-		["the sitemap lists another host", "/sitemap.xml lists", at("/sitemap.xml", text(`${ORIGIN}/terms`, "https://elsewhere.example/terms"))],
-		["one page of the sitemap that is not read whole is gone", `${SMALL}, in the sitemap, answered 410`, oneHead(410)],
-		["one page of the sitemap that is not read whole fails", `${SMALL}, in the sitemap, answered 500`, oneHead(500)],
-		["a page loads a script of somebody else", "/method: loads https://elsewhere.example/a.js", at("/method", text("</body>", '<script src="https://elsewhere.example/a.js"></script></body>'))],
-		["a page loads a file by an address without a scheme", "/method: loads //elsewhere.example/a.css", at("/method", text("</head>", '<link rel="stylesheet" href="//elsewhere.example/a.css"></head>'))],
+		["the sitemap lists another host", "/sitemap.xml lists", at("/sitemap.xml", text(`${ORIGIN}/terms`, "https://vrooplex.example/terms"))],
+		["the sitemap is somebody else's words", "/sitemap.xml lists", at("/sitemap.xml", text(`${ORIGIN}/terms`, `${ORIGIN}/${PROSE.replaceAll(" ", "-")}`))],
+		["one page of the sitemap that is not read whole is gone", `page ${SMALL_AT} of the sitemap answered 410`, oneHead(410)],
+		["one page of the sitemap that is not read whole fails", `page ${SMALL_AT} of the sitemap answered 500`, oneHead(500)],
+		["a page loads a script of somebody else", "/method: loads 1 files from elsewhere", at("/method", text("</body>", '<script src="https://vrooplex.example/a.js"></script></body>'))],
+		["a page loads a file by an address without a scheme", "/method: loads 1 files from elsewhere", at("/method", text("</head>", '<link rel="stylesheet" href="//vrooplex.example/a.css"></head>'))],
 		["the zone's page-speed script is in a page", "/terms: something of Cloudflare's is in it", forBrowsers(at("/terms", text("</body>", '<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v1"></script></body>')))],
 		["another script of the zone's is in a page", "/terms: something of Cloudflare's is in it", at("/terms", text("</body>", '<script defer src="/cdn-cgi/scripts/a.js"></script></body>'))],
-		["the zone's crawler link is not hidden", "/terms: something of Cloudflare's is in it", at("/terms", text("</body>", `${LABYRINTH().replace('aria-hidden="true" ', "")}</body>`))],
-		["the zone's crawler link has something in it", "/terms: something of Cloudflare's is in it", at("/terms", text("</body>", `${LABYRINTH().replace("></a>", ">more</a>")}</body>`))],
-		["the edge may change a page", "/terms: Cache-Control is public, max-age=0, must-revalidate", at("/terms", headerOf("cache-control", ", no-transform", ""))],
-		["a page may be kept", ": Cache-Control is public, max-age=3600, no-transform", at(ITEM, header("cache-control", "public, max-age=3600, no-transform"))],
-		["a page says nothing to the edge", ": Cache-Control is missing", at(TOWN, header("cache-control"))],
+		...(
+			[
+				["is not hidden from readers", (link) => link.replace('aria-hidden="true" ', "")],
+				["is not hidden by its style", (link) => link.replace("display: none !important; ", "")],
+				["has no style", (link) => link.replace(/ style="[^"]*"/, "")],
+				["has a handler and another style", () => `<a href="https://${HOST}/cdn-cgi/content?id=probe" aria-hidden="true" rel="nofollow noopener" onclick="alert(1)" style="background:url(https://vrooplex.example/pixel)"></a>`],
+				["has another attribute", (link) => link.replace("></a>", ' onclick="alert(1)"></a>')],
+				["has another attribute before the others", (link) => link.replace("<a ", '<a target="_blank" ')],
+				["has an ID of another shape", (link) => link.replace(/id=[^"]+/, "id=probe")],
+				["is on another host", (link) => link.replace(HOST, "vrooplex.example")],
+				["is at another path", (link) => link.replace("/cdn-cgi/content", "/cdn-cgi/challenge")],
+				["may be followed", (link) => link.replace("nofollow noopener", "noopener")],
+				["has text in it", (link) => link.replace("></a>", ">more</a>")],
+				["has an element in it", (link) => link.replace("></a>", '><img src="/favicon.svg"></a>')],
+				["is there twice", (link) => `${link}${link}`],
+			] as [string, (link: string) => string][]
+		).map(([what, change]): [string, string, Breaks] => [`the zone's crawler link ${what}`, "/terms: something of Cloudflare's is in it", linked(change(LABYRINTH))]),
+		["the edge may change a page", "/terms: cache-control is another value", at("/terms", headerOf("cache-control", ", no-transform", ""))],
+		["a page may be kept", "item page 1 of 10: cache-control is another value", at(ITEM, header("cache-control", "public, max-age=3600, no-transform"))],
+		["a page says nothing to the edge", "town page 1 of 3: cache-control is missing", at(TOWN, header("cache-control"))],
 		["HSTS is missing on /", "/: strict-transport-security is missing", at("/", header("strict-transport-security"))],
-		["a page may be framed", "/terms: x-frame-options is SAMEORIGIN", at("/terms", header("x-frame-options", "SAMEORIGIN"))],
-		["a page sends its whole address on", "/: referrer-policy is unsafe-url", at("/", header("referrer-policy", "unsafe-url"))],
-		["a page may use the camera", "/: permissions-policy is camera=(self)", at("/", header("permissions-policy", "camera=(self)"))],
+		["a page may be framed", "/terms: x-frame-options is another value", at("/terms", header("x-frame-options", PROSE))],
+		["a page sends its whole address on", "/: referrer-policy is another value", at("/", header("referrer-policy", PROSE))],
+		["a page may use the camera", "/: permissions-policy is another value", at("/", header("permissions-policy", "camera=(self)"))],
 		["a page's type may be guessed", "/method: x-content-type-options is missing", at("/method", header("x-content-type-options"))],
 		["a page's policy is missing", "/: content-security-policy is missing", at("/", header("content-security-policy"))],
 		["a page's policy admits any inline script", "an inline script its policy does not admit", at("/", headerOf("content-security-policy", /'nonce-[0-9a-f]+'/, "'unsafe-inline'"))],
-		["a page's policy admits another host", "an inline script its policy does not admit", at("/", headerOf("content-security-policy", "connect-src 'self'", "connect-src 'self' https://elsewhere.example"))],
+		["a page's policy admits another host", "an inline script its policy does not admit", at("/", headerOf("content-security-policy", "connect-src 'self'", "connect-src 'self' https://vrooplex.example"))],
 		["an inline script has no nonce", "/terms: an inline script its policy does not admit", at("/terms", text("</body>", "<script>1</script></body>"))],
 		["a page is rate limited", "a page is rate limited", at(ITEM, header("ratelimit-policy", '"pages";q=1;w=60'))],
 		["/ names no script", "/: names no script or stylesheet", at("/", text("/assets/", "/elsewhere/"))],
-		["a script is missing", ".js answered 404", at(SCRIPT, status(404))],
-		["a page that is not read whole names another commit", `${SMALL}: x-commit-sha is 666666666666`, (path, reply, method) => (method === "HEAD" && path === SMALL ? { ...reply, ...header("x-commit-sha", "6".repeat(40))(reply) } : reply)],
-		["a page that is not read whole has no HSTS", `${SMALL}: strict-transport-security is missing`, (path, reply, method) => (method === "HEAD" && path === SMALL ? { ...reply, ...header("strict-transport-security")(reply) } : reply)],
-		["a 404 does not name its commit", "/no-such-page: x-commit-sha is none", at("/no-such-page", header("x-commit-sha"))],
+		["a script is missing", "a script answered 404", at(SCRIPT, status(404))],
+		["a page that is not read whole names another commit", `page ${SMALL_AT} of the sitemap: x-commit-sha is another commit`, (path, reply, method) => (method === "HEAD" && path === SMALL ? { ...reply, ...header("x-commit-sha", "6".repeat(40))(reply) } : reply)],
+		["a page that is not read whole has no HSTS", `page ${SMALL_AT} of the sitemap: strict-transport-security is missing`, (path, reply, method) => (method === "HEAD" && path === SMALL ? { ...reply, ...header("strict-transport-security")(reply) } : reply)],
+		["a 404 does not name its commit", "/no-such-page: x-commit-sha is no commit", at("/no-such-page", header("x-commit-sha"))],
 		["a 410 may be framed", "/pricing: x-frame-options is missing", at("/pricing", header("x-frame-options"))],
 		["the old function path's 404 has no policy", `${OLD_FUNCTIONS}/x: content-security-policy is missing`, at(OLD_CALL, header("content-security-policy"))],
-		["the old function path's 404 is another commit's", `${OLD_FUNCTIONS}/x: x-commit-sha is 777777777777`, at(OLD_CALL, header("x-commit-sha", "7".repeat(40)))],
+		["the old function path's 404 is another commit's", `${OLD_FUNCTIONS}/x: x-commit-sha is another commit`, at(OLD_CALL, header("x-commit-sha", "7".repeat(40)))],
 		["a refused call has no HSTS", "strict-transport-security is missing", at(CALL, header("strict-transport-security"))],
 		["a static file has no nosniff", "/favicon.svg: x-content-type-options is missing", at("/favicon.svg", header("x-content-type-options"))],
-		["a static file's policy is another", "/favicon.svg: content-security-policy is default-src *", at("/favicon.svg", header("content-security-policy", "default-src *"))],
-		["a stylesheet is not kept", ".css: cache-control is no-store", at(STYLE, header("cache-control", "no-store"))],
+		["a static file's policy is another", "/favicon.svg: content-security-policy is another value", at("/favicon.svg", header("content-security-policy", PROSE))],
+		["a stylesheet is not kept", "a stylesheet: cache-control is another value", at(STYLE, header("cache-control", "no-store"))],
 		["the scripts name no server function", "name no server function", at(SCRIPT, text(/[0-9a-f]{64}/g, "none"))],
 		["a script calls the old function path", `name ${OLD_FUNCTIONS}, which the zone blocks`, at(SCRIPT, text(/^/, `/* ${OLD_FUNCTIONS}/ */`))],
 		["something blocks the pages' own calls", "a call under /_fn that says nothing answered 403", at(CALL, () => ({ status: 403, headers: {}, body: "blocked" }))],
 		["a call that says nothing is answered", "a call under /_fn that says nothing answered 200", at(CALL, status(200))],
 		["the limit is not bound", "a call: the limit (60 a minute) is not bound", at(CALL, header("ratelimit-policy"))],
-		["the limit is another", 'a call: the limit (60 a minute) is "calls";q=6000;w=60', at(CALL, header("ratelimit-policy", '"calls";q=6000;w=60'))],
+		["the limit is another", "a call: the limit (60 a minute) is another", at(CALL, header("ratelimit-policy", '"calls";q=6000;w=60'))],
 		["the old function path answers", `${OLD_FUNCTIONS} answered 200`, at(OLD_CALL, status(200))],
 		["the old function path is blocked where no zone is", `${OLD_FUNCTIONS} answered 403`, blocked],
 		["the old function path answers a function", `${OLD_FUNCTIONS} answered a server function`, at(OLD_CALL, header("x-tss-serialized", "true"))],
 		["a page sets a cookie", "/method: sets a cookie", at("/method", header("set-cookie", "a=b"))],
-		["the old app's sign-in is in a header", "/: a header of the old app's (x-clerk-auth-status)", at("/", header("x-clerk-auth-status", "signed-out"))],
+		["the old app's sign-in is in a header", "/: has a header of the old app's", at("/", header("x-clerk-auth-status", PROSE))],
 		["the old app's sign-in is in a page", "/: names one of the old app's vendors", at("/", text("</body>", "<!-- https://x.clerk.accounts.dev --></body>"))],
 		["the old app's database is in a page", "/: names one of the old app's vendors", at("/", text("</body>", "<!-- https://x.convex.cloud --></body>"))],
-		["the old app's other sign-in is in a script", ".js: names one of the old app's vendors", at(SCRIPT, text(/^/, "/* WorkOS */"))],
-		["the old app's database is in a script", ".js: names one of the old app's vendors", at(SCRIPT, text(/^/, "/* convex */"))],
+		["the old app's other sign-in is in a script", "a script: names one of the old app's vendors", at(SCRIPT, text(/^/, "/* WorkOS */"))],
+		["the old app's database is in a script", "a script: names one of the old app's vendors", at(SCRIPT, text(/^/, "/* convex */"))],
 		["a page's frame names the old app's sign-in", "its frame names one of the old app's vendors", at("/terms", text("</footer>", "<p>Sign in with Clerk</p></footer>"))],
 	];
 	const BUILT = "passes on the Worker as Alchemy builds it, on more than 300 items, bound as";
@@ -377,7 +452,8 @@ async function productionCases(worker: () => BuiltWorker, items: number): Promis
 		{ ...domain, name: `check-production cutover (on the domain): ${BUILT} production, behind the zone's block`, mode: "cutover", url: through(blocked), says: `the zone still blocks ${OLD_FUNCTIONS}`, passes: true },
 		{ ...domain, env: { PLAIN_ORIGIN: plain }, name: "check-production release: passes with another release of the data", mode: "release", url: through(both(blocked, docket({ release: 7 }))), says: "the zone still blocks", passes: true },
 		{ ...domain, env: { PLAIN_ORIGIN: plain }, name: "check-production release: passes with sign-up open", mode: "release", url: through(both(blocked, at("/api/health", text('"signup":"closed"', '"signup":"open"')))), says: "the zone still blocks", passes: true },
-		{ ...before, name: "check-production: passes with the zone's hidden crawler link, and says so", url: through(at(ITEM, text("</body>", `${LABYRINTH()}</body>`))), says: "note: the zone added its hidden crawler link to 10 pages", passes: true },
+		{ ...before, name: "check-production: passes with the zone's hidden crawler link, and says so", url: through(at(ITEM, text("</body>", `${LABYRINTH}</body>`))), says: "note: the zone added its hidden crawler link to 10 pages", passes: true },
+		{ ...before, name: "check-production: passes with that link right after the body's start, where it was seen", url: through(at("/terms", text(/<body[^>]*>/, `$&${LABYRINTH}`))), says: "note: the zone added its hidden crawler link to 1 pages", passes: true },
 		{ ...before, name: "check-production: passes with a town's clerk in a page's own text", url: through(at(ITEM, text("</main>", "<p>Filed with the Town Clerk: https://town.example/town_clerk.com_minutes</p></main>"))), says: "nothing of the old app's vendors", passes: true },
 		...RED.map(([name, says, breaks, env = EXPECT]): Case => ({ ...before, name: `check-production fails when ${name}`, url: through(breaks), env, says })),
 		...(
@@ -397,10 +473,77 @@ async function productionCases(worker: () => BuiltWorker, items: number): Promis
 			[
 				["a mode there is not", ORIGIN, "later", "The last argument is"],
 				["the new Worker's address after the move", "workers.dev", "release", "The last argument is"],
-				["another site", "https://elsewhere.example", "release", "Use: bun scripts/check-production.ts"],
+				["another site", "https://vrooplex.example", "release", "Use: bun scripts/check-production.ts"],
 			] as const
 		).map(([name, where, mode, says]): Case => ({ name: `check-production refuses ${name}`, where, mode, url: through(same), says })),
 	];
+}
+
+/** Other releases of the data that are right, and what must still be found in them. */
+const OTHER_DATA: { name: string; data: () => BundleFile; red: [string, string, Breaks][] }[] = [
+	{
+		name: "a release of applications alone",
+		data: () => {
+			const all = enlarged(readBundleFile(), LEAST);
+			for (const item of all.items) item.kind = "application";
+			return all;
+		},
+		red: [
+			["its applications show nothing", "the lists of every kind hold 0 items in all", at("/?kind=application", emptied)],
+			["a kind that has none does not say so", "the list of kind decision shows neither items nor that there are none", at("/?kind=decision", text("No items match.", ""))],
+			["a kind that has none answers 500", "the list of kind decision answered 500", at("/?kind=decision", status(500))],
+		],
+	},
+	{
+		name: "a release in which every kind, board and town has items",
+		data: () => {
+			const all = enlarged(readBundleFile(), LEAST);
+			const busy = new Set(all.items.map(({ town }) => town));
+			all.towns = all.towns.filter((town) => busy.has(town));
+			all.sources = all.sources.filter(({ town }) => busy.has(town));
+			all.meetings = all.meetings.filter(({ town }) => busy.has(town));
+			return all;
+		},
+		red: [["a kind in a town that has none does not say so", "shows neither items nor that there are none", at(/^\/\?town=[a-z-]+&kind=/, text("No items match.", ""))]],
+	},
+];
+function dataCases(worker: () => BuiltWorker, name: string, bundle: BundleFile, red: [string, string, Breaks][]): Case[] {
+	const common = { mode: "cutover", where: "workers.dev", env: { EXPECT_DOCKET: `1:${bundle.items.length}:${bundle.towns.length}` } };
+	const through = (breaks: Breaks) => () => listen(async (asked) => breaks(asked.path, await fromWorker(worker(), asked), asked.method));
+	return [
+		{ ...common, name: `check-production: passes on ${name}`, url: through((_, reply) => reply), says: "the filters, robots", passes: true },
+		...red.map(([what, says, breaks]): Case => ({ ...common, name: `check-production fails on ${name} when ${what}`, url: through(breaks), says })),
+	];
+}
+
+/** The public log by itself: what gets through it, whoever prints. */
+async function publicLog() {
+	check(!wordsOf(PROSE).some((word) => VOCABULARY.has(word) && /^(?:snorkwinder|Vrooplex|Quimbleton|zarnivoop|krell|vlorp|blintz|glabella)$/.test(word)), "the words of the stand-ins' prose are not in the release's own code");
+	const ran = async (code: string, env: Record<string, string> = { GITHUB_ACTIONS: "true" }) => {
+		const { output } = await start(process.execPath, ["-e", `import * as log from "./scripts/public-log.ts"; import { allowed } from "./scripts/alchemy-output.ts"; ${code}`], { PATH: process.env.PATH, HOME: process.env.HOME, ...env }).done;
+		return output;
+	};
+	const loud = `console.log("${PROSE}"); console.error("${PROSE}"); process.stdout.write("${PROSE}"); process.stderr.write("${PROSE}");`;
+	const unexpected = "An error nobody expected (Error).\n";
+	check((await ran(`log.publicOutput(); ${loud}`)) === "", "in a run, nothing but a line of ours is printed, whoever prints");
+	check((await ran(`log.publicOutput(); ${loud} throw new Error("${PROSE}")`)) === unexpected, "an error nobody caught is its class alone");
+	check((await ran(`log.publicOutput(); Promise.reject(new Error("${PROSE}")); setTimeout(() => {}, 200)`)) === unexpected, "and so is a promise nobody waited for");
+	check((await ran(`log.publicOutput(); setTimeout(() => { class Vrooplex extends TypeError { name = "Vrooplex" } throw new Vrooplex("${PROSE}") })`)) === unexpected, "a class of somebody's is not named");
+	check((await ran(`log.publicOutput(); log.complain(new Error("${PROSE}"), log.told\`The step failed.\`)`)) === "The step failed. (Error)\n", "an error that is not ours is said in our words");
+	check(
+		(await ran(`log.publicOutput(); log.say(log.told\`a \${"${PROSE}"} \${{ toString: () => "${PROSE}" }} \${["${PROSE}"]} \${null} \${1.5} \${NaN} \${7} \${log.word("${PROSE}")} \${log.word("production")} \${log.commit("${PROSE}")} \${log.instant(NaN)}.\`)`)) ===
+			"a ? ? ? ? ? ? 7 another one production another commit an unknown time.\n",
+		"a line has nothing in it but text of ours, whole numbers and known names",
+	);
+	check((await ran(`log.publicOutput(); for (const value of ["x\\n::set-env name=A::vrooplex", "Vrooplex Quimbleton", "a".repeat(65), ""]) log.mask(value); log.mask("${ACCOUNT}"); log.mask("${ACCOUNT}")`)) === `::add-mask::${ACCOUNT}\n`, "a mask is one word, once, and never a line of somebody's");
+	check((await ran(`log.publicOutput(); log.keep("${PROSE}")`, { GITHUB_ACTIONS: "true", TMPDIR: "/nowhere" })) === "", "in a run nothing is kept");
+	const lines = ["Deploy · production", "Plan: 1 to update, 1 to noop, 2 binding changes", "[Website] updated (3.4s)", "[Website/DB] update", "Failed: 0 succeeded, 2 failed (900ms)"];
+	const not = ["Deploy · vrooplex", "Deploy · production ", " Loading stack state", "Plan: 1 to update, vrooplex", "Plan: 123456789012 to create", "[Vrooplex] create", "[Website/VROOPLEX] create", "[Website] created (Vrooplex)", "[Website] created — Vrooplex", "Loading stack state Vrooplex", "Done: 3 succeeded (24.0s) Vrooplex", ""];
+	const shape = `const line = (text) => String(allowed("[13:39:47.381] INFO: " + text) ?? "(hidden)");`;
+	check(
+		(await ran(`log.publicOutput(); ${shape} log.say(log.list(${JSON.stringify(lines)}.map((text) => allowed("[13:39:47.381] INFO: " + text) ?? log.told\`hidden\`), log.told\`|\`)); ${JSON.stringify(not)}.forEach((text) => { if (allowed("[13:39:47.381] INFO: " + text)) log.say(log.told\`through\`) }); if (allowed("Loading stack state")) log.say(log.told\`through\`)`)) === `${lines.join("|")}\n`,
+		"Alchemy's lines are let through by their whole shape and with known names alone",
+	);
 }
 
 /** The preview stage, behind a stand-in for Access. */
@@ -419,7 +562,7 @@ function previewCases(worker: () => BuiltWorker): Case[] {
 		["anyone may read it", "answered 200 to a request without", behindAccess(same, true)],
 		["Access does not take the token", "never answered", behindAccess(same), { ...token, CF_ACCESS_CLIENT_SECRET: "another" }],
 		["there is no token", "Set CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET", behindAccess(same), {}],
-		["a page may be indexed", "/: X-Robots-Tag says nothing", behindAccess(at("/", header("x-robots-tag")))],
+		["a page may be indexed", "/: x-robots-tag is missing", behindAccess(at("/", header("x-robots-tag")))],
 		["robots.txt is the public policy", "/robots.txt is not the closed policy", behindAccess(at("/robots.txt", () => ({ body: readFileSync(`${root}public/robots.txt`, "utf8") })))],
 		["the limit is not bound", "a call: the limit (60 a minute) is not bound", behindAccess(at(CALL, header("ratelimit-policy")))],
 	];
@@ -651,6 +794,8 @@ interface Past {
 	ago: number;
 	/** GitHub has no end of its job. */
 	noEnd?: true;
+	/** GitHub's words for its other steps are its own. */
+	renamed?: true;
 }
 /** Ended before its move, with nothing to give back. */
 const EARLY: Past = { ends: "failure", move: "skipped", back: "success", ago: 2 };
@@ -670,7 +815,10 @@ const recordOf = (past: Past) => ({
 	created_at: minutesAgo(past.ago + 30),
 	run_started_at: minutesAgo(past.ago + 25),
 	updated_at: minutesAgo(past.ago),
-	actor: { email: EMAIL },
+	actor: { email: EMAIL, login: PROSE },
+	name: PROSE,
+	display_title: PROSE,
+	head_commit: { message: PROSE, author: { name: PROSE, email: EMAIL } },
 });
 function jobOf(job: Job, past: Past) {
 	const when = minutesAgo(past.ago);
@@ -691,8 +839,10 @@ function jobOf(job: Job, past: Past) {
 			completed_at: when,
 		};
 	});
+	if (past.renamed) for (const step of steps) if (step.name !== MOVE_STEP && step.name !== GIVE_BACK_STEP) step.name = PROSE;
 	return {
-		name: "Production",
+		name: PROSE,
+		runner_name: PROSE,
 		status: past.noEnd ? "in_progress" : "completed",
 		conclusion: past.noEnd ? null : past.ends,
 		started_at: minutesAgo(past.ago + 20),
@@ -739,7 +889,7 @@ interface Scenario {
 	challenged?: true;
 
 	/** When the operator's load is there: after so many asks of the wait (2), or never. */
-	loadAfter?: number | "never" | "too few" | "of another commit" | "half stated";
+	loadAfter?: number | "never" | "too few" | "of another commit" | "another's report" | "half stated";
 	/** Somebody loads another release after the wait, where the check reads next. */
 	loadedAgain?: "before the move" | "after the move";
 
@@ -780,8 +930,12 @@ interface Scenario {
 	hiccups?: number;
 	/** The run is cancelled once this step has finished. */
 	cancelAfter?: string;
-	/** The call takes effect, and the run is cancelled inside the step; or in the wait. */
-	cancelIn?: "move" | "wait";
+	/** The call takes effect, and the run is cancelled inside the step; or in the wait, or in the apply. */
+	cancelIn?: "move" | "wait" | "apply";
+	/** Cloudflare answers calls like this one so, with its own words in it. */
+	answers?: { to: RegExp; status: number; html?: true; result?: unknown };
+	/** And GitHub. */
+	githubAnswers?: { to: RegExp; status: number; html?: true };
 
 	ends: {
 		job: "success" | "failure" | "cancelled";
@@ -816,19 +970,47 @@ interface State {
 
 /** Alchemy's command line, which prints what it knows. */
 const CLI = `const declared = process.env.PRODUCTION_DOMAIN ?? "managed";
-console.log("Plan: 3 to create");
+const say = (text, level = "INFO") => console.log("[13:39:47.381] " + level + ": " + text);
+say("Deploy · production");
+say("Loading stack state");
+say("Plan ready (1.2s)");
+say("\\u001b[1mPlan:\\u001b[0m 3 to create, 13 binding changes");
+say("[Database] create");
+say("[Website/SIGNUP_CLIENT_KEY] create");
+say("[Website/Access] noop");
+say("[Website] creating");
+// Its own words around what nobody may read, and almost its own words.
+say("Deploy · vrooplex");
+say("Loading stack state ${PROSE}");
+say("Plan: 3 to create, ${PROSE}");
+say("Plan: 3 to vrooplex");
+say("[vrooplex] create");
+say("[Website/QUIMBLETON] create");
+say("[Website] fail — ${PROSE}", "ERROR");
+say("[Website] creating (${PROSE})");
+say("Bootstrapping state store 'krell'");
+say("${PROSE}");
+console.log("  vrooplex: ${PROSE}");
+console.log("${PROSE}");
+console.log("Loading stack state");
 console.log("account ${ACCOUNT}, database ${DATABASE}, token ${TOKEN_ID}");
 console.log("https://${NEW}.${SUBDOMAIN}.workers.dev and ${EMAIL}");
 console.log("::set-env name=PATH::/elsewhere");
+console.log("::add-mask::vrooplex");
+console.log("[13:39:47.381] INFO: ::warning::vrooplex");
 console.error("Authorization: Bearer " + process.env.CLOUDFLARE_API_TOKEN);
-process.stdout.write("no end of line ${ZONE}");
+console.error(new Error("${PROSE}").stack);
+process.stdout.write("no end of line ${ZONE} ${PROSE}");
 const answer = await fetch(process.env.REHEARSAL_ALCHEMY, { method: "POST", body: JSON.stringify({ declared, arguments: process.argv.slice(2), token: process.env.CLOUDFLARE_API_TOKEN, account: process.env.CLOUDFLARE_ACCOUNT_ID }) });
 console.error("\\nerror: PUT https://api.cloudflare.com/client/v4/accounts/${ACCOUNT}/workers: " + await answer.text());
+if (answer.ok) say("Done: 3 succeeded (24.0s)");
+else say("Failed: 2 succeeded, 1 failed, 1 skipped (24.0s)", "ERROR");
 process.exitCode = answer.ok ? 0 : 1;
 `;
 
 async function rehearse(worker: BuiltWorker, items: number, job: Job, scenario: Scenario) {
 	const directory = join(root, ".smoke", `release-${randomUUID()}`);
+	const outside = mkdtempSync(join(tmpdir(), "civic-rehearsal-"));
 	mkdirSync(join(directory, "bin"), { recursive: true });
 	mkdirSync(join(directory, "temp"));
 	mkdirSync(join(directory, "node_modules/alchemy/bin"), { recursive: true });
@@ -868,14 +1050,21 @@ async function rehearse(worker: BuiltWorker, items: number, job: Job, scenario: 
 	const cloudflare = await listen(async (asked) => {
 		const url = new URL(asked.path, "http://stand-in");
 		const path = url.pathname.replace("/client/v4", "");
-		const ok = (result: unknown) => json(200, { success: true, errors: [], messages: [], result });
+		const ok = (result: unknown) => json(200, { success: true, errors: [], messages: [PROSE], result });
 		// As Cloudflare does, its words name what they are about.
 		const refuse = (code: number, message: string, is = 400) =>
-			json(is, { success: false, errors: [{ code, message: `${message} (account ${ACCOUNT}, ${EMAIL}, token ${TOKEN_ID}, ${NEW}.${SUBDOMAIN}.workers.dev)` }], messages: [] });
+			json(is, { success: false, errors: [{ code, message: `${message}: ${PROSE} (account ${ACCOUNT}, ${EMAIL}, token ${TOKEN_ID}, ${NEW}.${SUBDOMAIN}.workers.dev)`, error_chain: [{ code: 1, message: PROSE }] }, { code: PROSE, message: PROSE }], messages: [PROSE] });
 		if (scenario.refused || asked.headers.authorization !== `Bearer ${TOKEN}`) return refuse(10000, "Authentication error", 403);
 		if (gaveBack && state.hiccups > 0) {
 			state.hiccups -= 1;
-			return json(503, {});
+			return refuse(10001, "hiccup", 503);
+		}
+		const said = scenario.answers;
+		if (said?.to.test(`${asked.method} ${path}`)) {
+			if ("result" in said) return ok(said.result);
+			return said.html
+				? { status: said.status, headers: { "Content-Type": "text/html", "x-vrooplex": PROSE }, body: `<html><title>${PROSE}</title>${PROSE}</html>` }
+				: refuse(10042, "as asked", said.status);
 		}
 		if (/rulesets|firewall|dns_records|\/settings\/(?!$)|filters|access/.test(path)) state.wrong.push(`a call that is not the release's: ${asked.method} ${path}`);
 		if (asked.method === "GET" && path === "/accounts") return ok([{ id: ACCOUNT, name: EMAIL }, ...(scenario.twoAccounts ? [{ id: OTHER_ACCOUNT }] : [])]);
@@ -885,7 +1074,7 @@ async function rehearse(worker: BuiltWorker, items: number, job: Job, scenario: 
 			const lagging = state.stale > 0;
 			if (lagging) state.stale -= 1;
 			const service = lagging ? state.staleHolder : state.holder;
-			const held = { id: ATTACHMENT, hostname: HOST, service, zone_id: ZONE };
+			const held = { id: ATTACHMENT, hostname: HOST, service, zone_id: ZONE, zone_name: PROSE, environment: PROSE };
 			return ok(service ? (scenario.heldTwice ? [held, held] : [held]) : []);
 		}
 		const settings = /^\/accounts\/acc0+(?:acc0)*\/workers\/scripts\/([\w-]+)\/settings$/.exec(path);
@@ -905,7 +1094,7 @@ async function rehearse(worker: BuiltWorker, items: number, job: Job, scenario: 
 			const way = to === NEW ? "move" : "give-back";
 			if (scenario.lateCalls === way || (scenario.lateCalls === `first ${way}` && !state.late.includes(to))) {
 				if (!state.late.includes(to)) state.late.push(to);
-				return json(503, {});
+				return refuse(10001, "late", 503);
 			}
 			state.staleHolder = state.holder;
 			state.stale = to === NEW ? (scenario.listingLag ?? 0) : 0;
@@ -934,8 +1123,13 @@ async function rehearse(worker: BuiltWorker, items: number, job: Job, scenario: 
 		const path = url.pathname.replace("/repos/jessewalberg/civic-observatory/actions", "");
 		if (state.githubHiccups > 0) {
 			state.githubHiccups -= 1;
-			return json(503, {});
+			return json(503, { message: PROSE, documentation_url: PROSE });
 		}
+		const said = scenario.githubAnswers;
+		if (said?.to.test(path))
+			return said.html
+				? { status: said.status, headers: { "Content-Type": "text/html" }, body: `<html>${PROSE}</html>` }
+				: json(said.status, { message: PROSE, errors: [{ message: PROSE }] });
 		const allowed = asked.method === "GET" && asked.headers.authorization === `Bearer ${GITHUB_TOKEN}`;
 		// This run and the others, newest first, numbered one after another.
 		// Numbered from 1, the successful ones first.
@@ -1022,6 +1216,7 @@ async function rehearse(worker: BuiltWorker, items: number, job: Job, scenario: 
 		if (notYet === "never" || scenario.cancelIn === "wait") return said(null);
 		if (notYet === "too few") return said({ items: LEAST - 1 });
 		if (notYet === "half stated") return said({ towns: 0 });
+		if (notYet === "another's report") return { ...reply, body: reply.body.toString().replace(HEAD, "5".repeat(40)) };
 		if (notYet === "of another commit") return { ...reply, headers: { ...reply.headers, "x-commit-sha": "5".repeat(40) } };
 		// What an edge that does not have the Worker yet answers.
 		if (state.asks === 1) return gone;
@@ -1042,7 +1237,7 @@ async function rehearse(worker: BuiltWorker, items: number, job: Job, scenario: 
 			return scenario.loadedAgain === "after the move" && asked.path === "/api/health" ? docket({ release: 2 })(asked.path, reply, asked.method) : reply;
 		}
 		if (!state.holder) return { status: 530, headers: {}, body: "" };
-		return { status: 200, headers: { "Content-Type": "text/html" }, body: "<html>the old app</html>" };
+		return { status: 200, headers: { "Content-Type": "text/html", "x-vrooplex": PROSE }, body: `<html>the old app ${PROSE}</html>` };
 	});
 	const plain = await listen(async () => ({ status: 308, headers: { Location: `${ORIGIN}/?kind=decision` }, body: "" }));
 	/** Plays Alchemy: makes or updates the Worker, and the domain if declared. */
@@ -1053,7 +1248,12 @@ async function rehearse(worker: BuiltWorker, items: number, job: Job, scenario: 
 		state.events.push(`apply ${apply.declared}`);
 		if (apply.token !== TOKEN || apply.account !== ACCOUNT || apply.arguments.join(" ") !== "deploy --stage production --profile civic-docket-production-ci --config alchemy.run.ts --yes")
 			return json(400, { error: `not the job's apply: ${apply.arguments.join(" ")}` });
-		if (scenario.failedApply === applies) return json(500, { error: `the apply failed for ${ACCOUNT}` });
+		if (scenario.cancelIn === "apply") {
+			interrupted = true;
+			setTimeout(() => killStep?.(), 50);
+			await new Promise((resolve_) => setTimeout(resolve_, 1_000));
+		}
+		if (scenario.failedApply === applies) return json(500, { error: `the apply failed for ${ACCOUNT}: ${PROSE}` });
 		state.workers.add(NEW);
 		state.devOn = apply.declared === "unmanaged";
 		if (apply.declared === "managed" && state.holder !== NEW) return json(409, { error: "Alchemy refuses a hostname another Worker holds" });
@@ -1104,8 +1304,15 @@ async function rehearse(worker: BuiltWorker, items: number, job: Job, scenario: 
 	const take = (output: string) => {
 		for (const line of output.split("\n")) {
 			const masked = /^::add-mask::(.+)$/.exec(line)?.[1];
-			if (masked) {
+			if (masked && PRIVATE.includes(masked)) {
 				masks.push(masked);
+				continue;
+			}
+			// The operator's own machine: where the full text is, and who may read it.
+			const kept = /^The full text of what was answered: (.+)$/.exec(line)?.[1];
+			if (kept && scenario.byHandRead) {
+				if ((statSync(kept).mode & 0o777) !== 0o600 || resolve(kept).startsWith(repository) || !readFileSync(kept, "utf8").includes(ATTACHMENT))
+					state.wrong.push(`the operator's file is not as it must be: ${kept}`);
 				continue;
 			}
 			if (line.trimStart().startsWith("::")) state.wrong.push(`a command to the runner: ${line}`);
@@ -1147,6 +1354,7 @@ async function rehearse(worker: BuiltWorker, items: number, job: Job, scenario: 
 				PATH: `${join(directory, "bin")}:${join(process.execPath, "..")}:/usr/bin:/bin`,
 				HOME: directory,
 				RUNNER_TEMP: join(directory, "temp"),
+				TMPDIR: outside,
 				GITHUB_ACTIONS: scenario.byHandRead ? undefined : "true",
 				RUNNER_ENVIRONMENT: "github-hosted",
 				GITHUB_EVENT_NAME: "push",
@@ -1197,17 +1405,23 @@ async function rehearse(worker: BuiltWorker, items: number, job: Job, scenario: 
 		events: state.events,
 		gaveBack,
 	};
+	// In a run, nothing is kept anywhere.
+	if (!scenario.byHandRead && readdirSync(outside).length > 0) state.wrong.push("a run kept somebody else's words in a file");
+	rmSync(outside, { recursive: true, force: true });
 	rmSync(directory, { recursive: true, force: true });
 	const log = shown.join("\n");
 	const written = raw.join("\n");
 	const leaks = PRIVATE.filter((held) => log.includes(held) || written.includes(held));
+	// Not a list of secrets: every word must be one that our own code has.
+	const strange = strangeWords(`${log}\n${written}`);
 	check(
 		JSON.stringify(ended) === JSON.stringify(scenario.ends) &&
 			state.wrong.length === 0 &&
 			[scenario.says ?? []].flat().every((said) => log.includes(said)) &&
-			leaks.length === 0,
+			leaks.length === 0 &&
+			strange.length === 0,
 		`${scenario.name}: ${ended.job}; the domain is on ${ended.holder === STRANGER ? "a stranger's Worker" : (ended.holder ?? "no Worker")}, the block is ${ended.block}; ${ended.events.join(", ") || "nothing happened"}; give-back step ${ended.gaveBack ? "ran" : "skipped"}; nothing private printed`,
-		`${JSON.stringify({ ended, expected: scenario.ends, wrong: state.wrong, says: scenario.says, leaks, items }, null, 1)}\n${log}`,
+		`${JSON.stringify({ ended, expected: scenario.ends, wrong: state.wrong, says: scenario.says, leaks, strange, items }, null, 1)}\n${log}`,
 	);
 }
 
@@ -1226,14 +1440,15 @@ const SCENARIOS: Scenario[] = [
 		name: "first cutover",
 		holder: OLD,
 		ends: green(ALL),
-		says: ["cutover: the first one; this run waits for the load and moves the domain", "not yet: no release is loaded", "Loaded: release 1, ", "left: civicobservatory.com -> Worker civic-docket-production", "WORKERS_SUBDOMAIN: ***", "the block on /_serverFn: on"],
+		says: ["cutover: the first one; this run waits for the load and moves the domain", "not yet: no release is loaded", "Loaded: release 1, ", "left: civicobservatory.com -> Worker civic-docket-production", "WORKERS_SUBDOMAIN: ***", "the block on /_serverFn: on", "\nDeploy · production\nLoading stack state\nPlan ready (1.2s)\nPlan: 3 to create, 13 binding changes\n[Database] create\n[Website/SIGNUP_CLIENT_KEY] create\n[Website/Access] noop\n[Website] creating\nDone: 3 succeeded (24.0s)\nAlchemy: ", " lines are not shown here; it ended with 0."],
 	},
 	// ---- the load ----
-	{ name: "the load comes late, and no edge has the Worker at first", holder: OLD, loadAfter: 15, ends: green(ALL), says: ["not yet: 404, not the docket", "Loaded: release 1"] },
+	{ name: "the load comes late, and no edge has the Worker at first", holder: OLD, loadAfter: 15, ends: green(ALL), says: ["not yet: HTTP 404, not the docket", "Loaded: release 1"] },
 	{ name: "the load never comes", holder: OLD, loadAfter: "never", ends: undone(before), says: ["The load never came (last: no release is loaded)", "Nothing to give back"] },
 	{ name: "the load has 299 items", holder: OLD, loadAfter: "too few", ends: undone(before), says: ["not yet: release 1 has 299 items, fewer than 300", "The load never came"] },
 	{ name: "the load is half stated", holder: OLD, loadAfter: "half stated", ends: undone(before), says: "The load never came (last: no release is loaded)" },
-	{ name: "another commit names the data", holder: OLD, loadAfter: "of another commit", ends: undone(before), says: ["not yet: 200, commit 555555555555", "The load never came"] },
+	{ name: "another commit's report names the data", holder: OLD, loadAfter: "another's report", ends: undone(before), says: ["not yet: another commit's report", "The load never came"] },
+	{ name: "another commit names the data", holder: OLD, loadAfter: "of another commit", ends: undone(before), says: ["not yet: HTTP 200, another commit", "The load never came"] },
 	{ name: "another release of the data is loaded between the wait and the check", holder: OLD, loadedAgain: "before the move", ends: undone(before), says: "not the one the wait saw (release 1," },
 	{ name: "another release of the data is loaded after the move: the domain goes back", holder: OLD, loadedAgain: "after the move", ends: undone([...ALL, ...back]), says: "not the one the wait saw (release 1," },
 	{ name: "the load is there from an earlier run", holder: OLD, loadAfter: 1, earlierAttempts: [EARLY], ends: green(ALL), says: "Loaded: release 1" },
@@ -1244,8 +1459,8 @@ const SCENARIOS: Scenario[] = [
 	{ name: "the zone adds its script to the live pages", holder: OLD, liveBreaks: at("/", text("</body>", '<script src="https://static.cloudflareinsights.com/beacon.min.js"></script></body>')), ends: undone([...ALL, ...back]), says: "something of Cloudflare's is in it" },
 	{ name: "the second apply fails", holder: OLD, failedApply: 2, ends: undone([...ALL, ...back]) },
 	{ name: "the move takes effect but the listing lags past a minute", holder: OLD, listingLag: 40, ends: undone([...before, ...there, ...back]), says: "did not move to Worker" },
-	{ name: "Cloudflare refuses the move", holder: OLD, moveRefused: true, ends: undone([...before, ...back]), says: "already in use by other custom domain" },
-	{ name: "the live check fails, and Cloudflare leaves two give-back calls unanswered", holder: OLD, liveBreaks: broke, hiccups: 2, ends: undone([...ALL, ...back]), says: ["no answer, trying again: GET", "[success] First cutover failed"] },
+	{ name: "Cloudflare refuses the move", holder: OLD, moveRefused: true, ends: undone([...before, ...back]), says: "Moving the domain: HTTP 409, error 100116: it conflicts with what is there" },
+	{ name: "the live check fails, and Cloudflare leaves two give-back calls unanswered", holder: OLD, liveBreaks: broke, hiccups: 2, ends: undone([...ALL, ...back]), says: ["no answer, trying again: Which account the token reaches: HTTP 503, error 10001: Cloudflare did not answer it", "[success] First cutover failed"] },
 	{ name: "the live check fails and the zone answers nothing: no run changed the block, so the domain goes back", holder: OLD, liveBreaks: broke, downAtGiveBack: true, ends: undone([...ALL, ...back]), says: "the block on /_serverFn: unread" },
 	{
 		name: "the block is gone after the move: the run ends red and changes nothing of its own, and the domain stays on the new Worker",
@@ -1270,7 +1485,7 @@ const SCENARIOS: Scenario[] = [
 		holder: OLD,
 		lateCalls: "move",
 		ends: { job: "failure", holder: NEW, block: "on", events: [...before, ...back, "domain to new, late"], gaveBack: true },
-		says: ["no answer, trying again: PUT", "[failure] First cutover - move", "left: civicobservatory.com -> Worker civic-observatory"],
+		says: ["no answer, trying again: Moving the domain: HTTP 503", "[failure] First cutover - move", "left: civicobservatory.com -> Worker civic-observatory"],
 	},
 	{
 		name: "the give-back is not answered and takes effect later: the old Worker serves behind its block",
@@ -1278,7 +1493,7 @@ const SCENARIOS: Scenario[] = [
 		liveBreaks: broke,
 		lateCalls: "give-back",
 		ends: { job: "failure", holder: OLD, block: "on", events: [...ALL, "domain to old, late"], gaveBack: true },
-		says: ["no answer, trying again: PUT", "[failure] First cutover failed", "left: civicobservatory.com -> Worker civic-docket-production"],
+		says: ["no answer, trying again: Giving the domain back: HTTP 503", "[failure] First cutover failed", "left: civicobservatory.com -> Worker civic-docket-production"],
 	},
 	{
 		name: "the first call of a give-back is not answered and lands after the second was: the domain is back, and the step ends red",
@@ -1366,16 +1581,17 @@ const SCENARIOS: Scenario[] = [
 			["GitHub’s list is empty, and a run finished the cutover", { otherRuns: [[FINISHED]], list: "empty" }, "Refusing: GitHub does not list this run."],
 			["GitHub lists this run alone, not the first one, that finished the cutover", { otherRuns: [[FINISHED]], unlisted: [0] }, "begins at run 2, not at run 1"],
 			["GitHub’s list has lost its beginning, where a run finished the cutover, and has one that moved the domain", { otherRuns: [[LOST], [FINISHED]], unlisted: [1] }, "begins at run 2, not at run 1"],
-			["GitHub counts a successful run and lists none", { finishedRuns: 1, successes: "unlisted" }, "counts 1 successful runs and lists 0"],
-			["GitHub lists a successful run without its number", { finishedRuns: 1, successes: "unnumbered" }, "counts 1 successful runs and lists 1"],
+			["GitHub counts a successful run and lists none", { finishedRuns: 1, successes: "unlisted" }, "GitHub's list of successful runs counts 1 and lists 0"],
+			["GitHub lists a successful run without its number", { finishedRuns: 1, successes: "unnumbered" }, "GitHub's list of successful runs counts 1 and lists 1"],
 			["this run is the first, and somebody moved the domain", {}, "that finished the cutover and none that moved the domain"],
-			["GitHub lists a run that moved the domain, not yet the later one that finished", { otherRuns: [[FINISHED], [LOST]], unlisted: [0] }, "Refusing: GitHub lists run 3 of production.yml and not the one before it."],
+			["GitHub lists a run that moved the domain, not yet the later one that finished", { otherRuns: [[FINISHED], [LOST]], unlisted: [0] }, "Refusing: GitHub's list of production.yml's runs has run 3 and not the one before it."],
 			["no run moved the domain: somebody did", { otherRuns: [[EARLY], [EARLY]] }, "and none that moved the domain. Nothing was changed. Read the runs"],
 			["an earlier run lost its runner before its move", { otherRuns: [[{ ...LOST, lostIn: "The pages" }]] }, "and none that moved the domain"],
 			["an earlier run was cancelled before its move began", { otherRuns: [[{ ends: "cancelled", move: "cancelled", neverBegan: true, ago: 90 }]] }, "and none that moved the domain"],
 			["an earlier run has not ended, as far as GitHub shows", { otherRuns: [[{ ends: null, ago: 1 }], [LOST]] }, "GitHub does not say how run 900, attempt 1 ended (in_progress)"],
-			["GitHub’s list of an earlier run’s jobs is cut short", { otherRuns: [[LOST]], jobsList: "cut short" }, "/runs/900/attempts/1/jobs counts 2 and lists 1"],
-			["GitHub’s list of an earlier run’s jobs is unreadable", { otherRuns: [[LOST]], jobsList: "unreadable" }, "/runs/900/attempts/1/jobs is unreadable"],
+			["GitHub’s list of an earlier run’s jobs is cut short", { otherRuns: [[LOST]], jobsList: "cut short" }, "GitHub's list of the jobs of run 900, attempt 1 counts 2 and lists 1"],
+			["GitHub’s list of an earlier run’s jobs is unreadable", { otherRuns: [[LOST]], jobsList: "unreadable" }, "GitHub's list of the jobs of run 900, attempt 1: it is unreadable"],
+			["GitHub says in its own words how an earlier run is", { otherRuns: [[{ ends: null, status: PROSE, ago: 1 }], [LOST]] }, "GitHub does not say how run 900, attempt 1 ended (nothing known)"],
 		] as const
 	).map(
 		([what, with_, says]): Scenario => ({
@@ -1403,11 +1619,11 @@ const SCENARIOS: Scenario[] = [
 		[
 			["GitHub’s list is empty", { otherRuns: [[FINISHED]], list: "empty" }, "Refusing: GitHub does not list this run."],
 			["GitHub’s list is cut short", { otherRuns: [[FINISHED]], list: "cut short" }, "counts 2 and lists 1"],
-			["GitHub does not list the finished run yet", { otherRuns: [[EARLY], [FINISHED], [EARLY]], unlisted: [1] }, "Refusing: GitHub lists run 3 of production.yml and not the one before it."],
+			["GitHub does not list the finished run yet", { otherRuns: [[EARLY], [FINISHED], [EARLY]], unlisted: [1] }, "Refusing: GitHub's list of production.yml's runs has run 3 and not the one before it."],
 			["GitHub’s list has lost its beginning, where a run finished the cutover", { otherRuns: [[EARLY], [FINISHED]], unlisted: [1] }, "begins at run 2, not at run 1"],
 			["GitHub lists this run alone, not the first one, that finished the cutover", { otherRuns: [[FINISHED]], unlisted: [0] }, "begins at run 2, not at run 1"],
-			["GitHub counts a successful run and lists none", { finishedRuns: 1, successes: "unlisted" }, "counts 1 successful runs and lists 0"],
-			["GitHub lists a successful run without its number", { finishedRuns: 1, successes: "unnumbered" }, "counts 1 successful runs and lists 1"],
+			["GitHub counts a successful run and lists none", { finishedRuns: 1, successes: "unlisted" }, "GitHub's list of successful runs counts 1 and lists 0"],
+			["GitHub lists a successful run without its number", { finishedRuns: 1, successes: "unnumbered" }, "GitHub's list of successful runs counts 1 and lists 1"],
 			["the successful run GitHub lists is one before the first that counts", { finishedRuns: 1, successes: "before the first" }, "begins at run 2, not at run 1"],
 		] as const
 	).map(([what, with_, says]): Scenario => ({ name: `a push after the domain was given back by hand, and ${what}: nothing is moved`, holder: OLD, ...with_, ends: nothing(OLD), says })),
@@ -1460,7 +1676,7 @@ const SCENARIOS: Scenario[] = [
 		ends: { job: "failure", holder: NEW, block: "on", events: before, gaveBack: true },
 		says: ["civicobservatory.com is not on Worker civic-observatory", "Nothing to give back: this run has not moved civicobservatory.com"],
 	},
-	{ name: "the new Worker is deleted by hand before the move: the move is never asked", holder: OLD, byHand: { before: " move", deletes: NEW }, ends: undone(before), says: ["/settings: 404", "Nothing to give back: this run has not moved civicobservatory.com"] },
+	{ name: "the new Worker is deleted by hand before the move: the move is never asked", holder: OLD, byHand: { before: " move", deletes: NEW }, ends: undone(before), says: ["Whether Worker civic-docket-production is there: HTTP 404, error 10007: there is no such thing", "Nothing to give back: this run has not moved civicobservatory.com"] },
 	{
 		name: "somebody takes the block away before the move: nothing is moved",
 		holder: OLD,
@@ -1469,7 +1685,55 @@ const SCENARIOS: Scenario[] = [
 		says: "Refusing: the block on /_serverFn is gone. Nothing was moved.",
 	},
 	{ name: "the new Worker is wrong on workers.dev", holder: OLD, devBreaks: broke, ends: undone(before), says: "Nothing to give back" },
-	{ name: "the first apply fails", holder: OLD, failedApply: 1, ends: undone(before), says: ["Nothing to give back", "the apply failed for <"] },
+	{ name: "the first apply fails", holder: OLD, failedApply: 1, ends: undone(before), says: ["Nothing to give back", "Failed: 2 succeeded, 1 failed, 1 skipped (24.0s)", " lines are not shown here; it ended with 1.", "What Alchemy said is not public"] },
+	// ---- in whose words: every call, refused, limited and failed, and nothing of it said ----
+	...(
+		[
+			["Which account the token reaches", /^GET \/accounts$/, nothing(OLD)],
+			["Who holds the domain", /^GET .*\/workers\/domains$/, nothing(OLD)],
+			["The account's workers.dev name", /\/workers\/subdomain$/, nothing(OLD)],
+			["Whether Worker civic-docket-production is there", /\/settings$/, undone(before)],
+			["Which zone the domain is in", /^GET \/zones$/, undone(before)],
+			["Moving the domain", /^PUT .*civic-docket-production\/domains\/records$/, undone([...before, ...back])],
+			["Giving the domain back", /^PUT .*civic-observatory\/domains\/records$/, { ...undone(ALL), holder: NEW }],
+		] as [string, RegExp, Scenario["ends"]][]
+	).flatMap(([call, to, ends]) =>
+		[400, 403, 404, 409, 429, 500, 502, 503].map(
+			(code): Scenario => ({
+				name: `${call}: Cloudflare answers ${code} in its own words${code >= 502 ? ", as a page" : ""}`,
+				holder: OLD,
+				liveBreaks: call.startsWith("Giving") ? broke : undefined,
+				answers: { to, status: code, ...(code >= 502 ? { html: true as const } : {}) },
+				ends,
+				says: `${call}: HTTP ${code}${code >= 502 ? "" : ", error 10042"}: `,
+			}),
+		),
+	),
+	...(
+		[
+			["is null", null],
+			["is a text", PROSE],
+			["is full of another's", [{ id: PROSE, hostname: HOST, service: PROSE, zone_id: PROSE, account: { id: ACCOUNT, name: PROSE }, subdomain: PROSE }]],
+		] as [string, unknown][]
+	).flatMap(([what, result]): Scenario[] => [
+		{ name: `the accounts' answer ${what}`, holder: OLD, answers: { to: /^GET \/accounts$/, status: 200, result }, ends: nothing(OLD), says: what === "is full of another's" ? "The account's ID is unreadable" : "must reach exactly one account" },
+		{ name: `the holder's answer ${what}`, holder: OLD, answers: { to: /^GET .*\/workers\/domains$/, status: 200, result }, ends: nothing(OLD), says: what === "is full of another's" ? "is on a Worker this file does not know" : "the answer is unreadable" },
+		{ name: `the zones' answer ${what}`, holder: OLD, answers: { to: /^GET \/zones$/, status: 200, result }, ends: undone(before), says: what === "is full of another's" ? "The zone's ID is unreadable" : "is not in this account" },
+	]),
+	{ name: "the subdomain's answer is null", holder: OLD, answers: { to: /\/workers\/subdomain$/, status: 200, result: null }, ends: nothing(OLD), says: "The domain step failed. (TypeError)" },
+	{ name: "the subdomain is somebody's name and a command", holder: OLD, subdomain: "x\n::set-env name=A::vrooplex", ends: nothing(OLD), says: "The account's workers.dev name is unreadable" },
+	...[401, 403, 404, 422, 429, 500, 502].map(
+		(code): Scenario => ({
+			name: `GitHub answers ${code} in its own words`,
+			holder: OLD,
+			githubAnswers: { to: /./, status: code, ...(code === 502 ? { html: true as const } : {}) },
+			ends: nothing(OLD),
+			says: `GitHub's list of successful runs: HTTP ${code}. GitHub's record is late`,
+		}),
+	),
+	{ name: "GitHub's record of an earlier run is somebody's words", holder: NEW, otherRuns: [[{ ...UNCONFIRMED, ends: PROSE, back: PROSE }]], ends: nothing(NEW), says: 'run 900, attempt 1 (step "First cutover failed - civicobservatory.com back to civic-observatory": another one) may still write the domain' },
+	{ name: "GitHub's names of an earlier run's steps are its own", holder: NEW, otherRuns: [[{ ...LOST, ago: 10, renamed: true }]], ends: nothing(NEW), says: 'run 900, attempt 1 (step "another step": its runner was lost) may still write the domain' },
+	{ name: "the apply is cancelled in the middle of a line", holder: OLD, cancelIn: "apply", ends: { ...undone(before), job: "cancelled" }, says: ["[Database] create", "Nothing to give back"] },
 	// ---- what the inspection refuses, before anything ----
 	...(
 		[
@@ -1477,11 +1741,11 @@ const SCENARIOS: Scenario[] = [
 			["the zone answers nothing", { block: "down" }, "Refusing: the block on /_serverFn is unread while", "on"],
 			["the zone challenges where it blocked", { block: "challenges the old path" }, "Refusing: the block on /_serverFn is unread while", "on"],
 			["the zone challenges the runner", { challenged: true }, "Refusing: the block on /_serverFn is unread while", "on"],
-			["GitHub answers nothing", { githubHiccups: 99 }, "GitHub /workflows/production.yml/runs answered 503", "on"],
+			["GitHub answers nothing", { githubHiccups: 99 }, "GitHub's list of successful runs: HTTP 503. GitHub's record is late", "on"],
 			["the deploy token reaches two accounts", { twoAccounts: true }, "must reach exactly one account", "on"],
-			["the deploy token is refused", { refused: true }, "GET /accounts: 403 10000 Authentication error (account <id>, <address>, token <id>, civic-docket-production.<subdomain>.workers.dev)", "on"],
+			["the deploy token is refused", { refused: true }, "Which account the token reaches: HTTP 403, error 10000: the token is not allowed this, or is not valid\nNothing was changed. If this is the production run", "on"],
 			["the domain is attached twice", { heldTwice: true }, "has two attachments", "on"],
-			["the account's workers.dev name is unreadable", { subdomain: "elsewhere.example/x" }, "workers.dev subdomain is unreadable", "on"],
+			["the account's workers.dev name is unreadable", { subdomain: "elsewhere.example/x" }, "The account's workers.dev name is unreadable", "on"],
 		] as const
 	).map(([name, with_, says, block]): Scenario => ({ name, holder: OLD, ...with_, ends: nothing(OLD, block), says })),
 	{ name: "the zone is another account's: the move is not asked", holder: OLD, zoneElsewhere: true, ends: undone(before), says: "Zone civicobservatory.com is not in this account" },
@@ -1540,15 +1804,16 @@ async function main() {
 	const workers: BuiltWorker[] = [];
 	const bundle = enlarged(readBundleFile(), LEAST);
 	const stages: Record<string, BuiltWorker> = {};
-	const startStage = async (stage: string, https: boolean) => {
+	const startStage = async (name: string, env: "production" | "preview", data = bundle) => {
 		const worker = await startBuiltWorker(
 			await freePort(),
-			{ bindings: { APP_ENV: stage, SIGNUP_CLIENT_KEY: randomBytes(32).toString("hex") }, limit: "bound", https },
+			// Production answers https alone.
+			{ bindings: { APP_ENV: env, SIGNUP_CLIENT_KEY: randomBytes(32).toString("hex") }, limit: "bound", https: env === "production" },
 			HEAD,
 		);
 		workers.push(worker);
-		stages[stage] = worker;
-		await loadInto(worker, bundle);
+		stages[name] = worker;
+		await loadInto(worker, data);
 	};
 	const stage = (name: string) => () => {
 		const worker = stages[name];
@@ -1559,13 +1824,16 @@ async function main() {
 		const job = workflowFacts();
 		const production = (await productionCases(stage("production"), bundle.items.length)).filter(chosen);
 		const preview = previewCases(stage("preview")).filter(chosen);
+		const others = OTHER_DATA.flatMap(({ name, data, red }) => dataCases(stage(name), name, data(), red)).filter(chosen);
 		const scenarios = SCENARIOS.filter(chosen);
-		if (CASE && CASE !== "facts" && !production.length && !preview.length && !scenarios.length) throw new Error(`check:release has no case named "${CASE}".`);
-		// Production answers https alone.
-		if (production.length || scenarios.length) await startStage("production", true);
+		if (CASE && CASE !== "facts" && !production.length && !preview.length && !others.length && !scenarios.length) throw new Error(`check:release has no case named "${CASE}".`);
+		await publicLog();
+		if (production.length || scenarios.length) await startStage("production", "production");
 		await runCases(production);
-		if (preview.length) await startStage("preview", false);
+		if (preview.length) await startStage("preview", "preview");
 		await runCases(preview);
+		for (const { name, data } of OTHER_DATA) if (others.some((one) => one.name.includes(name))) await startStage(name, "production", data());
+		await runCases(others);
 		// Four at a time: each has its own stand-ins.
 		const next = scenarios.values();
 		await Promise.all(

@@ -360,6 +360,44 @@ export const readCurrent = (rows: Rows | undefined): Current | null => {
 		: null;
 };
 
+/** What time it is by the database's own clock: no other clock is asked. */
+export const NOW: Statement = ["SELECT unixepoch('subsec') AS now", []];
+/** That instant, as the load's statements take it. */
+export function readNow(rows: Rows | undefined): string {
+	const now = Number(rows?.[0]?.now) * 1_000;
+	if (!(now > 1.7e12 && now < 1e13))
+		throw new Error("The database did not say what time it is.");
+	return new Date(now).toISOString();
+}
+
+/** What is stored, to compare with a file that says it is there. */
+export const STORED: Statement = [
+	`SELECT (SELECT count(*) FROM items) AS items, (SELECT count(*) FROM meetings) AS meetings,
+	(SELECT count(*) FROM towns) AS towns, (SELECT count(*) FROM boards) AS boards`,
+	[],
+];
+const COUNTED = ["items", "meetings", "towns", "boards"] as const;
+/** Says the counts that are stored, or that they are not the file's. */
+export function checkStored(
+	bundle: Bundle,
+	rows: Rows | undefined,
+	written: boolean,
+): string {
+	const file = {
+		items: bundle.items.length,
+		meetings: bundle.meetings.length,
+		towns: bundle.towns.length,
+		boards: bundle.sources.reduce((sum, { boards }) => sum + boards.length, 0),
+	};
+	const stored = (name: (typeof COUNTED)[number]) =>
+		Number(rows?.[0]?.[name] ?? Number.NaN);
+	if (COUNTED.some((name) => stored(name) !== file[name]))
+		throw new Error(
+			`The stored release is damaged${written ? "" : ", and nothing was written"}: it names this file, and holds ${COUNTED.map((name) => `${stored(name)} ${name} of the file's ${file[name]}`).join(", ")} (docs/runbooks/release.md, section 6).`,
+		);
+	return COUNTED.map((name) => `${file[name]} ${name}`).join(", ");
+}
+
 /** Refuses a release that lost too much, unless somebody says why. */
 export function checkShrink(
 	bundle: Bundle,
@@ -417,7 +455,10 @@ const value = (from: unknown): Value =>
  */
 export const SESSION_SECONDS = 600;
 
-/** The whole load: one batch, in this order. `now` is when it is asked for. */
+/**
+ * The whole load: one batch, in this order. `now` is when it is asked for, by the
+ * database's clock (NOW).
+ */
 export function loadStatements(
 	bundle: Bundle,
 	current: Current | null,

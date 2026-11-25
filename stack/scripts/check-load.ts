@@ -290,7 +290,11 @@ let apiOrigin = "";
 
 const everything: string[] = [];
 function start(script: string, args: string[], env: Record<string, string>) {
-	const child = spawn(process.execPath, [`scripts/${script}.ts`, ...args], {
+	// With a clock that is wrong, if the case wants one.
+	const clock = env.REHEARSAL_SKEW
+		? ["--preload", "./scripts/rehearsal-clock.ts"]
+		: [];
+	const child = spawn(process.execPath, [...clock, `scripts/${script}.ts`, ...args], {
 		cwd: root,
 		detached: true,
 		stdio: ["ignore", "pipe", "pipe"],
@@ -425,7 +429,14 @@ async function wrongDatabase(bundle: BundleFile) {
 		[fileOf(bundle), "--stage", "preview"],
 		{ CLOUDFLARE_API_TOKEN: "another" },
 	);
-	must(!other.ok && /Authentication error/.test(other.said), other.said);
+	must(
+		!other.ok &&
+			other.said.includes(
+				"Which account the token reaches: HTTP 403, error 10000: the token is not allowed this, or is not valid",
+			) &&
+			!/Authentication error/.test(other.said),
+		other.said,
+	);
 	expect(
 		(await control()).length === 0,
 		`${cases.length} databases that are not this app's of the stage are refused by the load, the report and the switch, and asked nothing`,
@@ -446,10 +457,11 @@ async function loading(bundle: BundleFile) {
 	const before = await dump();
 	const first = await load(bundle);
 	const asked = await control();
+	const counts = countsOf(bundle);
 	expect(
 		first.ok &&
 			first.said.startsWith("Stage: preview\n") &&
-			first.said.includes(`Release 1: ${bundle.items.length} items`),
+			first.said.includes(`Release 1: ${counts}; 0 withdrawn now; `),
 		`the load: ${first.said.split("\n").join(" | ")}`,
 	);
 	const batches = asked.filter((one) => one.load);
@@ -466,11 +478,11 @@ async function loading(bundle: BundleFile) {
 	expect(
 		again.ok &&
 			again.said.includes(
-				"Release 1 is this file already; nothing was written",
+				`Release 1 is this file already (${counts}); nothing was written.`,
 			) &&
 			(await dump()) === loaded &&
 			(await control()).every((one) => !one.load),
-		"the same file again writes nothing",
+		`the same file again counts what is there and writes nothing: ${again.said.split("\n").at(-1)}`,
 	);
 	const fewer = structuredClone(bundle);
 	fewer.items = fewer.items.slice(0, Math.floor(fewer.items.length / 2));
@@ -499,6 +511,150 @@ async function loading(bundle: BundleFile) {
 	await control();
 }
 
+/** What the loader says of a file that is there, whole. */
+const countsOf = (bundle: BundleFile) =>
+	`${bundle.items.length} items, ${bundle.meetings.length} meetings, ${bundle.towns.length} towns, ${bundle.sources.reduce((sum, { boards }) => sum + boards.length, 0)} boards`;
+
+const LOSE_A_BOARD =
+	"DELETE FROM boards WHERE position = 0 AND town_slug = (SELECT max(town_slug) FROM boards)";
+
+/** A stored release that is not the file whose digest it has. */
+async function damaged(bundle: BundleFile) {
+	const says = (what: "items" | "meetings" | "towns" | "boards", by: number) => {
+		const [, n = ""] = new RegExp(`(\\d+) ${what}`).exec(countsOf(bundle)) ?? [];
+		return `${Number(n) + by} ${what} of the file's ${n}`;
+	};
+	const cases: [string, "items" | "meetings" | "towns" | "boards", number, string][] = [
+		["an item that is gone", "items", -1, "DELETE FROM items WHERE id = (SELECT max(id) FROM items)"],
+		["every item but one gone", "items", 1 - bundle.items.length, "DELETE FROM items WHERE id <> (SELECT max(id) FROM items)"],
+		["an item too many", "items", 1, "INSERT INTO items SELECT * FROM copy_of_one"],
+		["a meeting that is gone", "meetings", -1, "DELETE FROM meetings WHERE id = (SELECT max(id) FROM meetings WHERE id NOT IN (SELECT meeting_id FROM items))"],
+		["a town too many", "towns", 1, "INSERT INTO towns SELECT 'one-too-many', 'One Too Many', platform, site FROM towns LIMIT 1"],
+		["a board that is gone", "boards", -1, LOSE_A_BOARD],
+	];
+	const tables = ["items", "meetings", "towns", "boards"];
+	for (const table of tables) await sql(`CREATE TABLE kept_${table} AS SELECT * FROM ${table}`);
+	await sql("CREATE TABLE copy_of_one AS SELECT * FROM items LIMIT 1");
+	await sql("UPDATE copy_of_one SET id = 'one-too-many-01'");
+	for (const [what, table, by, statement] of cases) {
+		await sql(statement);
+		const before = await dump();
+		const { ok, said } = await load(bundle);
+		must(
+			!ok &&
+				said.includes("The stored release is damaged, and nothing was written: it names this file, and holds ") &&
+				said.includes(says(table, by)) &&
+				!said.includes("is this file already") &&
+				(await dump()) === before &&
+				(await control()).every((one) => !one.load),
+			`${what}: ${said}`,
+		);
+		// As it was, children first.
+		for (const one of ["items", "meetings", "boards", "towns"]) await sql(`DELETE FROM ${one}`);
+		for (const one of ["towns", "boards", "meetings", "items"]) await sql(`INSERT INTO ${one} SELECT * FROM kept_${one}`);
+	}
+	const again = await load(bundle);
+	expect(
+		again.ok && again.said.includes(`is this file already (${countsOf(bundle)})`),
+		`a stored release that is not the file is said to be damaged, with 1, and nothing is written: ${cases.map(([what]) => what).join("; ")}`,
+	);
+	for (const table of tables) await sql(`DROP TABLE kept_${table}`);
+	await sql("DROP TABLE copy_of_one");
+	// Lost while it is written: what is there is counted, not what was sent.
+	await sql(`CREATE TRIGGER lost AFTER UPDATE OF loaded_count ON releases BEGIN ${LOSE_A_BOARD}; END`);
+	for (const [at, play] of [{}, { drop: true }].entries()) {
+		await control(play);
+		const { ok, said } = await load(changed(bundle, 2024 + at));
+		await control();
+		must(
+			!ok && said.includes("The stored release is damaged: it names this file, and holds ") && said.includes(says("boards", -1)),
+			`a release that is written damaged: ${said}`,
+		);
+	}
+	await sql("DROP TRIGGER lost");
+	must((await load(changed(bundle, 2026))).ok, "a whole load after it");
+	must((await load(bundle)).ok, "and the old content again");
+	expect(true, "a release that is damaged as it is written is said to be, answered or not; the next whole load puts it right");
+}
+
+/** A machine whose clock is wrong, at every command. */
+async function wrongClock(bundle: BundleFile) {
+	let year = 2100;
+	for (const skew of [-300, 300, -3_600, 86_400]) {
+		const env = { REHEARSAL_SKEW: String(skew) };
+		const args = ["--stage", "preview"];
+		const told = (said: string) => {
+			const [, database = "", machine = ""] =
+				/may still be made until (\S+Z) by the database's clock, (\S+Z) by this machine's, and not after\./.exec(said) ?? [];
+			const off = (text: string, by: number) => Math.abs(Date.parse(text) - Date.now() - 600_000 - by * 1_000);
+			return off(database, 0) < 60_000 && off(machine, skew) < 60_000;
+		};
+		const before = await dump();
+		// What arrives in time is made, and what does not is not, whatever this clock says.
+		for (const aged of [620, -620]) {
+			await control({ aged });
+			const late = await load(changed(bundle, year), args, env);
+			must(
+				!late.ok && /CHECK constraint failed/.test(late.said) && told(late.said) && (await dump()) === before,
+				`${skew} s wrong, a load ${aged} s late: ${late.said}`,
+			);
+		}
+		await control({ aged: 590 });
+		const inTime = await load(changed(bundle, year), args, env);
+		await control();
+		must(inTime.ok, `${skew} s wrong, a load 590 s late: ${inTime.said}`);
+		const stored = (await sql("SELECT loaded_at FROM releases ORDER BY seq DESC LIMIT 1"))[0]?.loaded_at;
+		must(
+			Math.abs(Date.parse(String(stored)) + 590_000 - Date.now()) < 60_000,
+			`${skew} s wrong: the release is stored as loaded at ${stored}`,
+		);
+		must((await run("signup-switch", ["open", ...args], env)).ok, `${skew} s wrong: the switch opens`);
+		await control({ aged: 620 });
+		const late = await run("signup-switch", ["closed", ...args], env);
+		await control({ aged: 590 });
+		const closed = await run("signup-switch", ["closed", ...args], env);
+		await control();
+		must(
+			late.said.includes("reads back as open, not closed") && closed.ok,
+			`${skew} s wrong, the switch: ${late.said} ${closed.said}`,
+		);
+		await sql("CREATE TRIGGER broken BEFORE UPDATE ON settings BEGIN SELECT RAISE(ABORT, 'broken'); END");
+		const unsure = await run("signup-switch", ["open", ...args], env);
+		await sql("DROP TRIGGER broken");
+		must(!unsure.ok && told(unsure.said), `${skew} s wrong, a switch that fails: ${unsure.said}`);
+		await sessionEnds(bundle, env);
+		year += 1;
+	}
+	must((await load(bundle)).ok, "and the old content again");
+	expect(
+		true,
+		"a machine whose clock is 5 minutes, an hour or a day wrong, fast or slow: what arrives after 590 s is made, after 620 s not, the session's deadline and the stored time are right, and what is said names both clocks",
+	);
+	await control();
+}
+
+/** The deadline of the edge preview that a load asks for. */
+async function sessionEnds(bundle: BundleFile, env: Record<string, string> = {}) {
+	requests = [];
+	uploaded = "";
+	const { ok, said } = await load(bundle, undefined, { D1_PROXY: "", ...env });
+	const metadata =
+		/name="metadata"[\s\S]*?\r\n\r\n([\s\S]*?)\r\n--/.exec(uploaded)?.[1] ??
+		"{}";
+	const { bindings } = JSON.parse(metadata) as {
+		bindings?: { name: string; text?: string }[];
+	};
+	const ends = bindings?.find(({ name }) => name === "UNTIL")?.text ?? "";
+	must(
+		/^\d{13}$/.test(ends) &&
+			Number(ends) > Date.now() + 480_000 &&
+			Number(ends) <= Date.now() + 600_000 &&
+			uploaded.includes("The session is over."),
+		`the edge preview ends by itself within ten minutes: ${ends}`,
+	);
+	return { ok, said, bindings, ends };
+}
+
 async function interrupted(bundle: BundleFile) {
 	const old = await dump();
 	// Half way: the batch's last-but-one statement fails, inside the database.
@@ -507,14 +663,9 @@ async function interrupted(bundle: BundleFile) {
 	expect(
 		!spoiled.ok &&
 			/The load failed, whole: D1: /.test(spoiled.said) &&
-			/Release 1 is there\. If the database never answered, the load may still be made until (\d{4}-\d\d-\d\dT[\d:.]+Z), and not after\. Run the same command again/.test(
+			/Release \d+ is there\. If the database never answered, the load may still be made until \S+Z by the database's clock, \S+Z by this machine's, and not after\. Run the same command again/.test(
 				spoiled.said,
 			) &&
-			Math.abs(
-				Date.parse(/until (\S+Z), and/.exec(spoiled.said)?.[1] ?? "") -
-					Date.now() -
-					600_000,
-			) < 60_000 &&
 			(await dump()) === old,
 		"a batch that fails half way leaves the old release whole, says which one is there, and until when a load may still land",
 	);
@@ -676,8 +827,8 @@ async function switchAndReport() {
 	must(
 		opened.said === "Stage: preview\nSign-up is open." &&
 			(await sql("SELECT signup_open AS n FROM settings"))[0]?.n === 1 &&
-			// The tables, the one statement, the read back.
-			asked.length === 3 &&
+			// The tables, the time, the one statement, the read back.
+			asked.length === 4 &&
 			asked.every(({ statements }) => statements === 1),
 		`opened: ${opened.said} ${JSON.stringify(asked)}`,
 	);
@@ -714,23 +865,7 @@ async function switchAndReport() {
 
 /** What Wrangler is told to open, as far as the API goes. */
 async function session(bundle: BundleFile) {
-	requests = [];
-	uploaded = "";
-	const { ok, said } = await load(bundle, undefined, { D1_PROXY: "" });
-	const metadata =
-		/name="metadata"[\s\S]*?\r\n\r\n([\s\S]*?)\r\n--/.exec(uploaded)?.[1] ??
-		"{}";
-	const { bindings } = JSON.parse(metadata) as {
-		bindings?: { name: string; text?: string }[];
-	};
-	const ends = bindings?.find(({ name }) => name === "UNTIL")?.text ?? "";
-	must(
-		/^\d{13}$/.test(ends) &&
-			Number(ends) > Date.now() + 480_000 &&
-			Number(ends) <= Date.now() + 600_000 &&
-			uploaded.includes("The session is over."),
-		`the edge preview ends by itself within ten minutes: ${ends}`,
-	);
+	const { ok, said, bindings, ends } = await sessionEnds(bundle);
 	expect(
 		!ok &&
 			/Not connected, and nothing was read or written/.test(said) &&
@@ -774,6 +909,8 @@ try {
 	await refusedFirst(bundle);
 	await wrongDatabase(bundle);
 	await loading(bundle);
+	await damaged(bundle);
+	await wrongClock(bundle);
 	await interrupted(bundle);
 	await switchAndReport();
 	await session(bundle);

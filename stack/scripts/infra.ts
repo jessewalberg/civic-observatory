@@ -5,10 +5,18 @@
 import { execFileSync, spawn } from "node:child_process";
 import type { Readable } from "node:stream";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { allowed } from "./alchemy-output";
 import { account, deployToken } from "./cloudflare-api";
-import { complain, redact } from "./public-log";
+import {
+	complain,
+	fail,
+	type Line,
+	publicOutput,
+	say,
+	told,
+} from "./public-log";
+import { STAGES } from "./release-words";
 
-export const STAGES = ["preview", "production"] as const;
 export type StageName = (typeof STAGES)[number];
 
 // Production has one phase and, at the first cutover, two applies: `unmanaged`
@@ -24,13 +32,11 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 export function assertDeployCommit(release: string) {
 	const options = { cwd: root, encoding: "utf8" as const };
 	if (execFileSync("git", ["status", "--porcelain"], options) !== "")
-		throw new Error(
-			"Deploy refused: commit or remove all uncommitted changes.",
-		);
+		fail`Deploy refused: commit or remove all uncommitted changes.`;
 	const head = execFileSync("git", ["rev-parse", "HEAD"], options).trim();
 	// The whole SHA: vite.config.ts bakes it as the release marker.
 	if (release !== head)
-		throw new Error("Deploy refused: APP_RELEASE must be HEAD, the full SHA.");
+		fail`Deploy refused: APP_RELEASE must be HEAD, the full SHA.`;
 }
 
 // The account follows from the account-owned token, so no account ID is stored
@@ -52,33 +58,31 @@ const AGENT_VARIABLE =
 // by the operator and in the main-only GitHub environment `production`.
 export function productionJobRefusal(
 	env: NodeJS.ProcessEnv = process.env,
-): string | undefined {
-	if (env.GITHUB_ACTIONS !== "true") return "not GitHub Actions";
+): Line | undefined {
+	if (env.GITHUB_ACTIONS !== "true") return told`not GitHub Actions`;
 	if (env.RUNNER_ENVIRONMENT !== "github-hosted")
-		return "not a GitHub-hosted runner";
-	if (env.GITHUB_EVENT_NAME !== "push") return "not a push";
-	if (env.GITHUB_REF !== "refs/heads/main") return "not refs/heads/main";
+		return told`not a GitHub-hosted runner`;
+	if (env.GITHUB_EVENT_NAME !== "push") return told`not a push`;
+	if (env.GITHUB_REF !== "refs/heads/main") return told`not refs/heads/main`;
 	if (
 		env.GITHUB_WORKFLOW_REF !==
 		"jessewalberg/civic-observatory/.github/workflows/production.yml@refs/heads/main"
 	)
-		return "not the production workflow";
+		return told`not the production workflow`;
 	if (env.CIVIC_PRODUCTION_RELEASE !== "production.yml")
-		return "the production job's marker is missing";
-	const agent = Object.keys(env).find(
+		return told`the production job's marker is missing`;
+	const agent = Object.keys(env).some(
 		(name) => AGENT_VARIABLE.test(name) && env[name],
 	);
-	if (agent) return `a coding-agent session (${agent})`;
+	if (agent) return told`a coding-agent session`;
 	return undefined;
 }
 
 /** Refuses what only the production job may do; `what` starts the sentence. */
-export function assertProductionJob(what: string) {
+export function assertProductionJob(what: Line) {
 	const refusal = productionJobRefusal();
 	if (refusal)
-		throw new Error(
-			`${what} only in production.yml's job after a push to main (${refusal}).`,
-		);
+		fail`${what} only in production.yml's job after a push to main (${refusal}).`;
 }
 
 /**
@@ -98,27 +102,23 @@ export const readOnlyPlan = (argv: readonly string[] = process.argv) =>
 export function readInfrastructure() {
 	const stage = process.env.ALCHEMY_STAGE;
 	if (!STAGES.includes(stage as StageName))
-		throw new Error("Set ALCHEMY_STAGE to preview or production.");
-	const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
-	if (!accountId || !/^[a-f0-9]{32}$/i.test(accountId))
-		throw new Error(
-			"Set the approved CLOUDFLARE_ACCOUNT_ID (32 hex characters).",
-		);
+		fail`Set ALCHEMY_STAGE to preview or production.`;
+	const accountId = process.env.CLOUDFLARE_ACCOUNT_ID ?? "";
+	if (!/^[a-f0-9]{32}$/i.test(accountId))
+		fail`Set the approved CLOUDFLARE_ACCOUNT_ID (32 hex characters).`;
 	if (!process.env.CLOUDFLARE_API_TOKEN?.trim())
-		throw new Error(
-			"An account-scoped CLOUDFLARE_API_TOKEN is required; no profile fallback.",
-		);
-	const profile = process.env.ALCHEMY_PROFILE;
-	if (!profile || !/^[a-z0-9][a-z0-9_-]*$/.test(profile))
-		throw new Error("Set ALCHEMY_PROFILE explicitly for the approved stage.");
-	const release = process.env.APP_RELEASE;
-	if (!release || !/^[a-f0-9]{40}$/.test(release))
-		throw new Error("Set APP_RELEASE to the full reviewed commit SHA.");
+		fail`An account-scoped CLOUDFLARE_API_TOKEN is required; no profile fallback.`;
+	const profile = process.env.ALCHEMY_PROFILE ?? "";
+	if (!/^[a-z0-9][a-z0-9_-]*$/.test(profile))
+		fail`Set ALCHEMY_PROFILE explicitly for the approved stage.`;
+	const release = process.env.APP_RELEASE ?? "";
+	if (!/^[a-f0-9]{40}$/.test(release))
+		fail`Set APP_RELEASE to the full reviewed commit SHA.`;
 	const domain = process.env.PRODUCTION_DOMAIN?.trim() || undefined;
 	if (stage !== "production" && domain)
-		throw new Error("PRODUCTION_DOMAIN applies only to the production stage.");
+		fail`PRODUCTION_DOMAIN applies only to the production stage.`;
 	if (domain && !PRODUCTION_DOMAINS.includes(domain as ProductionDomain))
-		throw new Error("Set PRODUCTION_DOMAIN to managed or unmanaged.");
+		fail`Set PRODUCTION_DOMAIN to managed or unmanaged.`;
 	// An apply, by any path, runs only from a clean tree whose HEAD is APP_RELEASE,
 	// the release marker the Worker serves, and a production apply only in the
 	// production job. Every other command of Alchemy's is refused for both stages and
@@ -127,10 +127,9 @@ export function readInfrastructure() {
 	// token reaches in the account and knows no stage.
 	if (!readOnlyPlan()) {
 		if (process.argv[2] !== "deploy")
-			throw new Error(
-				"Only plan and deploy are allowed for the preview and production stages.",
-			);
-		if (stage === "production") assertProductionJob("Production deploys run");
+			fail`Only plan and deploy are allowed for the preview and production stages.`;
+		if (stage === "production")
+			assertProductionJob(told`Production deploys run`);
 		assertDeployCommit(release);
 	}
 	return {
@@ -142,19 +141,29 @@ export function readInfrastructure() {
 	};
 }
 
-/** One of Alchemy's streams, a line at a time, without what must not be public. */
-async function filtered(from: Readable, to: NodeJS.WriteStream) {
+/**
+ * One of Alchemy's streams, a line at a time: what may be public, and how many lines
+ * are not shown. A line is looked at whole, once it has ended.
+ */
+async function filtered(from: Readable) {
 	let rest = "";
+	let hidden = 0;
+	const one = (text: string) => {
+		const line = allowed(text);
+		if (line) say(line);
+		else if (text.trim()) hidden += 1;
+	};
 	from.setEncoding("utf8");
 	for await (const chunk of from) {
 		const lines = (rest + chunk).split(/\r?\n|\r/);
 		rest = lines.pop() ?? "";
-		for (const line of lines) to.write(`${redact(line)}\n`);
+		for (const line of lines) one(line);
 	}
-	if (rest) to.write(`${redact(rest)}\n`);
+	one(rest);
+	return hidden;
 }
 
-/** Alchemy's CLI; in GitHub Actions, where its output is public, through a filter. */
+/** Alchemy's CLI; in GitHub Actions, where its output is public, through a list. */
 async function alchemy(args: string[]) {
 	const inPublic = process.env.GITHUB_ACTIONS === "true";
 	const child = spawn(
@@ -169,11 +178,21 @@ async function alchemy(args: string[]) {
 		child.on("error", reject);
 		child.on("close", (code) => resolve(code ?? 1));
 	});
-	await Promise.all([
-		child.stdout && filtered(child.stdout, process.stdout),
-		child.stderr && filtered(child.stderr, process.stderr),
+	const hidden = await Promise.all([
+		child.stdout && filtered(child.stdout),
+		child.stderr && filtered(child.stderr),
 	]);
-	return ended;
+	const code = await ended;
+	if (inPublic) {
+		say(
+			told`Alchemy: ${(hidden[0] ?? 0) + (hidden[1] ?? 0)} lines are not shown here; it ended with ${code}.`,
+		);
+		if (code !== 0)
+			say(
+				told`The apply failed, whole or in part. What Alchemy said is not public: run bun run plan:production on the operator's machine (docs/runbooks/release.md, section 3), then this run again.`,
+			);
+	}
+	return code;
 }
 
 if (
@@ -184,6 +203,7 @@ if (
 }
 
 async function main() {
+	publicOutput();
 	try {
 		const action = process.argv[2] ?? "";
 		// Alchemy refuses its approval prompt in agent sessions. `preview` (systems
@@ -195,14 +215,11 @@ async function main() {
 			!["plan", "deploy"].includes(action) ||
 			process.argv.length !== (yes ? 4 : 3)
 		)
-			throw new Error(
-				"Use plan or deploy (optionally deploy --yes) without other arguments; select ALCHEMY_STAGE.",
-			);
-		if (yes && action !== "deploy")
-			throw new Error("--yes is allowed only for deploys.");
+			fail`Use plan or deploy (optionally deploy --yes) without other arguments; select ALCHEMY_STAGE.`;
+		if (yes && action !== "deploy") fail`--yes is allowed only for deploys.`;
 		if (action === "deploy" && process.env.ALCHEMY_STAGE === "production") {
-			assertProductionJob("Production deploys run");
-			if (!yes) throw new Error("The production job deploys with --yes.");
+			assertProductionJob(told`Production deploys run`);
+			if (!yes) fail`The production job deploys with --yes.`;
 		}
 		if (action === "deploy") assertDeployCommit(process.env.APP_RELEASE ?? "");
 		await deriveAccountId();
@@ -220,7 +237,7 @@ async function main() {
 			...(yes ? ["--yes"] : []),
 		]);
 	} catch (error) {
-		complain(error, "Infrastructure configuration is invalid.");
+		complain(error, told`Infrastructure configuration is invalid.`);
 		process.exitCode = 1;
 	}
 }
