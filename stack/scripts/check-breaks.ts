@@ -175,6 +175,22 @@ const BREAKS: Break[] = [
 	),
 	breakIt(
 		"docket",
+		"a town's later pages carry its quiet meetings",
+		/carries the quiet meeting/,
+		DOCKET,
+		"const isFirst = (page ?? 1) === 1;",
+		"const isFirst = (page ?? 1) > 0;",
+	),
+	breakIt(
+		"docket",
+		"a town's later pages read its quiet meetings and drop them",
+		/more rows and its second/,
+		DOCKET,
+		"		...(isFirst ? [env.DB.prepare(QUIET).bind(slug)] : []),",
+		"		env.DB.prepare(isFirst ? QUIET : `SELECT id FROM (${QUIET}) WHERE id = 'none'`).bind(slug),",
+	),
+	breakIt(
+		"docket",
 		"a date that has passed is still upcoming",
 		/its outcome is not collected/,
 		DOCKET,

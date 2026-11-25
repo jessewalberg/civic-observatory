@@ -28,7 +28,7 @@ repository root is not used by it and is not changed by it.
 | --- | --- |
 | `/` | The sign-up, then the items, newest meeting first, 25 a page. `?town=`, `?board=`, `?kind=` and `?upcoming=1` filter the whole dataset before it is paged; `?page=` pages it. A filtered list is `noindex, follow`. A page past the last one is a 404. |
 | `/item/<id>` | One item. An item a later release dropped answers 410 and says when it was withdrawn; its content is deleted, and only its town, board and meeting date stay. |
-| `/town/<slug>` | One town: what is and is not collected of each board, its items, and the meetings with nothing on the docket. A town that is not collected says so and why. |
+| `/town/<slug>` | One town: what is and is not collected of each board, its items, and, on the first of its pages only, the meetings with nothing on the docket, which no later page reads or sends. A town that is not collected says so and why. |
 | `/method` | What is included, the scope rule, how quotes are checked, what is missing, corrections. |
 | `/privacy`, `/terms` | Short and plain. |
 | `/explore*`, `/pricing`, `/search`, `/topics/*`, `/meeting/*`, `/dashboard*`, `/admin*`, `/sign-in*`, `/sign-up*`, `/reset-password` | Paths of the old app: 410 with a plain page. |

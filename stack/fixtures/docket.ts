@@ -166,6 +166,13 @@ const others: MeetingInput[] = [
 		],
 	},
 	{
+		town: "Aldermoor",
+		board: COUNCIL,
+		type: "council_selectmen",
+		date: "2026-03-26",
+		note: "No land-use items (appointments).",
+	},
+	{
 		town: "Eastmere",
 		board: COUNCIL,
 		type: "council_selectmen",

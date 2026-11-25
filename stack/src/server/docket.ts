@@ -250,22 +250,25 @@ const boardOf = (row: Row): Board => ({
 	note: text(row.note),
 });
 
+const QUIET = `SELECT id, board, subbody, meeting_date, status, note, minutes_note, minutes_url, agenda_url
+FROM meetings WHERE town_slug = ?1 AND item_count = 0 ORDER BY meeting_date DESC, board, id`;
+
 /** Null: no such town, or no such page of it. */
 export async function readTown(
 	slug: string,
 	page: number | undefined,
 ): Promise<TownPage | null> {
 	const now = today();
-	const [release, towns, boards, quiet, count, rows] = await read(
+	// The first page alone shows the quiet meetings, so it alone reads them.
+	const isFirst = (page ?? 1) === 1;
+	const [release, towns, boards, count, rows, quiet] = await read(
 		env.DB.prepare(RELEASE),
 		env.DB.prepare(`${TOWNS} WHERE t.slug = ?1`).bind(slug),
 		env.DB.prepare(
 			"SELECT board, minutes_online, status, note FROM boards WHERE town_slug = ?1 ORDER BY position",
 		).bind(slug),
-		env.DB.prepare(
-			"SELECT id, board, subbody, meeting_date, status, note, minutes_note, minutes_url, agenda_url FROM meetings WHERE town_slug = ?1 AND item_count = 0 ORDER BY meeting_date DESC, board, id",
-		).bind(slug),
 		...listStatements({ town: slug, page }, now),
+		...(isFirst ? [env.DB.prepare(QUIET).bind(slug)] : []),
 	);
 	const current = releaseOf(release?.[0]);
 	const row = towns?.[0];

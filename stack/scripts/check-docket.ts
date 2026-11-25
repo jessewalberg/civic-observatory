@@ -593,6 +593,14 @@ async function towns(worker: BuiltWorker, bundle: BundleFile) {
 						front.html.includes(`datetime="${meeting.meeting_date}"`),
 					`${path} lists its meeting of ${meeting.meeting_date}`,
 				);
+		for (const later of pages.slice(1))
+			for (const meeting of bundle.meetings)
+				must(
+					meeting.town !== source.town ||
+						meeting.item_count > 0 ||
+						!later.html.includes(`"${meeting.id}"`),
+					`a later page of ${path} carries the quiet meeting ${meeting.id}`,
+				);
 		must(
 			blocked === front.main.includes(`${source.town} is not collected.`),
 			`${path} says whether the town is collected`,
@@ -636,6 +644,44 @@ async function towns(worker: BuiltWorker, bundle: BundleFile) {
 	expect(
 		listed.join(" ") === expected.join(" "),
 		`the sitemap lists exactly the ${expected.length} pages`,
+	);
+}
+
+/** A town's later page does not read the quiet meetings: by the rows D1 read. */
+async function quietReads(worker: BuiltWorker, bundle: BundleFile) {
+	const town = bundle.towns
+		.map((name) => ({
+			path: `/town/${slug(name)}`,
+			items: bundle.items.filter((item) => item.town === name).length,
+		}))
+		.sort((a, b) => b.items - a.items)[0] as { path: string; items: number };
+	must(town.items > PAGE, `${town.path} has a second page`);
+	const rowsRead = async (path: string) => {
+		const page = await read(worker, path);
+		const id = page.headers.get("x-request-id");
+		for (let tries = 0; tries < 40; tries++) {
+			const line = worker.lines.find((one) => one.includes(String(id)));
+			if (line)
+				return (JSON.parse(line) as { database: { rows_read: number } })
+					.database.rows_read;
+			await new Promise((resolve) => setTimeout(resolve, 50));
+		}
+		throw new Error(`no record of ${path}`);
+	};
+	const second = `${town.path}?page=2`;
+	await worker.configure({ bindings: { APP_ENV: "preview" } });
+	const before = [await rowsRead(town.path), await rowsRead(second)] as const;
+	await worker.sql(
+		`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 200)
+		INSERT INTO meetings (id, town_slug, board, board_type, meeting_date, meeting_type, status, minutes_status, item_count)
+		SELECT 'quiet-' || i, ?1, 'A Board', 'zba', '2026-04-01', 'regular', 'held', 'posted', 0 FROM n`,
+		town.path.replace("/town/", ""),
+	);
+	const after = [await rowsRead(town.path), await rowsRead(second)] as const;
+	await worker.sql("DELETE FROM meetings WHERE id LIKE 'quiet-%'");
+	expect(
+		after[0] >= before[0] + 200 && after[1] === before[1],
+		`with 200 more quiet meetings a town's first page reads ${after[0] - before[0]} more rows and its second ${after[1] - before[1]}`,
 	);
 }
 
@@ -1037,6 +1083,7 @@ try {
 	await items(worker, bundle, during);
 	await towns(worker, bundle);
 	await noRawNames(worker, bundle);
+	await quietReads(worker, bundle);
 
 	// The day after everything has happened.
 	const late = "2099-01-01";
