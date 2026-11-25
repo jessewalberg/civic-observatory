@@ -1,5 +1,5 @@
-// `bun run check:breaks [part of a break's words]`: breaks the app on purpose, one
-// way at a time, in a scratch copy, and expects the check named to fail for it
+// `bun run check:breaks [part of a break's words | check:<name>,…]`: breaks the app on
+// purpose, one way at a time, in a scratch copy, and expects the check named to fail for it
 // (stack/README.md). Slow, and not in CI: it is how the checks themselves are
 // checked. Each break's text must occur exactly once in its file.
 import { spawn } from "node:child_process";
@@ -12,17 +12,29 @@ import {
 	symlinkSync,
 	writeFileSync,
 } from "node:fs";
+import { RELEASE_BREAKS } from "./check-breaks-release";
 import { root } from "./harness";
 
-type Check = "docket" | "signup" | "pages" | "limits";
+type Check =
+	| "docket"
+	| "signup"
+	| "pages"
+	| "limits"
+	| "guard"
+	| "load"
+	| "release";
 interface Break {
 	what: string;
 	check: Check;
 	/** What the check must say when it fails. */
 	says: RegExp;
+	/** And what it must show of it. */
+	shows?: RegExp;
 	file: string;
 	from: string;
 	to: string;
+	/** The only cases the check runs. */
+	only?: string;
 }
 const breakIt = (
 	check: Check,
@@ -222,6 +234,22 @@ const BREAKS: Break[] = [
 		"{town.town} has nothing. Its boards",
 	),
 	// The sign-up.
+	breakIt(
+		"signup",
+		"an open row is open without the stage's key",
+		/a stage without the secret says that sign-up is closed/,
+		"src/server/client-key.ts",
+		'(env.APP_ENV === "local" || stageKey() !== undefined)',
+		"env.APP_ENV !== undefined",
+	),
+	breakIt(
+		"signup",
+		"requests are counted under another day than the report says",
+		/the report names its days as UTC's/,
+		SIGNUP,
+		"new Date(now).toISOString().slice(0, 10), kind",
+		"new Date(now - 5 * 86_400_000).toISOString().slice(0, 10), kind",
+	),
 	breakIt(
 		"signup",
 		"the limit for one client is not in the statement",
@@ -549,6 +577,7 @@ const BREAKS: Break[] = [
 		'url.protocol !== "http:"',
 		'url.protocol !== "ftp:"',
 	),
+	...RELEASE_BREAKS,
 ];
 
 const folder = `${root}.smoke/breaks-${process.pid}`;
@@ -565,8 +594,9 @@ const LEFT_OUT = [
 const RUNNERS = 3;
 
 function copyOf(one: Break, at: number): string {
-	const copy = `${folder}/${at}`;
+	const copy = `${folder}/${at}/stack`;
 	mkdirSync(copy, { recursive: true });
+	cpSync(`${root}../.github`, `${copy}/../.github`, { recursive: true });
 	for (const entry of readdirSync(root))
 		if (!LEFT_OUT.includes(entry))
 			cpSync(`${root}${entry}`, `${copy}/${entry}`, { recursive: true });
@@ -587,12 +617,18 @@ function copyOf(one: Break, at: number): string {
 function run(one: Break, copy: string, runner: number) {
 	return new Promise<{ code: number | null; said: string }>((resolve) => {
 		const port = String(4400 + runner * 10);
-		const child = spawn(process.execPath, [`scripts/check-${one.check}.ts`], {
+		const command = [process.execPath, `scripts/check-${one.check}.ts`];
+		// The guard's check refuses to run with a network.
+		if (one.check === "guard") command.unshift("unshare", "-rn");
+		const [program = "", ...args] = command;
+		const child = spawn(program, args, {
 			cwd: copy,
+			detached: true,
 			env: {
 				...process.env,
 				DOCKET_BUNDLE: "",
 				[`STACK_${one.check.toUpperCase()}_PORT`]: port,
+				[`STACK_${one.check.toUpperCase()}_CASE`]: one.only ?? "",
 			},
 		});
 		let said = "";
@@ -601,11 +637,16 @@ function run(one: Break, copy: string, runner: number) {
 		};
 		child.stdout.on("data", add);
 		child.stderr.on("data", add);
-		// A check that never ends has not caught anything.
+		// A check that never ends has not caught anything. Its whole group goes: a
+		// workerd that stays would keep the port.
 		const late = setTimeout(() => {
-			said += "\nstopped after five minutes";
-			child.kill("SIGKILL");
-		}, 300_000);
+			said += "\nstopped after fifteen minutes";
+			try {
+				process.kill(-(child.pid as number), "SIGKILL");
+			} catch {
+				// It had ended.
+			}
+		}, 900_000);
 		child.on("close", (code) => {
 			clearTimeout(late);
 			resolve({ code, said });
@@ -614,7 +655,11 @@ function run(one: Break, copy: string, runner: number) {
 }
 
 const wanted = process.argv[2] ?? "";
-const chosen = BREAKS.filter(({ what }) => what.includes(wanted));
+const chosen = BREAKS.filter(({ what, check }) =>
+	wanted.startsWith("check:")
+		? wanted.split(",").includes(`check:${check}`)
+		: what.includes(wanted),
+);
 const queue = [...chosen.entries()];
 const missed: string[] = [];
 mkdirSync(folder, { recursive: true });
@@ -632,9 +677,13 @@ try {
 				const [at, one] = next;
 				const copy = copyOf(one, at);
 				const { code, said } = await run(one, copy, runner);
-				rmSync(copy, { recursive: true, force: true });
+				rmSync(`${folder}/${at}`, { recursive: true, force: true });
 				const failure = said.match(/check:\w+ failed: [^\n]*/)?.[0] ?? "";
-				if (code !== 0 && one.says.test(failure))
+				if (
+					code !== 0 &&
+					one.says.test(failure) &&
+					(one.shows?.test(said) ?? true)
+				)
 					console.log(
 						`caught - ${one.what}\n         ${failure.slice(0, 160)}`,
 					);

@@ -249,9 +249,12 @@ async function otherAnswers(worker: BuiltWorker) {
 	expect(
 		health.status === 200 &&
 			health.headers.get("cache-control") === "no-store" &&
-			Object.keys(body).join() === "commit,docket,signup" &&
+			Object.keys(body).sort().join() === "commit,database,docket,signup" &&
+			Object.keys(body.docket as object).join() ===
+				"release,generatedAt,items,towns" &&
+			body.database === "reachable" &&
 			body.commit === head,
-		"/api/health states the commit, the release and the sign-up, and nothing else",
+		"/api/health states the commit, the database, the release by its counts and the sign-up, and nothing else",
 	);
 }
 
@@ -592,9 +595,12 @@ async function broken(worker: BuiltWorker, paths: Record<string, string>) {
 		);
 	}
 	const health = await worker.send("/api/health");
+	const said = (await health.json()) as Record<string, unknown>;
 	must(
 		health.status === 503 &&
-			((await health.json()) as { signup: string }).signup === "closed",
+			said.signup === "closed" &&
+			said.database === "unreachable" &&
+			said.docket === null,
 		"/api/health without D1",
 	);
 	const sitemap = await worker.send("/sitemap.xml");

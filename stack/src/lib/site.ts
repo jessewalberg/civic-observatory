@@ -5,6 +5,14 @@ export const ORIGIN = "https://civicobservatory.com";
 export const CONTACT = "hello@civicobservatory.com";
 export const COUNTY = "Tolland County, Connecticut";
 
+/** The Worker of each stage (alchemy.run.ts). */
+export const WORKERS = {
+	preview: "civic-docket-preview",
+	production: "civic-docket-production",
+} as const;
+/** Request records (src/server/observability.ts), of both stages. */
+export const RECORDS = "civic_docket_requests";
+
 /** Where server functions are served (vite.config.ts). */
 export const FUNCTIONS = "/_fn";
 /**

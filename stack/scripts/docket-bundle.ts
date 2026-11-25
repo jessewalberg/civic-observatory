@@ -360,6 +360,44 @@ export const readCurrent = (rows: Rows | undefined): Current | null => {
 		: null;
 };
 
+/** What time it is by the database's own clock: no other clock is asked. */
+export const NOW: Statement = ["SELECT unixepoch('subsec') AS now", []];
+/** That instant, as the load's statements take it. */
+export function readNow(rows: Rows | undefined): string {
+	const now = Number(rows?.[0]?.now) * 1_000;
+	if (!(now > 1.7e12 && now < 1e13))
+		throw new Error("The database did not say what time it is.");
+	return new Date(now).toISOString();
+}
+
+/** What is stored, to compare with a file that says it is there. */
+export const STORED: Statement = [
+	`SELECT (SELECT count(*) FROM items) AS items, (SELECT count(*) FROM meetings) AS meetings,
+	(SELECT count(*) FROM towns) AS towns, (SELECT count(*) FROM boards) AS boards`,
+	[],
+];
+const COUNTED = ["items", "meetings", "towns", "boards"] as const;
+/** Says the counts that are stored, or that they are not the file's. */
+export function checkStored(
+	bundle: Bundle,
+	rows: Rows | undefined,
+	written: boolean,
+): string {
+	const file = {
+		items: bundle.items.length,
+		meetings: bundle.meetings.length,
+		towns: bundle.towns.length,
+		boards: bundle.sources.reduce((sum, { boards }) => sum + boards.length, 0),
+	};
+	const stored = (name: (typeof COUNTED)[number]) =>
+		Number(rows?.[0]?.[name] ?? Number.NaN);
+	if (COUNTED.some((name) => stored(name) !== file[name]))
+		throw new Error(
+			`The stored release is damaged${written ? "" : ", and nothing was written"}: it names this file, and holds ${COUNTED.map((name) => `${stored(name)} ${name} of the file's ${file[name]}`).join(", ")} (docs/runbooks/release.md, section 6).`,
+		);
+	return COUNTED.map((name) => `${file[name]} ${name}`).join(", ");
+}
+
 /** Refuses a release that lost too much, unless somebody says why. */
 export function checkShrink(
 	bundle: Bundle,
@@ -411,7 +449,16 @@ const value = (from: unknown): Value =>
 			? from
 			: null;
 
-/** The whole load: one batch, in this order. */
+/**
+ * For how long a write that was asked for may still be made. The database itself
+ * refuses it afterwards, however late it arrives, and a remote connection ends.
+ */
+export const SESSION_SECONDS = 600;
+
+/**
+ * The whole load: one batch, in this order. `now` is when it is asked for, by the
+ * database's clock (NOW).
+ */
 export function loadStatements(
 	bundle: Bundle,
 	current: Current | null,
@@ -490,10 +537,11 @@ export function loadStatements(
 	});
 	return [
 		// The number after the one this load read. Another load that finished
-		// since has taken it, and this whole batch fails.
+		// since has taken it, and this whole batch fails. So it does when it arrives
+		// too late: a release of no items is refused by the table.
 		[
 			`INSERT INTO releases (seq, digest, schema_version, generated_at, window_start, window_end, upcoming_through, item_count, shrink_reason, loaded_at)
-			VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)`,
+			VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, CASE WHEN abs(unixepoch() - unixepoch(?10)) <= ${SESSION_SECONDS} THEN ?8 ELSE 0 END, ?9, ?10)`,
 			[
 				seq,
 				bundle.digest,

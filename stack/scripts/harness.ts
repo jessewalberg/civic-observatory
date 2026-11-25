@@ -78,6 +78,31 @@ export function readBundleFile(): BundleFile {
 	) as BundleFile;
 }
 
+/** A bundle with at least `least` items: more meetings like its first busy one. */
+export function enlarged(bundle: BundleFile, least: number): BundleFile {
+	const large = structuredClone(bundle);
+	const pattern = large.meetings.find(
+		({ item_count }) => item_count > 0,
+	) as BundleMeeting;
+	const item = large.items.find(
+		({ id }) => id.replace(/-\d+$/, "") === pattern.id,
+	) as BundleItem;
+	for (let n = 1; large.items.length < least; n++) {
+		const id = `${pattern.id}-more-${n}x`;
+		large.meetings.push({ ...pattern, id, item_count: 30 });
+		for (let i = 1; i <= 30; i++)
+			large.items.push({
+				...structuredClone(item),
+				id: `${id}-${String(i).padStart(2, "0")}`,
+				request: `${item.request} (more ${n}.${i})`,
+			});
+	}
+	return large;
+}
+
+/** An operator's machine is no run, wherever the checks are. */
+export const OPERATOR = { ...process.env, GITHUB_ACTIONS: "" };
+
 /** Runs scripts/load-docket.ts as an operator would. */
 export function load(state: string, bundle: unknown, ...args: string[]) {
 	mkdirSync(`${root}${state}`, { recursive: true });
@@ -89,12 +114,14 @@ export function load(state: string, bundle: unknown, ...args: string[]) {
 	const result = spawnSync(
 		process.execPath,
 		["scripts/load-docket.ts", file, "--state", state, ...args],
-		{ cwd: root, encoding: "utf8" },
+		{ cwd: root, encoding: "utf8", env: OPERATOR },
 	);
-	return {
-		ok: result.status === 0,
-		said: `${result.stdout}${result.stderr}`.trim(),
-	};
+	const [stage, ...said] = `${result.stdout}${result.stderr}`
+		.trim()
+		.split("\n");
+	if (stage !== "Stage: local")
+		throw new Error(`A load did not say its stage first: ${stage}`);
+	return { ok: result.status === 0, said: said.join("\n") };
 }
 
 export const loadInto = (worker: BuiltWorker, bundle: unknown) =>

@@ -4,12 +4,13 @@
 // recorded and refused. No cloud account, token or provider call.
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, readdirSync, rmSync } from "node:fs";
+import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import type { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { Miniflare, Response as WorkerResponse } from "miniflare";
 import { unstable_getMiniflareWorkerOptions } from "wrangler";
 import { CALLS } from "../src/lib/limits";
+import { ALCHEMY_COMPATIBILITY, alchemyBuild } from "./alchemy-build";
 import { BATCH_WORKER, type Rows, type Value } from "./local-d1";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -37,9 +38,66 @@ function tool(command: string, args: string[]) {
 		);
 }
 
-export async function startBuiltWorker(port: number, first: WorkerSettings) {
+/** What is served: a Wrangler configuration, and where its modules are. */
+interface Served {
+	config: string;
+	folder: string;
+	modules: string[];
+}
+
+/** The local build (vite.config.ts with Wrangler's local bindings). */
+function viteServed(): Served {
+	tool("vite", ["build"]);
+	const folder = `${root}dist/server`;
+	const modules = readdirSync(folder, { recursive: true })
+		.map(String)
+		.filter((path) => path.endsWith(".js") && path !== "index.js");
+	return {
+		config: `${folder}/wrangler.json`,
+		folder,
+		modules: ["index.js", ...modules],
+	};
+}
+
+/** What a release uploads (alchemy-build.ts), with the same local bindings. */
+function alchemyServed(state: string, release: string): Served {
+	const { server, modules, client } = alchemyBuild(`${root}${state}`, release);
+	const config = `${root}${state}/wrangler.json`;
+	writeFileSync(
+		config,
+		JSON.stringify({
+			name: "app",
+			compatibility_date: ALCHEMY_COMPATIBILITY.compatibilityDate,
+			compatibility_flags: ALCHEMY_COMPATIBILITY.compatibilityFlags,
+			main: `${server}/${modules[0]}`,
+			no_bundle: true,
+			assets: { directory: client, run_worker_first: ["/robots.txt"] },
+			vars: { APP_ENV: "local" },
+			d1_databases: [
+				{
+					binding: "DB",
+					database_name: "civic-docket-local",
+					database_id: "00000000-0000-0000-0000-000000000001",
+				},
+			],
+		}),
+	);
+	return {
+		config,
+		folder: server,
+		modules: modules.filter((path) => path.endsWith(".js")),
+	};
+}
+
+/** `alchemy`: the commit it is built for, as Alchemy builds it. */
+export async function startBuiltWorker(
+	port: number,
+	first: WorkerSettings,
+	alchemy?: string,
+) {
 	/** Relative to stack/: what `--state` of the scripts takes. */
 	const state = `.smoke/built-${randomUUID()}`;
+	let served: Served;
 	/** Requests the Worker sent, as "METHOD origin/path". */
 	const egress: string[] = [];
 	/** Lines the Worker wrote to its console. */
@@ -54,13 +112,8 @@ export async function startBuiltWorker(port: number, first: WorkerSettings) {
 	};
 
 	function options(settings: WorkerSettings) {
-		const built = unstable_getMiniflareWorkerOptions(
-			`${root}dist/server/wrangler.json`,
-		);
+		const built = unstable_getMiniflareWorkerOptions(served.config);
 		const { modulesRules: _, ...worker } = built.workerOptions;
-		const modules = readdirSync(`${root}dist/server`, { recursive: true })
-			.map(String)
-			.filter((path) => path.endsWith(".js") && path !== "index.js");
 		return {
 			host: "127.0.0.1",
 			port,
@@ -74,8 +127,9 @@ export async function startBuiltWorker(port: number, first: WorkerSettings) {
 				{
 					...worker,
 					name: "app",
-					rootPath: `${root}dist/server`,
-					modules: ["index.js", ...modules].map((path) => ({
+					rootPath: served.folder,
+					modulesRoot: served.folder,
+					modules: served.modules.map((path) => ({
 						type: "ESModule" as const,
 						path,
 					})),
@@ -134,7 +188,7 @@ export async function startBuiltWorker(port: number, first: WorkerSettings) {
 			"--persist-to",
 			state,
 		]);
-		tool("vite", ["build"]);
+		served = alchemy ? alchemyServed(state, alchemy) : viteServed();
 		await start();
 	} catch (error) {
 		await stop();

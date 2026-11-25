@@ -1,11 +1,17 @@
-// A local D1 as Wrangler keeps it, for scripts/load-docket.ts and
-// scripts/report-docket.ts. Nothing here is remote.
+// A D1 binding on this machine, asked over HTTP: the local database as Wrangler
+// keeps it, or, with a connection that remote-d1.ts opened, a stage's own. The
+// scripts and the checks use the same one.
 import { join } from "node:path";
-import { Miniflare } from "miniflare";
+import { Miniflare, type RemoteProxyConnectionString } from "miniflare";
 
 export type Value = string | number | null;
 export type Statement = [sql: string, params: Value[]];
 export type Rows = Record<string, unknown>[];
+export interface Database {
+	batch(statements: Statement[]): Promise<{ rows: Rows; written: number }[]>;
+	rows(sql: string, ...params: Value[]): Promise<Rows>;
+	close(): Promise<void>;
+}
 
 // Asked over HTTP: Miniflare's own binding proxy blocks this thread for every
 // call. One batch is one transaction.
@@ -29,15 +35,41 @@ export const BATCH_WORKER = `export default {
 /** wrangler.jsonc's, so the database that `bun run db:local` made is found. */
 const DATABASE = "00000000-0000-0000-0000-000000000001";
 
-export async function openDatabase(state = ".wrangler/state") {
+export const openDatabase = (state = ".wrangler/state"): Promise<Database> =>
+	serve({
+		d1Persist: join(state, "v3", "d1"),
+		d1Databases: { DB: DATABASE },
+	});
+
+/** A stage's database, through the connection Wrangler made to it. */
+export const openRemote = (id: string, connection: string): Promise<Database> =>
+	serve({
+		d1Databases: {
+			DB: {
+				id,
+				remoteProxyConnectionString: new URL(
+					connection,
+				) as RemoteProxyConnectionString,
+			},
+		},
+	});
+
+async function serve(bindings: {
+	d1Persist?: string;
+	d1Databases:
+		| Record<string, string>
+		| Record<
+				string,
+				{ id: string; remoteProxyConnectionString: RemoteProxyConnectionString }
+		  >;
+}): Promise<Database> {
 	const miniflare = new Miniflare({
 		modules: true,
 		script: BATCH_WORKER,
 		compatibilityDate: "2026-01-14",
 		host: "127.0.0.1",
 		port: 0,
-		d1Persist: join(state, "v3", "d1"),
-		d1Databases: { DB: DATABASE },
+		...bindings,
 	});
 	const { origin } = await miniflare.ready;
 	const batch = async (statements: Statement[]) => {
