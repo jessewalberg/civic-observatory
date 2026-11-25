@@ -274,27 +274,27 @@ function start(script: string, args: string[], env: Record<string, string>) {
 		} as unknown as NodeJS.ProcessEnv,
 	});
 	let said = "";
+	const kill = () => {
+		try {
+			process.kill(-(child.pid as number), "SIGKILL");
+		} catch {
+			// It had ended.
+		}
+	};
+	// One that never ends is not a refusal.
+	const late = setTimeout(kill, 120_000);
 	const ended = new Promise<{ ok: boolean; said: string }>((resolve) => {
 		for (const stream of [child.stdout, child.stderr])
 			stream.on("data", (chunk: Buffer) => {
 				said += chunk.toString();
 			});
 		child.on("close", (code) => {
+			clearTimeout(late);
 			everything.push(said);
 			resolve({ ok: code === 0, said: said.trim() });
 		});
 	});
-	return {
-		ended,
-		said: () => said,
-		kill() {
-			try {
-				process.kill(-(child.pid as number), "SIGKILL");
-			} catch {
-				// It had ended.
-			}
-		},
-	};
+	return { ended, said: () => said, kill };
 }
 const run = (
 	script: string,

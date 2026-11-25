@@ -399,15 +399,19 @@ export const RELEASE_BREAKS: ReleaseBreak[] = [
 		"a block that is gone does not fail the check",
 		"check-production release on the domain fails when the zone's block is gone",
 		LIVE,
-		"? old.status === 403 &&",
-		"? old.status > 0 &&",
+		`? old.status === 403 &&
+					!old.headers.has("x-commit-sha") &&
+					!old.headers.has("cf-mitigated")`,
+		"? old.status > 0",
 	),
 	release(
 		"a block that is gone is found after the move alone",
 		"check-production reachable: fails when the block is gone",
 		LIVE,
-		"	if (\n		old.status !== 403 ||",
-		"	if (\n		old.status === 999 ||",
+		`old.status !== 403 ||
+		old.headers.has("cf-mitigated") ||
+		old.headers.has("x-commit-sha")`,
+		"old.status === 999",
 	),
 	// The load, waited for.
 	release(
@@ -486,8 +490,10 @@ export const RELEASE_BREAKS: ReleaseBreak[] = [
 		"the preview may be open",
 		"check-production preview fails when anyone may read it",
 		LIVE,
-		"([401, 403].includes(outside.status) ||",
-		"([200, 401, 403].includes(outside.status) || !outside.headers.get('location') ||",
+		`				!outside.headers.has("x-commit-sha"),
+			\`/ answered`,
+		`				!outside.headers.has("x-commit-sha") || outside.status === 200,
+			\`/ answered`,
 	),
 	// What GitHub's record says, and the domain.
 	release(
@@ -536,7 +542,7 @@ export const RELEASE_BREAKS: ReleaseBreak[] = [
 	),
 	release(
 		"a domain given back by hand is taken again",
-		"a push after the domain was given back by hand: ",
+		"a push after the domain was given back by hand",
 		MOVE,
 		"if (job && legacy && finished)",
 		"if (job && legacy && !finished && moved)",

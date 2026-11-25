@@ -68,8 +68,13 @@ console.log(
 				.filter(([id]) => !id.startsWith("Website"))
 				.map(([id, { Props }]) => [id, Props ?? {}]),
 		),
-		// What Alchemy prints at the end of an apply.
-		output,
+		// What Alchemy prints at the end of an apply; what it has yet to learn is named.
+		output: Object.fromEntries(
+			Object.entries(output as Record<string, unknown>).map(([name, value]) => [
+				name,
+				typeof value === "string" ? value : "computed at deploy",
+			]),
+		),
 		name: worker.name,
 		main: worker.vite?.main,
 		domain: worker.domain ?? null,
