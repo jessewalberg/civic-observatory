@@ -847,7 +847,20 @@ async function closedRow() {
 	);
 	await clear();
 
+	/** What the health report and the front page say of it; the row says open. */
+	const states = async () => {
+		const health = (await (await app().send("/api/health")).json()) as {
+			signup?: string;
+		};
+		const { html } = await read(app(), "/");
+		return `${health.signup}, ${html.includes("Sign-up is not open yet.") ? "closed" : "open"}`;
+	};
+	must((await states()) === "open, open", `with its key: ${await states()}`);
 	await app().configure({ bindings: { APP_ENV: "preview" } });
+	expect(
+		(await states()) === "closed, closed",
+		`a stage without the secret says that sign-up is closed, whatever the row says (health, page: ${await states()})`,
+	);
 	const none = await signUp("keyless@example.com", "192.0.2.52");
 	expect(
 		none.status === 403 && (await counts()).signups === 0,
@@ -857,7 +870,8 @@ async function closedRow() {
 		bindings: { APP_ENV: "preview", SIGNUP_CLIENT_KEY: "short" },
 	});
 	expect(
-		(await signUp("shortkey@example.com", "192.0.2.53")).status === 403,
+		(await signUp("shortkey@example.com", "192.0.2.53")).status === 403 &&
+			(await states()) === "closed, closed",
 		"a short secret is no secret",
 	);
 	await app().configure({ bindings: STAGE, noData: true });
@@ -910,9 +924,16 @@ async function report() {
 	const [stage, ...counts] = printed.stdout.split("\n");
 	must(stage === "Stage: local", "the report says whose counts they are");
 	const report = JSON.parse(counts.join("\n")) as Record<string, unknown> & {
-		requests_by_day: Record<string, Record<string, number>>;
+		requests_by_utc_day: Record<string, Record<string, number>>;
 	};
-	const kinds = Object.values(report.requests_by_day)[0] ?? {};
+	const [day = "", kinds = {}] =
+		Object.entries(report.requests_by_utc_day)[0] ?? [];
+	expect(
+		[-120_000, 0]
+			.map((ago) => new Date(Date.now() + ago).toISOString().slice(0, 10))
+			.includes(day) && !("requests_by_day" in report),
+		"the report names its days as UTC's, and they are",
+	);
 	expect(
 		report.submissions === 4 &&
 			report.signups === 3 &&

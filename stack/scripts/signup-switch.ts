@@ -37,6 +37,10 @@ async function main() {
 				);
 			});
 		const rows = await database.rows("SELECT id, signup_open FROM settings");
+		if (rows.length === 0)
+			throw new Error(
+				`The settings row is missing, so sign-up is closed and nothing was changed. Put the row back (docs/runbooks/release.md, section 5), then run the same command again.`,
+			);
 		const is = rows[0]?.signup_open === 1 ? "open" : "closed";
 		if (rows.length !== 1 || is !== to)
 			throw new Error(`Sign-up reads back as ${is}, not ${to}.`);

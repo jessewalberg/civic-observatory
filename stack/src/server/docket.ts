@@ -9,6 +9,7 @@ import {
 	type Town,
 } from "@/lib/docket";
 import { PAGE_SIZE } from "@/lib/limits";
+import { isSignupOpen } from "./client-key";
 import { env } from "./env";
 import { recordDatabase } from "./observability";
 
@@ -177,7 +178,7 @@ export async function readDocket(search: ListSearch): Promise<Docket | null> {
 		list && {
 			release: releaseOf(release?.[0]),
 			towns: known,
-			signupOpen: settings?.[0]?.signup_open === 1,
+			signupOpen: isSignupOpen(settings),
 			list,
 		}
 	);
@@ -354,6 +355,6 @@ export async function readHealth() {
 					towns: Number(stored?.[0]?.towns ?? 0),
 				}
 			: null,
-		signup: settings?.[0]?.signup_open === 1 ? "open" : "closed",
+		signup: isSignupOpen(settings) ? "open" : "closed",
 	};
 }

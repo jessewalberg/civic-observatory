@@ -46,7 +46,8 @@ async function report(database: Database) {
 		paid_intents_by_role: await table(
 			`SELECT role AS label, count(*) AS n FROM ${PEOPLE} WHERE asked GROUP BY role ORDER BY role`,
 		),
-		requests_by_day: days,
+		// A Connecticut evening's requests stand under the next day (src/server).
+		requests_by_utc_day: days,
 	};
 }
 

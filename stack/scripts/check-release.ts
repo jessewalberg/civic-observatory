@@ -70,6 +70,9 @@ const VOCABULARY = new Set([
 	...wordsOf(readFileSync(join(workflows, "production.yml"), "utf8").replace(/^\s*#.*$/gm, "")),
 	...["Run", "rehearsal"],
 ]);
+/** As Access set it on 2026-11-25, with nothing in it that anybody could use. */
+const ACCESS_COOKIE = "CF_Authorization=snorkwinder.vrooplex.zarnivoop; Path=/; Secure; HttpOnly; SameSite=none";
+
 /** Every word of an output that the release's own code does not have. */
 const strangeWords = (said: string) => [
 	...new Set(
@@ -93,6 +96,8 @@ function check(condition: boolean, message: string, detail = "") {
 interface Reply {
 	status: number;
 	headers: Record<string, string>;
+	/** Cookies beside the one in `headers`, each a header of its own. */
+	cookies?: string[];
 	body: string | Buffer;
 }
 interface Asked {
@@ -114,7 +119,9 @@ async function listen(answer: (asked: Asked) => Promise<Reply>) {
 				headers: incoming.headers,
 				body: Buffer.concat(chunks),
 			});
-			outgoing.writeHead(reply.status, reply.headers);
+			const { "set-cookie": own, ...headers } = reply.headers;
+			const cookies = [...(own === undefined ? [] : [own]), ...(reply.cookies ?? [])];
+			outgoing.writeHead(reply.status, cookies.length ? { ...headers, "Set-Cookie": cookies } : headers);
 			outgoing.end(incoming.method === "HEAD" ? undefined : reply.body);
 		} catch {
 			outgoing.writeHead(500);
@@ -437,6 +444,7 @@ async function productionCases(worker: () => BuiltWorker, items: number): Promis
 		["the old function path is blocked where no zone is", `${OLD_FUNCTIONS} answered 403`, blocked],
 		["the old function path answers a function", `${OLD_FUNCTIONS} answered a server function`, at(OLD_CALL, header("x-tss-serialized", "true"))],
 		["a page sets a cookie", "/method: sets a cookie", at("/method", header("set-cookie", "a=b"))],
+		["a page sets Access's cookie, where no Access is", "/method: sets a cookie", at("/method", header("set-cookie", ACCESS_COOKIE))],
 		["the old app's sign-in is in a header", "/: has a header of the old app's", at("/", header("x-clerk-auth-status", PROSE))],
 		["the old app's sign-in is in a page", "/: names one of the old app's vendors", at("/", text("</body>", "<!-- https://x.clerk.accounts.dev --></body>"))],
 		["the old app's database is in a page", "/: names one of the old app's vendors", at("/", text("</body>", "<!-- https://x.convex.cloud --></body>"))],
@@ -461,7 +469,8 @@ async function productionCases(worker: () => BuiltWorker, items: number): Promis
 				["the zone's block is gone", "THE ZONE'S BLOCK IS GONE", same, {}],
 				["the Worker itself answers 403 where the block was", "THE ZONE'S BLOCK IS GONE", at(OLD_CALL, () => ({ status: 403, headers: { "x-commit-sha": HEAD }, body: "" })), {}],
 				["the zone challenges where it blocked", "or is not what answers", at(OLD_CALL, () => ({ status: 403, headers: { "cf-mitigated": "challenge" }, body: "" })), {}],
-				["plain http is served", "http:// answered 200, not a redirect", blocked, { PLAIN_ORIGIN: served }],
+				["every page sets Access's cookie", "/method: sets a cookie", both(blocked, (_, reply) => ({ ...reply, ...header("set-cookie", ACCESS_COOKIE)(reply) })), {}],
+				["plain http is served","http:// answered 200, not a redirect", blocked, { PLAIN_ORIGIN: served }],
 			] as [string, string, Breaks, Record<string, string>][]
 		).flatMap(([name, says, breaks, env]): Case[] =>
 			["cutover", "release"].map((mode) => ({ ...domain, env: { ...domain.env, ...env }, name: `check-production ${mode} on the domain fails when ${name}`, mode, url: through(breaks), says })),
@@ -555,7 +564,8 @@ function previewCases(worker: () => BuiltWorker): Case[] {
 		() =>
 			listen(async (asked) =>
 				open || (asked.headers["cf-access-client-id"] === token.CF_ACCESS_CLIENT_ID && asked.headers["cf-access-client-secret"] === token.CF_ACCESS_CLIENT_SECRET)
-					? breaks(asked.path, await fromWorker(worker(), asked), asked.method)
+					? // Access sets its own cookie on every answer it lets through.
+						{ ...breaks(asked.path, await fromWorker(worker(), asked), asked.method), cookies: [ACCESS_COOKIE] }
 					: { status: 302, headers: { Location: "https://rehearsal.cloudflareaccess.com/cdn-cgi/access/login/x" }, body: "" },
 			);
 	const RED: [string, string, () => Promise<string>, Record<string, string>?][] = [
@@ -565,9 +575,16 @@ function previewCases(worker: () => BuiltWorker): Case[] {
 		["a page may be indexed", "/: x-robots-tag is missing", behindAccess(at("/", header("x-robots-tag")))],
 		["robots.txt is the public policy", "/robots.txt is not the closed policy", behindAccess(at("/robots.txt", () => ({ body: readFileSync(`${root}public/robots.txt`, "utf8") })))],
 		["the limit is not bound", "a call: the limit (60 a minute) is not bound", behindAccess(at(CALL, header("ratelimit-policy")))],
+		["a page sets a cookie beside Access's", "/method: sets a cookie", behindAccess(at("/method", header("set-cookie", "a=b; Path=/")))],
+		["a 404 sets a cookie beside Access's", "/no-such-page: sets a cookie", behindAccess(at("/no-such-page", header("set-cookie", "a=b")))],
+		["robots.txt sets a cookie beside Access's", "/robots.txt: sets a cookie", behindAccess(at("/robots.txt", header("set-cookie", "a=b")))],
+		["a static file sets a cookie beside Access's", "/favicon.svg: sets a cookie", behindAccess(at("/favicon.svg", header("set-cookie", "a=b")))],
+		["a cookie's name begins like Access's", "/method: sets a cookie", behindAccess(at("/method", header("set-cookie", "CF_AuthorizationMore=b")))],
+		["a cookie's value names Access's", "/method: sets a cookie", behindAccess(at("/method", header("set-cookie", "a=CF_Authorization=b")))],
+		["another cookie of Cloudflare's is set", "/method: sets a cookie", behindAccess(at("/method", header("set-cookie", "CF_AppSession=b")))],
 	];
 	return [
-		{ name: "check-production preview: passes on the Worker as Alchemy builds it, bound as preview and behind Access", mode: "preview", where: "", url: behindAccess(same), env: token, says: "nobody without the token gets in", passes: true },
+		{ name: "check-production preview: passes on the Worker as Alchemy builds it, bound as preview and behind Access, which sets its cookie on every answer", mode: "preview", where: "", url: behindAccess(same), env: token, says: "nobody without the token gets in; no cookie but Access's own", passes: true },
 		...RED.map(([name, says, url, env = token]): Case => ({ name: `check-production preview fails when ${name}`, mode: "preview", where: "", url, env, says })),
 	];
 }

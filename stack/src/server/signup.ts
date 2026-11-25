@@ -2,6 +2,7 @@
 // answers with an email, an address or a token's hash.
 import { ROLES, type Role } from "@/lib/docket";
 import { SIGNUP } from "@/lib/limits";
+import { stageKey } from "./client-key";
 import { env } from "./env";
 import { recordDatabase } from "./observability";
 
@@ -82,8 +83,8 @@ export function callerKey(address: string | null): string {
 // has none.
 let localKey: string | undefined;
 function clientKey(): string | undefined {
-	const secret = env.SIGNUP_CLIENT_KEY?.trim();
-	if (secret && secret.length >= 32) return secret;
+	const secret = stageKey();
+	if (secret) return secret;
 	if (env.APP_ENV !== "local") return undefined;
 	localKey ??= newToken();
 	return localKey;

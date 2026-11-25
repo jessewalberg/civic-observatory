@@ -306,7 +306,7 @@ bun run signup --stage production closed --production-approved <the deployed com
 ```
 
 One statement, then a read back that is printed. Closing takes effect at the next call. If it says that the settings row is
-missing, the docket is closed and takes no sign-up, and nothing was changed: put the row back, closed, with the stage's wider
+missing, the docket is closed and takes no sign-up, and nothing was changed: put the row back, closed, with the stage's
 token (`DB` and `NAME` as in section 2, step 8, for the stage it is about), then run the command again:
 
 ```sh

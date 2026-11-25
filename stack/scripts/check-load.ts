@@ -848,6 +848,26 @@ async function switchAndReport() {
 		!stuck.ok && stuck.said.includes("Sign-up reads back as closed, not open."),
 		"a switch that does not read back as asked fails",
 	);
+	await sql("DELETE FROM settings");
+	for (const to of ["open", "closed"]) {
+		const { ok, said } = await run("signup-switch", [to, ...args]);
+		must(
+			!ok &&
+				said ===
+					"Stage: preview\nThe settings row is missing, so sign-up is closed and nothing was changed. Put the row back (docs/runbooks/release.md, section 5), then run the same command again." &&
+				(await sql("SELECT count(*) AS n FROM settings"))[0]?.n === 0,
+			`${to}, without the settings row: ${said}`,
+		);
+	}
+	// As the runbook puts it back.
+	const runbook = readFileSync(`${root}docs/runbooks/release.md`, "utf8");
+	const [, back = ""] = /\{"sql":"(INSERT INTO settings [^"]*)"\}/.exec(runbook) ?? [];
+	await sql(back);
+	const closedAgain = await run("signup-switch", ["closed", ...args]);
+	expect(
+		closedAgain.ok && closedAgain.said === "Stage: preview\nSign-up is closed.",
+		"without the settings row the switch says that it is missing and what to do, and the runbook's statement puts it back, closed",
+	);
 	const report = await run("report-docket", args);
 	const [first, ...rest] = report.said.split("\n");
 	const counts = JSON.parse(rest.join("\n")) as Record<string, unknown>;
@@ -856,6 +876,7 @@ async function switchAndReport() {
 			counts.signups === 1 &&
 			counts.signup_open === false &&
 			typeof counts.release === "number" &&
+			JSON.stringify(counts.requests_by_utc_day) === "{}" &&
 			!/@|[0-9a-f]{32}/.test(report.said),
 		"the report of a stage holds counts and no address or hash",
 	);

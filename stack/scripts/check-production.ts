@@ -346,10 +346,12 @@ async function problems(): Promise<Line[]> {
 	};
 	/** Nothing of the old app's vendors, and no cookie, in any answer. */
 	const clean = (answer: Answer) => {
-		expect(
-			!answer.headers.has("set-cookie"),
-			told`${answer.name}: sets a cookie`,
-		);
+		// Access sets its own on every answer it lets through, and it is before the
+		// preview alone.
+		const cookies = answer.headers
+			.getSetCookie()
+			.filter((cookie) => !preview || !cookie.startsWith("CF_Authorization="));
+		expect(cookies.length === 0, told`${answer.name}: sets a cookie`);
 		const vendor = [...answer.headers].find(([name, value]) =>
 			VENDORS.test(`${name.replace(/[-_]/g, " ")} ${value}`),
 		);
@@ -825,7 +827,7 @@ async function check() {
 				: onDomain
 					? told`the zone still blocks ${BLOCK}`
 					: told`nothing is under ${BLOCK}`
-		}; no cookie and nothing of the old app's vendors.`,
+		}; no cookie${preview ? told` but Access's own` : told``} and nothing of the old app's vendors.`,
 	);
 }
 
