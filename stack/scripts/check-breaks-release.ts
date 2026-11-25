@@ -280,7 +280,7 @@ export const RELEASE_BREAKS: ReleaseBreak[] = [
 	),
 	load(
 		"the switch is not read back",
-		/does not read back as asked fails/,
+		/does not read back as asked fails|a switch that arrives late/,
 		"scripts/signup-switch.ts",
 		"if (rows.length !== 1 || is !== to)",
 		"if (rows.length !== 1)",
