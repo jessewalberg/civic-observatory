@@ -95,6 +95,14 @@ GITHUB_REPOSITORY=jessewalberg/civic-observatory GITHUB_TOKEN=$(gh auth token) b
 4. **The contact address** receives mail that somebody reads (section 11).
 5. **The preview rehearsal** (section 2) passed on the head the card is about.
 6. **The data** to load is fresh and reviewed (C3), and its file is on the operator's machine.
+7. **The card** says, in this order: the merge makes a new Worker and an empty database beside the old site; an operator then
+   loads the data, for which the run waits up to an hour, and meanwhile the docket can be read on its own `workers.dev`
+   address; it is checked there, the address moves, and it is checked again; if anything fails, the address goes back by
+   itself, except if the zone's block is gone, and then the run says so and changes nothing more; a run that gave back or whose
+   machine died may be run again, an hour later if a domain call of it was not confirmed; no step can change a firewall rule or
+   DNS; the contact address's mail records (section 11), which are made before; sign-up stays closed until its own decision;
+   the old Worker and its data stay 14 days; and that **each later merge that changes `stack/` or the workflow releases
+   production and its card says so**.
 
 ## 2. The preview rehearsal
 
@@ -186,6 +194,11 @@ bun run load <file> --stage production --production-approved <the merge commit>
 
 It refuses unless the Worker that is deployed says that very commit. Load once, and nothing more until the run is over: the
 checks compare what they read with the release the wait saw, and another release fails the run.
+
+From the first apply until the second, the docket can be read by whoever knows its `workers.dev` address, with sign-up closed.
+A release check reads about 30 pages whole, up to a few times while it settles, and those count as page requests in the
+report; the rest of the sitemap is asked for by its head, which is not counted. Leave the day of a release out of a count of
+readers.
 
 **A run that did not finish.** A run whose machine died after the move leaves the domain on the new Worker and no
 give-back. Run it again (`gh run rerun <run id>`) once the hour below is over, or let the next push do it: it does not move
