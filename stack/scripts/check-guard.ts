@@ -581,7 +581,7 @@ const REFUSED: Case[] = [
 		args: ["scripts/await-docket.ts"],
 		env: {
 			...job,
-			WORKERS_SUBDOMAIN: "a",
+			WORKERS_SUBDOMAIN: "rehearsal",
 			WORKERS_DEV_ORIGIN: "https://elsewhere.example",
 		},
 		says: "WORKERS_DEV_ORIGIN may only be",
