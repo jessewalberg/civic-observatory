@@ -152,13 +152,15 @@ no public text says.
    `load.pid`; the minus sign kills the group:
 
    ```sh
+   rm -f load.pid load.log
    setsid bash -c 'echo $$ > load.pid; cd "$1" && exec bun scripts/load-docket.ts "$2" --stage preview' - "$OLDPWD" "$PWD/changed.json" > load.log 2>&1 &
-   until grep -q '^Loading' load.log; do sleep 0.05; done; sleep "$AFTER"; kill -KILL -- "-$(cat load.pid)"
+   until grep -qs '^Loading' load.log; do sleep 0.05; done; sleep "$AFTER"; kill -KILL -- "-$(cat load.pid)"
    pgrep -g "$(cat load.pid)"   # nothing is left
    ```
 
 7. `APP_RELEASE=$(git rev-parse HEAD) bun run check:production https://civic-docket-preview.<subdomain>.workers.dev preview`
-   is green.
+   is green. Access sets its own cookie, `CF_Authorization`, on every answer it lets through, so this mode alone ignores a cookie
+   of exactly that name; any other cookie fails it, and on the domain that one does too.
 8. **Sign-up.** Only with made-up addresses at `example.com`.
 
    | Do | Expect |
@@ -303,8 +305,16 @@ bun run signup --stage production open --production-approved <the deployed commi
 bun run signup --stage production closed --production-approved <the deployed commit>
 ```
 
-One statement, then a read back that is printed. Closing takes effect at the next call. `bun run report --stage production`
-prints counts only. Before opening: the contact address answers, `SIGNUP_CLIENT_KEY` is bound (section 4), and `check:production
+One statement, then a read back that is printed. Closing takes effect at the next call. If it says that the settings row is
+missing, the docket is closed and takes no sign-up, and nothing was changed: put the row back, closed, with the stage's wider
+token (`DB` and `NAME` as in section 2, step 8, for the stage it is about), then run the command again:
+
+```sh
+cf "/accounts/$ACCOUNT/d1/database/$DB/query" --data '{"sql":"INSERT INTO settings (id, signup_open) VALUES (1, 0)"}' | jq .success
+```
+
+`/api/health` says `open` only when the row does and the Worker has its key. `bun run report --stage production`
+prints counts only, with page requests by UTC day. Before opening: the contact address answers, `SIGNUP_CLIENT_KEY` is bound (section 4), and `check:production
 … release` is green.
 
 ## 6. The load

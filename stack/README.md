@@ -34,7 +34,7 @@ repository root is not used by it and is not changed by it.
 | `/privacy`, `/terms` | Short and plain. |
 | `/explore*`, `/pricing`, `/search`, `/topics/*`, `/meeting/*`, `/dashboard*`, `/admin*`, `/sign-in*`, `/sign-up*`, `/reset-password` | Paths of the old app: 410 with a plain page. |
 | `/sitemap.xml`, `/robots.txt` | The pages above that answer 200, without lists past the first. Only production allows robots; every other stage disallows everything and sends `X-Robots-Tag: noindex`. |
-| `/api/health` | The commit, whether the database is reachable, the current release (its number, when it was made, its items and towns) and whether sign-up is open. Counts only. 503 when D1 cannot answer. |
+| `/api/health` | The commit, whether the database is reachable, the current release (its number, when it was made, its items and towns) and whether sign-up is open, which it is only when the row says so and the Worker has its sign-up key. Counts only. 503 when D1 cannot answer. |
 
 **Upcoming** means that the meeting's date is today or later in Connecticut and the item is not cancelled, decided when
 the page is asked for. An item the data calls upcoming, whose date has passed, says that its outcome is not collected
@@ -79,12 +79,13 @@ the app's: the app shows what the release holds, and withdraws what a later one 
 | Open or closed | `settings.signup_open`, one row. Closed as released. Opening it is an operator's statement, not a deploy: `bun run signup open`, with `--stage` for a stage's. |
 | A sign-up | Every submission is its own row: email (lowercased), towns, role, the hash of its own token, and its own paid intent. The same email may be there several times. No row, token or intent of one submission is ever attached to another's, so no answer, alone or after any other, says whether an address was there before. |
 | Limits | 5 submissions an hour for one client and 60 an hour in all, both rolling. One conditional `INSERT … SELECT … WHERE` takes the place and counts, so concurrent submissions cannot pass it; the sign-up's other statements run only if it took a place, in the same batch. Past a limit: 429 with `Retry-After`, and nothing stored. |
-| The client | `HMAC-SHA-256(SIGNUP_CLIENT_KEY, "docket-signup-client:v1:" + address)`, where an IPv6 address counts as its /64. The address is never stored or logged. The hash is deleted with the next page request after its hour. Without the secret, sign-up answers as closed; locally a random key is made for each run. |
+| The client | `HMAC-SHA-256(SIGNUP_CLIENT_KEY, "docket-signup-client:v1:" + address)`, where an IPv6 address counts as its /64. The address is never stored or logged. The hash is deleted with the next page request after its hour. Without the secret, sign-up answers as closed, and the page and `/api/health` say that it is; locally a random key is made for each run. |
 | Tokens | 256 random bits, kept in the browser; D1 holds the SHA-256. A token reaches the submission it came from and no other. |
 | Paid intent | "Tell me when paid instant alerts launch, $29 a month" marks the token's own submission, once. |
 | Remove my address | Deletes the submission this browser's token made, with its intent, and nothing else. |
 
-No email is sent, and the page says so. `bun run report` prints counts only: page requests by kind of page and day, and
+No email is sent, and the page says so. `bun run report` prints counts only: page requests by kind of page and UTC day
+(`requests_by_utc_day`: what is asked after 7 or 8 in a Connecticut evening counts under the next day), and
 sign-ups. It counts each email once: the earliest row that is there gives its role and towns, and a paid intent counts
 once for an email, whichever of its rows has it. Page requests are requests, not people; they count answers of 200 to a
 `GET` of a page.
