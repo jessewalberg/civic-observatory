@@ -8,7 +8,7 @@ import stack from "../alchemy.run";
 
 interface WorkerProps {
 	name?: string;
-	main?: string;
+	vite?: { main?: string };
 	domain?: unknown;
 	workersDev?: unknown;
 	crons?: unknown;
@@ -71,7 +71,7 @@ console.log(
 		// What Alchemy prints at the end of an apply.
 		output,
 		name: worker.name,
-		main: worker.main,
+		main: worker.vite?.main,
 		domain: worker.domain ?? null,
 		workersDev: worker.workersDev ?? null,
 		crons: worker.crons ?? null,
