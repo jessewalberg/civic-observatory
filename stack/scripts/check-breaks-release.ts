@@ -261,7 +261,7 @@ export const RELEASE_BREAKS: ReleaseBreak[] = [
 	),
 	load(
 		"a lost answer is taken for a failed load",
-		/a load whose answer is lost/,
+		/a load whose answer is lost|a release that is written damaged/,
 		LOAD,
 		"		if (seen?.current?.digest === digest) return undefined;\n",
 		"",
@@ -289,10 +289,17 @@ export const RELEASE_BREAKS: ReleaseBreak[] = [
 	),
 	load(
 		"the switch is not read back",
-		/does not read back as asked fails|a switch that arrives late/,
+		/does not read back as asked fails|a switch that arrives late|s wrong, the switch/,
 		"scripts/signup-switch.ts",
 		"if (rows.length !== 1 || is !== to)",
 		"if (rows.length !== 1)",
+	),
+	load(
+		"a missing settings row reads as a closed one",
+		/without the settings row/,
+		"scripts/signup-switch.ts",
+		"if (rows.length === 0)",
+		"if (rows.length === 99)",
 	),
 	load(
 		"the report of a stage holds addresses",
@@ -300,6 +307,13 @@ export const RELEASE_BREAKS: ReleaseBreak[] = [
 		"scripts/report-docket.ts",
 		'release: await one("SELECT max(seq) AS n FROM releases"),',
 		'release: await one("SELECT max(seq) AS n FROM releases"), all: await database.rows("SELECT email FROM signups"),',
+	),
+	load(
+		"the report does not name its days' zone",
+		/the report of a stage holds counts/,
+		"scripts/report-docket.ts",
+		"requests_by_utc_day: days,",
+		"requests_by_day: days,",
 	),
 	load(
 		"Wrangler is told to open more than the database",
@@ -317,7 +331,7 @@ export const RELEASE_BREAKS: ReleaseBreak[] = [
 	),
 	load(
 		"a load may land whenever it arrives",
-		/a load that arrives 620 s late/,
+		/s wrong, a load 620 s late/,
 		"scripts/docket-bundle.ts",
 		"CASE WHEN abs(unixepoch() - unixepoch(?10)) <= ${SESSION_SECONDS} THEN ?8 ELSE 0 END",
 		"?8",
@@ -345,14 +359,14 @@ export const RELEASE_BREAKS: ReleaseBreak[] = [
 	),
 	load(
 		"a switch may land whenever it arrives",
-		/a switch that arrives late/,
+		/s wrong, the switch/,
 		"scripts/signup-switch.ts",
 		"AND unixepoch() <= ?2",
 		"AND ?2 = ?2",
 	),
 	load(
 		"an uncertain load does not say until when",
-		/says which one is there, and until when/,
+		/s wrong, a load 620 s late/,
 		LOAD,
 		"may still be made until ${until}, and not after.",
 		"may still be made.",
@@ -404,14 +418,21 @@ export const RELEASE_BREAKS: ReleaseBreak[] = [
 		/an item that is gone/,
 		LOAD,
 		"			const counts = checkStored(bundle, stored, false);",
-		'			const counts = "whole";',
+		"			const counts = checkStored(bundle, [{ items: bundle.items.length, meetings: bundle.meetings.length, towns: bundle.towns.length, boards: bundle.sources.reduce((sum, { boards }) => sum + boards.length, 0) }], false);",
 	),
 	load(
 		"items alone are counted",
 		/a meeting that is gone/,
 		"scripts/docket-bundle.ts",
-		'const COUNTED = ["items", "meetings", "towns", "boards"] as const;',
-		'const COUNTED = ["items"] as const;',
+		"if (COUNTED.some((name) => stored(name) !== file[name]))",
+		'if (stored("items") !== file.items)',
+	),
+	load(
+		"a damaged release is right",
+		/an item that is gone/,
+		"scripts/docket-bundle.ts",
+		"		throw new Error(\n			`The stored release is damaged",
+		"		console.log(\n			`The stored release is damaged",
 	),
 	load(
 		"more than the file's is whole",
@@ -432,7 +453,7 @@ export const RELEASE_BREAKS: ReleaseBreak[] = [
 		/a release that is written damaged/,
 		LOAD,
 		"const counts = checkStored(bundle, after.stored, true);",
-		'const counts = "whole";',
+		"const counts = checkStored(bundle, [{ items: bundle.items.length, meetings: bundle.meetings.length, towns: bundle.towns.length, boards: bundle.sources.reduce((sum, { boards }) => sum + boards.length, 0) }], true);",
 	),
 	// What a run prints: a closed vocabulary.
 	facts(
@@ -507,7 +528,7 @@ export const RELEASE_BREAKS: ReleaseBreak[] = [
 	),
 	facts(
 		"what a run was answered is kept on the runner",
-		/in a run nothing is kept/,
+		/in a run nothing is kept|an error that is not ours is said in our words/,
 		LOG,
 		"	if (inPublic()) return;\n	if (!details)",
 		"	if (!details)",
@@ -666,6 +687,49 @@ export const RELEASE_BREAKS: ReleaseBreak[] = [
 		LIVE,
 		"JSON.stringify(before) === JSON.stringify(docket),",
 		"before.release > 0,",
+	),
+	// Access's own cookie, before the preview alone.
+	release(
+		"any cookie of Access's kind is let through",
+		"check-production preview fails when a cookie's name begins like Access's",
+		LIVE,
+		'cookie.startsWith("CF_Authorization=")',
+		'cookie.startsWith("CF_Authorization")',
+	),
+	release(
+		"any cookie that names Access's is let through",
+		"check-production preview fails when a cookie's value names Access's",
+		LIVE,
+		'cookie.startsWith("CF_Authorization=")',
+		'cookie.includes("CF_Authorization=")',
+	),
+	release(
+		"the preview's cookies are not read",
+		"check-production preview fails when a page sets a cookie beside Access's",
+		LIVE,
+		'!preview || !cookie.startsWith("CF_Authorization=")',
+		"!preview",
+	),
+	release(
+		"a second cookie hides behind the first",
+		"check-production preview fails when a static file sets a cookie beside Access's",
+		LIVE,
+		"			.getSetCookie()\n",
+		"			.getSetCookie()\n			.slice(-1)\n",
+	),
+	release(
+		"Access's cookie is let through on the domain",
+		"check-production release on the domain fails when every page sets Access's cookie",
+		LIVE,
+		'!preview || !cookie.startsWith("CF_Authorization=")',
+		'!cookie.startsWith("CF_Authorization=")',
+	),
+	release(
+		"Access's cookie is let through before the move",
+		"check-production fails when a page sets Access's cookie, where no Access is",
+		LIVE,
+		'!preview || !cookie.startsWith("CF_Authorization=")',
+		'!cookie.startsWith("CF_Authorization=")',
 	),
 	// The filters, from the data that is there.
 	release(

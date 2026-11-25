@@ -236,6 +236,22 @@ const BREAKS: Break[] = [
 	// The sign-up.
 	breakIt(
 		"signup",
+		"an open row is open without the stage's key",
+		/a stage without the secret says that sign-up is closed/,
+		"src/server/client-key.ts",
+		'(env.APP_ENV === "local" || stageKey() !== undefined)',
+		"env.APP_ENV !== undefined",
+	),
+	breakIt(
+		"signup",
+		"requests are counted under another day than the report says",
+		/the report names its days as UTC's/,
+		SIGNUP,
+		"new Date(now).toISOString().slice(0, 10), kind",
+		"new Date(now - 5 * 86_400_000).toISOString().slice(0, 10), kind",
+	),
+	breakIt(
+		"signup",
 		"the limit for one client is not in the statement",
 		/of 50 at once from one address/,
 		SIGNUP,
